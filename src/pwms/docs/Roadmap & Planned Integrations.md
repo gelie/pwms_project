@@ -78,8 +78,8 @@ an audit trail of upload/download; permissions mirror PWMS group access.
 
 ## Notifications channel & email templating (🔜)
 
-- HTML email templates in `templates/emails/`, rendered with request-free
-  `render_to_string`.
+- HTML email templates in `src/pwms/templates/emails/`, rendered with
+  request-free `render_to_string`.
 - Respect RBAC when composing (never leak content a recipient may not view).
 - Log every dispatch in the audit layer for accountability.
 
@@ -133,8 +133,11 @@ Per new model, the checklist is:
 ## Non-functional roadmap
 
 - Scheduled execution for background jobs (cron/systemd or a beat-style runner).
-- Production deployment concerns: `DEBUG=False`, `ALLOWED_HOSTS`, static/media
-  serving, secrets in environment, TLS.
+- Production deployment concerns: `DEBUG=False`, `ALLOWED_HOSTS`, secrets in
+  environment, TLS. Static/media are gathered/served separately:
+  `collectstatic` collects the app static into `staticfiles/`
+  (`STATIC_ROOT`, repo root) and user uploads go to `media/` (`MEDIA_ROOT`,
+  repo root).
 - Broader test coverage and CI; reconcile/remove the django-ninja spike once the
   API decision is made (see [System Design §6](./System%20Design.md#6-api-layer)).
 

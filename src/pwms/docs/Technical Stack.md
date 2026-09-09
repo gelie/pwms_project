@@ -66,8 +66,9 @@
   (`src/pwms/`) and are auto-discovered (`APP_DIRS = True`;
   `STATICFILES_DIRS` empty).
 - The package installs (editable) as `pwms` with the module at `src/pwms/`, so
-  there is exactly **one** import identity: `pwms.*`. The old dual-import hazard
-  (`pwms_project.pwms.*` vs `pwms.*`) is gone.
+  there is exactly **one** import identity: `pwms.*`. (The previous
+  `src/pwms_project` layout, which also made `pwms_project.pwms.*` importable,
+  no longer exists — that dual-import hazard is gone.)
 - `DJANGO_SETTINGS_MODULE=pwms.settings`, WSGI/ASGI = `pwms.wsgi.application`,
   root URLconf = `pwms.root_urls` (which includes the app URLs at `/pwms/`).
 
