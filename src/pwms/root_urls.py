@@ -23,8 +23,9 @@ from drf_spectacular.views import (
     SpectacularRedocView,
     SpectacularSwaggerView,
 )
-from pwms.api.ninja import api as ninja_api
 from rest_framework.permissions import AllowAny
+
+from pwms.api.ninja import api as ninja_api
 
 urlpatterns = [
     path("admin/", admin.site.urls),
