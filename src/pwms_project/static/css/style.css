@@ -1,0 +1,260 @@
+.site-header {
+    z-index: 99;
+    background: #fefefe;
+}
+
+#top-nav {
+    background-color: #B3995D;
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+    background-image: url(../images/BGs3_top_header.png);
+    background-blend-mode: screen;
+    padding: 8px 0;
+}
+
+#middle-topbar {
+    border: none;
+    background: rgba(179, 153, 93, 0.2);
+    padding: 0;
+    position: relative;
+    height: 120px;
+}
+
+
+.sticky-container {
+    position: relative;
+}
+
+.grid-container {
+    padding-right: 0.625rem;
+    padding-left: 0.625rem;
+    max-width: 75rem;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.search-wrapper {
+    /* display: flex; */
+    /* justify-content: end; */
+    /* position: relative; */
+    width: 100%;
+    /* max-width: 400px; */
+    /* margin: 0 auto; */
+}
+
+.search-wrapper form {
+    display: flex;
+    justify-content: end;
+    width: 100%;
+}
+
+.search-wrapper input {
+    border-radius: 3px;
+    font-size: 14px;
+    width: 200px;
+}
+
+#middle-top-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 1rem;
+}
+
+#topbar-left {
+    display: flex;
+    align-items: center;
+    width: 270px;
+
+}
+
+#topbar-logo {
+    display: flex;
+    max-width: 270px;
+    /* display: block; */
+    /* max-width: 200px; */
+    padding: 15px 0;
+}
+
+
+#topbar-left a,
+#topbar-left img {
+    width: 270px;
+}
+
+#topbar-center {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    width: 100%;
+}
+
+
+#topbar-center h1 {
+    color: var(--theme-green);
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+#topbar-center h6 {
+    color: var(--theme-brown);
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+#topbar-right {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 200px;
+}
+
+#topbar-right #parliament-sitting {
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+    background-image: url(../images/bg-2_small.png);
+    width: 1000%;
+    height: 120px;
+}
+
+/* #topbar-right #watch-listen-links {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    display: -webkit-box;
+    display: -webkit-flex;
+    display: -ms-flexbox;
+    display: flex;
+    -webkit-box-orient: horizontal;
+    -webkit-box-direction: normal;
+    -webkit-flex-flow: row wrap;
+    -ms-flex-flow: row wrap;
+    flex-flow: row wrap;
+    width: 50%;
+}
+
+.menu {
+    padding: 0;
+    margin: 0;
+    list-style: none;
+    position: relative;
+    display: -webkit-box;
+    display: -webkit-flex;
+    display: -ms-flexbox;
+    display: flex;
+    -webkit-flex-wrap: wrap;
+    -ms-flex-wrap: wrap;
+    flex-wrap: wrap;
+}
+
+#watch-listen-links ul {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+}
+
+.watch-listen-links li {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 0.5rem 0;
+}
+
+*/
+
+#desktop-nav {
+    z-index: 999;
+    border-bottom: 4px solid #EFBD47;
+    background-color: #9E7C0C;
+    width: 100%;
+    max-width: 1897px;
+    margin-top: 0px;
+    bottom: auto;
+    top: 0px;
+    height: 64px;
+}
+
+/* Make the Bootstrap .navbar fit the fixed #desktop-nav exactly. Bootstrap's
+   default 0.5rem vertical padding pushed the links 8px down (leaving a gold
+   gap at the top) and made .navbar taller than the 64px bar, so it overflowed
+   below the yellow border. */
+#desktop-nav .navbar {
+    height: 60px;
+    padding-top: 0;
+    padding-bottom: 0;
+}
+
+#desktop-nav #desktop-nav-container {
+    /* display: flex;
+    justify-content: space-between;
+    align-items: center; */
+    height: 60px;
+    /* margin: 0;
+    padding: 0;
+    list-style: none; */
+}
+
+#desktop-nav #main-horiz-menu>li:first-child {
+    border-left: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+#desktop-nav #main-horiz-menu>li {
+    border-right: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+
+/* Uniform row height for the visible desktop nav links. IMPORTANT: do NOT
+   stretch the dropdown menu or the offcanvas to 60px. The old blanket rule
+   (#desktop-nav-container *) gave the absolutely-positioned .dropdown-menu a
+   fixed 60px height too, so only the first item sat on the menu's background
+   and the remaining items overflowed below it with no background (looking
+   transparent), and it also broke the mobile offcanvas layout. */
+#desktop-nav #main-horiz-menu>li>.nav-link {
+    height: 60px;
+    display: flex;
+    align-items: center;
+    /* justify-content: center; */
+}
+
+/* Let the dropdown menu and offcanvas size to their own content. */
+#desktop-nav-container .dropdown-menu,
+#desktop-nav-container .dropdown-menu *,
+#desktop-nav-container .offcanvas,
+#desktop-nav-container .offcanvas * {
+    height: auto;
+}
+
+/* Open the main-nav dropdowns on hover instead of only on click.
+   Scoped to devices that support hover (mouse/trackpad) so touch devices
+   keep the native click behaviour. */
+@media (hover: hover) and (pointer: fine) {
+
+    #desktop-nav #main-horiz-menu .nav-item.dropdown:hover>.dropdown-menu,
+    #desktop-nav #main-horiz-menu .nav-item.dropdown:focus-within>.dropdown-menu {
+        display: block;
+    }
+}
+
+/* .sticky.is-anchored {
+    position: relative;
+    right: auto;
+    left: auto;
+} */
+
+#site-footer {
+    border-bottom: 20px solid #9E7C0C;
+    margin-top: 30px;
+    padding: 40px 0;
+    background-color: #275937;
+    background-size: cover;
+    background-position: center center;
+    background-repeat: no-repeat;
+    background-image: url(/static/images/bg-2_footer.png);
+    background-blend-mode: multiply;
+    color: #fefefe;
+    font-size: 14px;
+}

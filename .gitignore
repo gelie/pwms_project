@@ -9,3 +9,4 @@ wheels/
 # Virtual environments
 .venv
 src/pwms_project/.env
+src/pwms_project/logs/*

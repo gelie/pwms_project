@@ -40,11 +40,14 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "background_task",
     # "chartjs",
     "django_flatpickr",
     "lucide",
     "mptt",
     "django_htmx",
+    # "django_extensions",
+    "django_bootstrap5",
     "pwms",
 ]
 
@@ -138,7 +141,7 @@ STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "static"]
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_ROOT = BASE_DIR / "media"
-MEDIA_URL = "/media/"
+MEDIA_URL = "media/"
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
@@ -153,9 +156,9 @@ MAILERS = {
 AUTH_USER_MODEL = "pwms.User"
 
 # Login URLs
-LOGIN_URL = "/login/"
-LOGIN_REDIRECT_URL = "/"
-LOGOUT_REDIRECT_URL = "/login/"
+LOGIN_URL = "/pwms/login/"
+LOGIN_REDIRECT_URL = "/pwms/"
+LOGOUT_REDIRECT_URL = "/pwms/login/"
 
 # Background tasks configuration
 MAX_ATTEMPTS = 3

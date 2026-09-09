@@ -1,0 +1,442 @@
+/* 
+ * Bootstrap 5 Theme Overrides - Parliament of South Africa
+ * Merged Light & Dark Mode using modern light-dark() function.
+ * No media queries required for color switching!
+ */
+
+/* 1. CSS Variables - The Core Theme Palette (Light & Dark) */
+:root {
+  color-scheme: light dark;
+  
+  /* Base Background & Text */
+  --bs-body-bg: light-dark(#fefefe, #121212);
+  --bs-body-color: light-dark(#8F8579, #D3CCC0);
+  
+  /* Theme Colors (Same across both modes) */
+  --theme-gold: light-dark(#B3995D, #B3995D);
+  --theme-dark-gold: light-dark(#9E7C0C, #9E7C0C);
+  --theme-yellow: light-dark(#EFBD47, #EFBD47);
+  --theme-dark-yellow: light-dark(#C79900, #C79900);
+  --theme-orange: light-dark(#E17000, #E17000);
+  --theme-green: light-dark(#275937, #2D663F); /* Brightened slightly for dark mode contrast */
+  
+  /* Adaptive Surfaces (Switches with mode) */
+  --theme-light-gold: light-dark(#f6f3ec, #2A2620);
+  --theme-inactive-tab: light-dark(#d9cbad, #3A3226);
+  --theme-light-yellow: light-dark(#fefaeb, #2A2418);
+  --theme-brown: light-dark(#6C4D23, #C8A97E);
+  
+  /* Bootstrap 5.3 Adaptive Overrides */
+  --bs-primary: var(--theme-green);
+  --bs-secondary: var(--theme-gold);
+  --bs-border-color: light-dark(#dee2e6, #3A3226);
+  --bs-secondary-bg: light-dark(#f6f3ec, #242424);
+  --bs-tertiary-bg: light-dark(#f8f9fa, #1C1C1C);
+  --bs-emphasis-color: light-dark(#000, #F1ECE3);
+  
+  /* Fonts */
+  --bs-font-sans-serif: "Helvetica Neue", Helvetica, Roboto, Arial, sans-serif;
+  --bs-font-serif: 'ff-dax-pro', sans-serif;
+  
+  /* Image Paths */
+  --img-top-header: url('../images/BGs3_top_header.png');
+  --img-header: url('../images/bg-2_header.png');
+  --img-footer: url('../images/bg-2_footer.png');
+}
+
+/* 2. Global Typography & Links */
+body {
+  background-color: var(--bs-body-bg);
+  color: var(--bs-body-color);
+}
+
+h1, .h1, h2, .h2, h3, .h3, h4, .h4, h5, .h5, h6, .h6 {
+  font-family: var(--bs-font-serif);
+  font-weight: normal;
+  color: light-dark(#212529, #F1ECE3);
+}
+
+a {
+  color: light-dark(var(--theme-green), var(--theme-yellow));
+  text-decoration: none;
+}
+
+a:hover {
+  color: light-dark(#224d2f, #ffd775);
+  text-decoration: underline;
+}
+
+/* 3. Utility Classes */
+.green { color: var(--theme-green) !important; }
+.gold { color: var(--theme-gold) !important; }
+.dark-gold { color: light-dark(var(--theme-dark-gold), var(--theme-dark-yellow)) !important; }
+.light-gold-bg { background-color: var(--theme-light-gold); }
+
+/* 4. Buttons */
+.btn {
+  text-transform: uppercase;
+  font-family: var(--bs-font-serif);
+  font-weight: 600;
+  border-radius: 0;
+}
+
+.btn-primary {
+  background-color: var(--theme-green);
+  border-color: var(--theme-green);
+  color: #fff;
+}
+
+.btn-primary:hover, .btn-primary:focus {
+  background-color: light-dark(#214c2f, #214c2f);
+  border-color: light-dark(#214c2f, #214c2f);
+  color: #fff;
+}
+
+.btn-secondary, .btn-gold {
+  background-color: var(--theme-gold);
+  border-color: var(--theme-gold);
+  color: light-dark(#fff, #121212); /* Dark text on gold in dark mode for contrast */
+}
+
+.btn-secondary:hover, .btn-gold:hover {
+  background-color: #967e47;
+  border-color: #967e47;
+  color: light-dark(#fff, #121212);
+}
+
+.btn-dark-gold {
+  background-color: var(--theme-dark-gold);
+  border-color: var(--theme-dark-gold);
+  color: #fff;
+}
+
+.btn-dark-gold:hover {
+  background-color: #6f5708;
+  border-color: #6f5708;
+  color: #fff;
+}
+
+.btn-orange {
+  background-color: var(--theme-orange);
+  border-color: var(--theme-orange);
+  color: #fff;
+}
+
+.btn-orange:hover {
+  background-color: #ae5700;
+  border-color: #ae5700;
+  color: #fff;
+}
+
+/* 5. Navbars */
+#top-nav {
+  background-color: light-dark(var(--theme-gold), #4A3F28);
+  background-image: var(--img-top-header);
+  background-size: cover;
+  background-position: center center;
+  background-blend-mode: screen;
+  padding: 8px 0;
+  color: #fff;
+}
+
+#top-nav a {
+  color: #fff;
+}
+
+#desktop-nav {
+  z-index: 999;
+  border-bottom: 4px solid var(--theme-yellow);
+  background-color: light-dark(var(--theme-dark-gold), #4A3F28);
+}
+
+#desktop-nav .nav-link {
+  color: #fff;
+  text-transform: uppercase;
+  font-family: var(--bs-font-serif);
+  font-weight: 600;
+  padding: 1.25rem 1rem;
+}
+
+#desktop-nav .nav-link:hover {
+  background-color: var(--theme-green);
+  color: #fff;
+}
+
+/* Toggler Icon Color */
+.navbar-toggler {
+  border-color: var(--theme-gold);
+}
+.navbar-toggler-icon {
+  background-image: light-dark(
+    url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%2810, 10, 10, 1%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e"),
+    url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%28179, 153, 93, 1%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e")
+  );
+}
+
+/* 6. Page Header (Hero) */
+.page-header {
+  background-color: light-dark(var(--theme-green), #1C1C1C);
+  background-image: var(--img-header);
+  background-size: cover;
+  background-position: center center;
+  background-blend-mode: multiply;
+  padding: 23px;
+  margin-bottom: 30px;
+  color: #fff;
+  border-bottom: light-dark(none, 3px solid var(--theme-yellow));
+}
+
+.page-header h1 {
+  color: #fff;
+  font-weight: 500;
+  text-transform: uppercase;
+  margin-bottom: 0.5rem;
+}
+
+.page-header .breadcrumb {
+  --bs-breadcrumb-divider-color: var(--theme-dark-yellow);
+  margin: 0;
+  font-size: 14px;
+  font-family: var(--bs-font-serif);
+}
+
+.page-header .breadcrumb a {
+  color: var(--theme-dark-yellow);
+}
+
+/* 7. Tables */
+.table {
+  --bs-table-bg: var(--theme-light-gold);
+  --bs-table-color: var(--bs-body-color);
+  --bs-table-border-color: light-dark(#fff, #3A3226); 
+}
+
+.table thead {
+  background-color: var(--theme-dark-gold);
+  color: #fff;
+  text-transform: uppercase;
+  font-family: var(--bs-font-serif);
+}
+
+.table-striped > tbody > tr:nth-of-type(odd) > * {
+  --bs-table-accent-bg: light-dark(#eee9dc, #242424);
+  color: var(--bs-body-color);
+}
+
+.table-hover > tbody > tr:hover > * {
+  --bs-table-accent-bg: light-dark(#f3efe5, #2D2D2D);
+  color: light-dark(inherit, #fff);
+}
+
+/* 8. Cards */
+.card {
+  border-radius: 0;
+  border: 1px solid light-dark(#e6e6e6, #3A3226);
+  background-color: light-dark(#fefefe, #1C1C1C);
+  color: var(--bs-body-color);
+}
+
+.card-header {
+  background-color: var(--theme-dark-gold);
+  color: #fff;
+  text-transform: uppercase;
+  border-radius: 0;
+  border-bottom: 0;
+  font-family: var(--bs-font-serif);
+}
+
+/* 9. Accordions */
+.accordion-item {
+  border-bottom: 1px solid light-dark(#fff, #3A3226);
+  background: transparent;
+}
+
+.accordion-button {
+  font-family: var(--bs-font-serif);
+  font-size: 1.5rem;
+  color: light-dark(var(--theme-dark-gold), var(--theme-yellow));
+  background-color: var(--theme-light-gold);
+  border: none;
+  box-shadow: none;
+}
+
+.accordion-button:not(.collapsed) {
+  background-color: light-dark(#eee8db, #2A2620);
+  color: light-dark(var(--theme-dark-gold), var(--theme-gold));
+  box-shadow: none;
+}
+
+/* Icon Color for dark mode */
+.accordion-button::after {
+  background-image: light-dark(
+    url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23275 937'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3E"),
+    url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='%23EFBD47'%3e%3cpath fill-rule='evenodd' d='M1.646 4.646a.5.5 0 0 1 .708 0L8 10.293l5.646-5.647a.5.5 0 0 1 .708.708l-6 6a.5.5 0 0 1-.708 0l-6-6a.5.5 0 0 1 0-.708z'/%3e%3c/svg%3E")
+  );
+}
+
+.accordion-body {
+  background-color: light-dark(#fefefe, #1C1C1C);
+  color: var(--bs-body-color);
+}
+
+/* 10. Forms */
+.form-control, .form-select {
+  border-radius: 0;
+  border: 1px solid light-dark(#cacaca, #4A4033);
+  background-color: light-dark(#fefefe, #242424);
+  color: light-dark(#0a0a0a, #F1ECE3);
+}
+
+.form-control:focus, .form-select:focus {
+  border-color: light-dark(#8a8a8a, var(--theme-gold));
+  background-color: light-dark(#fefefe, #242424);
+  color: light-dark(#0a0a0a, #F1ECE3);
+  box-shadow: light-dark(0 0 5px #cacaca, 0 0 5px rgba(179, 153, 93, 0.5));
+}
+
+.form-control::placeholder {
+  color: light-dark(#cacaca, #8F8579);
+}
+
+.form-check-input {
+  background-color: light-dark(#fefefe, #242424);
+  border-color: light-dark(#cacaca, #4A4033);
+}
+
+.form-check-input:checked {
+  background-color: var(--theme-green);
+  border-color: var(--theme-green);
+}
+
+label {
+  color: light-dark(#0a0a0a, #F1ECE3);
+}
+
+/* 11. Widgets */
+#looking-for {
+  background-color: var(--theme-light-gold);
+  border-bottom: 5px solid var(--theme-dark-gold);
+}
+
+#looking-for h4 {
+  background-color: var(--theme-dark-gold);
+  color: #fff;
+  padding: 10px 15px;
+  text-transform: uppercase;
+  margin-bottom: 0;
+  display: flex;
+  align-items: center;
+}
+
+#looking-for ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+#looking-for ul li {
+  background-color: light-dark(#f4f0e8, #242424);
+  border-bottom: 1px solid light-dark(#e4dbc5, #3A3226);
+  padding: 10px 10px 10px 25px;
+  position: relative;
+}
+
+#looking-for ul li::before {
+  content: "";
+  border-left: 15px solid var(--theme-dark-yellow);
+  position: absolute;
+  height: calc(100% - 4px);
+  left: 0;
+  top: 2px;
+}
+
+#looking-for ul li a {
+  color: light-dark(var(--theme-green), var(--theme-yellow));
+  text-transform: uppercase;
+  font-family: var(--bs-font-serif);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+#in-session-widget, #latest-bill-acts, #distribution-of-seats {
+  border: 1px solid light-dark(var(--theme-light-gold), #3A3226);
+  border-bottom: 3px solid var(--theme-yellow);
+}
+
+#in-session-widget h4, #latest-bill-acts h4, #distribution-of-seats h4 {
+  background-color: var(--theme-dark-gold);
+  color: #fff;
+  padding: 10px 15px;
+  text-transform: uppercase;
+  margin-bottom: 0;
+}
+
+#in-session-widget .nav-tabs, #latest-bill-acts .nav-tabs, #distribution-of-seats .nav-tabs {
+  border-bottom: 3px solid var(--theme-dark-gold);
+}
+
+#in-session-widget .nav-link, #latest-bill-acts .nav-link, #distribution-of-seats .nav-link {
+  background-color: var(--theme-inactive-tab);
+  color: var(--theme-brown);
+  font-family: var(--bs-font-serif);
+  text-transform: uppercase;
+  border-radius: 0;
+  border: none;
+  width: 50%;
+  text-align: center;
+}
+
+#in-session-widget .nav-link:hover, #latest-bill-acts .nav-link:hover, #distribution-of-seats .nav-link:hover {
+  color: #fff;
+  background-color: light-dark(#9E7C0C, #5A4F3E);
+}
+
+#in-session-widget .nav-link.active, #latest-bill-acts .nav-link.active, #distribution-of-seats .nav-link.active {
+  background-color: var(--theme-dark-gold);
+  color: #fff;
+}
+
+/* 12. Footer */
+#site-footer {
+  border-bottom: 20px solid var(--theme-dark-gold);
+  margin-top: 30px;
+  padding: 40px 0;
+  background-color: light-dark(var(--theme-green), #1C1C1C);
+  background-image: var(--img-footer);
+  background-size: cover;
+  background-position: center center;
+  background-blend-mode: multiply;
+  color: light-dark(#fff, #D3CCC0);
+  font-size: 14px;
+}
+
+#site-footer h6 {
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-bottom: 1rem;
+  color: light-dark(#fff, var(--theme-yellow));
+}
+
+#site-footer a {
+  color: #fff;
+}
+
+/* 13. Pagination */
+.page-link {
+  background-color: var(--theme-light-gold);
+  color: light-dark(#0a0a0a, #D3CCC0);
+  border: 1px solid light-dark(transparent, #3A3226);
+  border-radius: 0;
+  text-transform: uppercase;
+}
+
+.page-link:hover {
+  background-color: light-dark(#eee9dc, #2D2D2D);
+  color: light-dark(#0a0a0a, #fff);
+}
+
+.page-item.active .page-link {
+  background-color: var(--theme-gold);
+  border-color: var(--theme-gold);
+  color: light-dark(#fff, #121212);
+}

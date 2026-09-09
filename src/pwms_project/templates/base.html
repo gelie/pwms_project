@@ -1,0 +1,153 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="light">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="description"
+          content="PWMS - Parliament Workflow Management System">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="apple-touch-icon"
+          sizes="180x180"
+          href="{% static "images/favicon/apple-touch-icon.png" %}">
+    <link rel="icon"
+          type="image/png"
+          sizes="32x32"
+          href="{% static "images/favicon/favicon-32x32.png" %}">
+    <link rel="icon"
+          type="image/png"
+          sizes="16x16"
+          href="{% static "images/favicon/favicon-16x16.png" %}">
+    {# Load CSS and JavaScript #}
+    <link rel="stylesheet" href="{% static "css/bootstrap.min.css" %}">
+    <link rel="stylesheet" href="{% static "css/parl-light-dark.css" %}">
+    <link rel="stylesheet" href="{% static "css/style.css" %}">
+    <link rel="stylesheet" href="{% static "css/fonts.css" %}">
+    <script src="{% static "js/bootstrap.bundle.min.js" %}" defer></script>
+    <title>PWMS</title>
+  </head>
+  <body>
+    <div class="site-header">
+      <div id="top-nav">
+        <div class="search-wrapper container">
+          <form action="">
+            <div>
+              <input type="text" class="form-control search" placeholder="Search...">
+              {% comment %} <a href="#" rel="noopener noreferrer">{% lucide "search" %}</a> {% endcomment %}
+            </div>
+          </form>
+        </div>
+      </div>
+      <div id="middle-topbar">
+        <div id="middle-top-content" class="container">
+          <div id="topbar-left">
+            <a id="topbar-logo" href="{% url 'pwms:home' %}">
+              <img src="{% static "images/parliament-logo2.png" %}"
+                   alt="parliament logo"
+                   srcset="">
+            </a>
+          </div>
+          <div id="topbar-center">
+            <h1 class="title">PWMS</h1>
+            <h6 class="subtitle">PARLIAMENT WORKFLOW MANAGEMENT SYSTEM</h6>
+          </div>
+          <div id="topbar-right">
+            <div id="parliament-sitting"></div>
+            {% comment %} <div id="watch-listen-links">
+              <ul class="menu">
+                <li><a href="#" rel="noopener noreferrer">Watch</a></li>
+                <li><a href="#" rel="noopener noreferrer">Listen</a></li>
+                <li><a href="#" rel="noopener noreferrer">Ask</a></li>
+              </ul>
+            </div> {% endcomment %}
+          </div>
+          {% comment %} <div class="row">
+            <div class="col-md-6">
+              <a href="{% url 'pwms:home' %}">
+                <img src="{% static "images/logo.png" %}" alt="PWMS Logo" class="logo">
+              </a>
+            </div>
+            <div class="col-md-6 text-end">
+              <a href="{% url 'pwms:login' %}" class="btn btn-primary">Login</a>
+            </div>
+          </div> {% endcomment %}
+        </div>
+      </div>
+    </div>
+    <div id="desktop-nav" class="sticky-top">
+      <div id="desktop-nav-container" class="container">
+        <nav class="navbar navbar-expand-lg">
+          <div class="container">
+            {% comment %} <a class="navbar-brand" href="#">PWMS</a> {% endcomment %}
+            <button class="navbar-toggler"
+                    type="button"
+                    data-bs-toggle="offcanvas"
+                    data-bs-target="#offcanvasNavbar"
+                    aria-controls="offcanvasNavbar"
+                    aria-label="Toggle navigation">
+              <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="offcanvas offcanvas-start"
+                 tabindex="-1"
+                 id="offcanvasNavbar"
+                 aria-labelledby="offcanvasNavbarLabel">
+              <div class="offcanvas-header">
+                <h5 class="offcanvas-title" id="offcanvasNavbarLabel">PWMS</h5>
+                <button type="button"
+                        class="btn-close"
+                        data-bs-dismiss="offcanvas"
+                        aria-label="Close"></button>
+              </div>
+              <div class="offcanvas-body">
+                <ul class="navbar-nav justify-content-start flex-grow-1 pe-3 dropdown menu"
+                    id="main-horiz-menu">
+                  <li class="nav-item">
+                    <a class="nav-link active" aria-current="page" href="#">{% lucide "house" %}</a>
+                  </li>
+                  <li class="nav-item">
+                    <a class="nav-link" href="#">Dashboard</a>
+                  </li>
+                  <li class="nav-item">
+                    <a class="nav-link" href="#">Workflows</a>
+                  </li>
+                  <li class="nav-item">
+                    <a class="nav-link" href="#">Groups</a>
+                  </li>
+                  <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle"
+                       href="#"
+                       role="button"
+                       data-bs-toggle="dropdown"
+                       aria-expanded="false">Reports</a>
+                    <ul class="dropdown-menu">
+                      <li><a class="dropdown-item" href="#">Action</a></li>
+                      <li><a class="dropdown-item" href="#">Another action</a></li>
+                      <li>
+                        <hr class="dropdown-divider">
+                      </li>
+                      <li><a class="dropdown-item" href="#">Something else here</a></li>
+                    </ul>
+                  </li>
+                </ul>
+                {% comment %} <form class="d-flex mt-3" role="search">
+              <input class="form-control me-2"
+                     type="search"
+                     placeholder="Search"
+                     aria-label="Search" />
+              <button class="btn btn-outline-success" type="submit">Search</button>
+                </form> {% endcomment %}
+              </div>
+            </div>
+            {% comment %} <a class="navbar-brand" href="#">PARLIAMENT WORKFLOW MANAGEMENT SYSTEM</a> {% endcomment %}
+          </div>
+        </nav>
+      </div>
+    </div>
+    {% block content %}
+    {% endblock content %}
+    <div id="site-footer"></div>
+    <script type="module"
+            src="https://unpkg.com/ionicons@8.0.13/dist/ionicons/ionicons.esm.js"></script>
+    <script nomodule
+            src="https://unpkg.com/ionicons@8.0.13/dist/ionicons/ionicons.js"></script>
+  </body>
+</html>
