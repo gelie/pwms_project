@@ -1,0 +1,209 @@
+# SharePoint Sync
+
+> **Status (2026-09-10):** Sites and Drives sync is **live** and idempotent.
+> Site-**member** sync is implemented but is **skipped at runtime** because the
+> app token currently lacks the Graph permission needed to read site
+> permissions (`Sites.Manage.All` / `Sites.FullControl.All`). See
+> [Site members](#site-members-sharepointsitemember) below.
+
+This page documents the offline SharePoint synchronisation: the `populate_sites`
+management command, the `pwms/utils/sharepoint.py` Graph client, the
+`SHAREPOINT_*` settings, and the local `Sharepoint*` models.
+
+Related pages: [Management Commands](./Management%20Commands.md) ·
+[Roadmap & Planned Integrations](./Roadmap%20&%20Planned%20Integrations.md).
+
+---
+
+## What it does
+
+`populate_sites` mirrors a SharePoint tenant into local Django tables so the
+rest of the app can work offline (no live Graph calls per page view):
+
+| Local model | Remote source | Upsert key |
+| --- | --- | --- |
+| `pwms.SharepointSite` | `GET /sites/getAllSites` | `site_id` |
+| `pwms.SharepointDrive` | `GET /sites/{id}/drives` | `(site, drive_id)` |
+| `pwms.SharepointSiteMember` | `GET /sites/{id}/permissions` (best effort) | `(site, user)` — natural key |
+
+Run it from the repo root:
+
+```bash
+.venv/bin/python manage.py populate_sites
+```
+
+The command is **safe to re-run**: it upserts, never deletes rows, and skips a
+record when the remote copy is not newer than what is stored.
+
+---
+
+## Prerequisites & configuration
+
+The app authenticates to Microsoft Graph with an **application token**
+(OAuth 2.0 client-credentials flow) — i.e. a service principal / "system
+account", not a user. There is no interactive login.
+
+Environment variables (read by `python-decouple` from `.env` at the repo root):
+
+| `.env` key | Settings attribute | Purpose |
+| --- | --- | --- |
+| `CLIENT_ID` | `SHAREPOINT_CLIENT_ID` | Azure AD app (client) ID |
+| `CLIENT_SECRET` | `SHAREPOINT_CLIENT_SECRET` | Azure AD app client secret |
+| `TENANT_ID` | `SHAREPOINT_TENANT_ID` | Azure AD tenant ID |
+
+Derived automatically in `settings.py`:
+
+- `SHAREPOINT_TOKEN_URL` = `https://login.microsoftonline.com/{TENANT_ID}/oauth2/v2.0/token`
+- `SHAREPOINT_SCOPE` = `https://graph.microsoft.com/.default` (app-only, grants
+  whatever the app registration has been consented for)
+
+### Token handling
+
+`pwms.utils.sharepoint.get_application_token()` (aliased as `get_token()`):
+
+1. Reuses the most recent **active** cached `pwms.SharepointToken` row if it has
+   not expired (there is a 5-minute safety buffer before the real expiry).
+2. Otherwise requests a fresh token from `SHAREPOINT_TOKEN_URL` using
+   `client_credentials`, deactivates the old active row(s) and stores the new
+   token in `pwms.SharepointToken`.
+
+So a valid token is cached in the database after the first run; you do not pass
+a token on the command line.
+
+---
+
+## What happens on each run
+
+The `handle()` pipeline in `populate_sites`:
+
+```mermaid
+flowchart TD
+    A[get_token<br/>DB-cached client-credentials token] --> B
+    B[asyncio.run get_all_sites<br/>/sites/getAllSites + nextLink] --> C
+    C[upsert SharepointSite<br/>skip personal sites<br/>update only if remote newer] --> D
+    D[per stored site: get_site_drives<br/>upsert SharepointDrive] --> E
+    E[per stored site: get_site_permissions<br/>best effort, skip on 403] --> F[SharepointSiteMember<br/>create + deactivate removed]
+```
+
+### 1. Sites (`_process_sites`)
+
+- Calls `GET /sites/getAllSites?$top=200&$select=…` and follows `@odata.nextLink`
+  until exhausted (the previous code only fetched the first page and silently
+  truncated large tenants).
+- OneDrive **personal sites** (`isPersonalSite`) are filtered out.
+- New sites are `bulk_create`d; existing sites are updated **only when** the
+  remote `lastModifiedDateTime` is newer than the stored
+  `remote_modified_at` (or when either side lacks a timestamp).
+- Tracks `last_synced_at` (when we last pulled) alongside the remote
+  `remote_modified_at`.
+
+### 2. Drives (`_process_drives`)
+
+- For every stored site, calls `GET /sites/{site_id}/drives?$select=id,name`
+  (pagination-aware) and upserts `SharepointDrive` rows.
+- A failure on one site is logged and the loop continues; it never aborts the
+  whole run.
+
+### 3. Site members (`_process_site_members`)
+
+- For every stored site, calls `GET /sites/{site_id}/permissions` and flattens
+  each permission with `pwms.utils.sharepoint.iter_permission_identities`
+  (handles `grantedTo`/`grantedToIdentities` v1 and `grantedToV2`/…V2 shapes).
+- Only identities that are **people** (`user` / `siteUser`) are considered;
+  groups / site-user groups are not mapped to individuals.
+- Each principal is matched to a local `pwms.User` by lower-cased **email**
+  (then username) — via `email`, `mail` or `userPrincipalName` from Graph.
+- Matches are stored as `SharepointSiteMember(site, user)` (unique on the pair);
+  rows whose principal no longer holds access are **deactivated**
+  (`is_active=False`), never deleted.
+- Principals that matched no local user are counted and reported as `unmatched`.
+
+> **Current limitation — insufficient app permissions.** Reading
+> `/sites/{id}/permissions` requires an application permission of at least
+> **`Sites.Manage.All`** (or `Sites.FullControl.All`). The configured Azure AD
+> app currently only has enough to read sites/drives, so Graph returns `403`
+> and the command reports each site as skipped —
+> *“Site members unavailable for …”* — while the site/drive sync completes
+> normally.
+
+---
+
+## Granting member access (to enable the member sync)
+
+To lift the limitation above, grant the Azure AD app the **Microsoft Graph →
+Application permission** and admin-consent it:
+
+| Permission | Effect |
+| --- | --- |
+| `Sites.Read.All` | list/read sites & drives (what you have today) |
+| `Sites.Manage.All` **or** `Sites.FullControl.All` | also read/write site **permissions** — enables `_process_site_members` |
+
+Steps (Azure portal):
+
+1. **App registrations → your app → API permissions → Add a permission.**
+2. Choose **Microsoft Graph → Application permissions**, add
+   `Sites.Manage.All` (least-privilege option that exposes `/permissions`).
+3. Click **Grant admin consent** for the tenant.
+4. Re-run `manage.py populate_sites` — member rows should now populate.
+
+Notes on scope:
+
+- With an **app-only** token, `GET /sites/{id}/permissions` returns the
+  *principals* (users and groups) granted access, not the individual members of
+  an M365 **group**. A site backed by an M365 group that grants “Everyone in
+  <group>” will surface as a **group** principal, which this sync deliberately
+  does not expand into people.
+- Expanding group membership would additionally require `Group.Read.All` plus
+  group expansion logic, and is out of scope for the current member sync.
+
+---
+
+## Idempotency & safety
+
+- Re-runnable any number of times.
+- Rows are never hard-deleted by this command: sites/drives are upserted,
+  members are deactivated instead of removed.
+- Updates are conditional on the remote timestamp (sites).
+- Writes happen inside `transaction.atomic()` per batch.
+- Sites that the permissions API rejects are skipped and counted, without
+  affecting the site/drive data already stored.
+
+---
+
+## Graph endpoints used
+
+| Purpose | Endpoint | Helper |
+| --- | --- | --- |
+| Token (app-only) | `POST …/oauth2/v2.0/token` | `get_application_token` |
+| All sites | `GET /sites/getAllSites` | `get_all_sites` |
+| Site drives | `GET /sites/{id}/drives` | `get_site_drives` |
+| Site permissions | `GET /sites/{id}/permissions` | `get_site_permissions` |
+| Drive root children | `GET /sites/{id}/drive/root/children` | `get_site_details` |
+| Drive items / folders | `GET /drives/{id}/root/children`, `/items/{fid}/children` | `get_drive_items`, `get_folder_items` |
+| File upload / folders | `PUT …:/content`, `POST …/createUploadSession`, `POST …/children` | `upload_file`, `create_folder` |
+
+The item/upload helpers exist for the planned document-library work but are not
+yet driven by a management command.
+
+---
+
+## Troubleshooting
+
+| Symptom | Likely cause / fix |
+| --- | --- |
+| `SHAREPOINT_TOKEN_URL not configured` / empty `CLIENT_ID`/`CLIENT_SECRET` | `.env` missing `CLIENT_ID`, `CLIENT_SECRET` or `TENANT_ID` at the repo root |
+| Token request `HTTP 401/400` | wrong client id/secret or tenant; check Azure AD app registration |
+| `…Site members unavailable for <site>: …403…` | app lacks `Sites.Manage.All`/`Sites.FullControl.All` — see [Granting member access](#granting-member-access-to-enable-the-member-sync) |
+| Sites fetched but a large tenant looks incomplete | should no longer happen — `get_all_sites`/`get_site_drives` follow `@odata.nextLink` |
+| Drives empty for a site | that site may genuinely have no document library |
+| Command fails early | token expired **and** no cached active row → re-run after granting/refreshing consent |
+
+---
+
+## Related
+
+- `pwms/utils/sharepoint.py` — the Graph client (imports `SharepointToken` from `pwms.models`).
+- `pwms/models/sharepoint.py` — `SharepointSite`, `SharepointDrive`,
+  `SharepointSiteMember`, `SharepointToken`, `SharepointFolder`.
+- [Roadmap & Planned Integrations](./Roadmap%20&%20Planned%20Integrations.md) —
+  planned document-library / file workflows on top of this sync.

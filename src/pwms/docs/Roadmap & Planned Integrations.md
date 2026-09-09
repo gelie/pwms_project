@@ -49,10 +49,19 @@ recorded.
 
 ---
 
-## SharePoint integration (🔜)
+## SharePoint integration (🧩 → 🔜)
 
 **Goal:** store/share instrument documents (drafts, gazettes, supporting files)
 with a parliamentary document library.
+
+**Already shipped (✅)**
+
+- Offline tenant sync via `manage.py populate_sites`: local `SharepointSite` +
+  `SharepointDrive` tables, a DB-cached app token, and pagination-aware Graph
+  calls.
+- Best-effort `SharepointSiteMember` sync is implemented but currently skipped
+  — the app token lacks `Sites.Manage.All` / `Sites.FullControl.All`. Full
+  details: [SharePoint Sync](./SharePoint%20Sync.md).
 
 **Groundwork / considerations**
 
