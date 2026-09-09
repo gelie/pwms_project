@@ -11,7 +11,10 @@ class Group(MPTTModel, BaseModel):
 
     GROUP_TYPE_CHOICES = [
         ("legislature", _("Legislature")),
+        ("parliament", _("Parliament")),
         ("house", _("House")),
+        ("committee", _("Committee")),
+        ("member", _("Member")),
         ("portfolio_committee", _("Portfolio Committee")),
         ("select_committee", _("Select Committee")),
         ("special_committee", _("Special Committee")),
@@ -28,6 +31,7 @@ class Group(MPTTModel, BaseModel):
         ("executive", _("Executive")),
         ("presidency", _("Presidency")),
         ("ministry", _("Ministry")),
+        ("municipality", _("Municipality")),
         ("department", _("Department")),
         ("province", _("Province")),
         ("premier", _("Premier")),

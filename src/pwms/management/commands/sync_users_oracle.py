@@ -7,7 +7,8 @@ have already been synced using sync_groups_oracle and sync_roles_oracle commands
 Key optimizations:
 - Pre-loads all groups and roles into memory at start
 - Batch processing with efficient queries
-- Assumes groups/roles exist (no creation overhead)
+- Org groups/roles are looked up from cache; MP party + house-members groups
+  (and the MP/Staff roles) are created on demand when missing
 - Optimized for speed (target: <2 minutes for 1600+ users)
 
 Usage:
@@ -17,13 +18,12 @@ Usage:
 """
 
 from time import perf_counter
-from typing import Dict, List, Tuple
 
 from django.core.management.base import CommandError
 from django.utils import timezone
-
-from workflows.management.commands.sync_base import OracleSyncBase
-from workflows.models import Group, GroupMembership, Role, User
+from pwms.management.commands.sync_base import OracleSyncBase
+from pwms.membership.sync_service import MembershipSyncService
+from pwms.models import Group, GroupMembership, Role, User
 
 
 class Command(OracleSyncBase):
@@ -47,6 +47,7 @@ class Command(OracleSyncBase):
         )
         self._group_cache = {}
         self._role_cache = {}
+        self._membership_sync: MembershipSyncService | None = None
 
     def add_arguments(self, parser):
         self.add_common_arguments(parser)
@@ -108,9 +109,9 @@ class Command(OracleSyncBase):
                 )
 
         except Exception as e:
-            self.logger.error(f"User sync failed: {str(e)}", exc_info=True)
+            self.logger.error(f"User sync failed: {e!s}", exc_info=True)
             self.stats["errors"] += 1
-            raise CommandError(f"❌ User sync failed: {str(e)}")
+            raise CommandError(f"❌ User sync failed: {e!s}")
 
         finally:
             self.cleanup_connections()
@@ -180,7 +181,7 @@ class Command(OracleSyncBase):
 
         self.logger.info("✅ User synchronization completed")
 
-    def fetch_oracle_users(self) -> Dict[str, Tuple]:
+    def fetch_oracle_users(self) -> dict[str, tuple]:
         """Fetch users from Oracle database."""
         self.logger.info("📥 Fetching users from Oracle database...")
 
@@ -220,7 +221,7 @@ class Command(OracleSyncBase):
             return oracle_users
 
         except Exception as e:
-            self.logger.error(f"Failed to fetch users from Oracle: {str(e)}")
+            self.logger.error(f"Failed to fetch users from Oracle: {e!s}")
             raise
 
     def preload_groups_and_roles(self):
@@ -240,8 +241,8 @@ class Command(OracleSyncBase):
         # Verify required groups exist
         required_groups = [
             "National Assembly",
-            "National Council Of Provinces",
-            "Parliament Staff",
+            "National Council of Provinces",
+            "Administration",
         ]
         missing_groups = [g for g in required_groups if g not in self._group_cache]
 
@@ -255,11 +256,19 @@ class Command(OracleSyncBase):
             f"✅ Loaded {len(set(self._group_cache.values()))} groups and {len(self._role_cache)} roles"
         )
 
+        # Initialise the membership sync service with the loaded caches
+        self._membership_sync = MembershipSyncService(
+            group_cache=self._group_cache,
+            role_cache=self._role_cache,
+            strip_group_code_prefix=self.strip_group_code_prefix,
+            normalize_role_name=self.normalize_role_name,
+        )
+
     def process_user_batch(
         self,
-        batch_users: List,
-        existing_users: Dict,
-        existing_users_by_username: Dict,
+        batch_users: list,
+        existing_users: dict,
+        existing_users_by_username: dict,
         force_update: bool,
         dry_run: bool = False,
     ):
@@ -302,17 +311,17 @@ class Command(OracleSyncBase):
             except Exception as e:
                 username = oracle_user[10] if len(oracle_user) > 10 else "unknown"
                 self.logger.error(
-                    f"Error processing user {username}: {str(e)}", exc_info=True
+                    f"Error processing user {username}: {e!s}", exc_info=True
                 )
                 self.stats["errors"] += 1
 
     def process_single_user(
         self,
         idno: str,
-        oracle_user: Tuple,
-        existing_users: Dict,
-        existing_users_by_username: Dict,
-        existing_memberships: Dict,
+        oracle_user: tuple,
+        existing_users: dict,
+        existing_users_by_username: dict,
+        existing_memberships: dict,
         force_update: bool,
         dry_run: bool = False,
     ):
@@ -441,171 +450,35 @@ class Command(OracleSyncBase):
 
     def handle_group_memberships(
         self,
-        if not role:
-            self.logger.warning(
-                f"⚠️  No role found for {normalized_role}, and no default 'Staff Member' role exists"
-            )
-            self.stats["warnings"] += 1
-            return
-
-    # Determine the target group based on employee type and organization
-    if employeetype == "Member":
-        member_house = (
-            positiondesc.split(":")[-1].strip() if ":" in positiondesc else ""
-        )
-        if "NCOP" in member_house.upper() or "PROVINCES" in member_house.upper():
-            target_group = self._group_cache.get("National Council Of Provinces")
-        else:
-            target_group = self._group_cache.get("National Assembly")
-    else:
-        # For staff, try to find the most specific organizational group
-        child_name = self.strip_group_code_prefix(child_org_name or "")
-        parent_name = self.strip_group_code_prefix(parent_org_name or "")
-
-        # Try child group first (most specific)
-        if child_name:
-            target_group = self._find_flat_group(child_name, parent_name)
-        # First try exact match with parent context
-        if parent_name:
-            # Try to find a group with this name under the specified parent
-            parent_candidates = Group.objects.filter(name=parent_name)
-            for parent in parent_candidates:
-                child_group = Group.objects.filter(
-                    name=group_name, parent=parent
-                ).first()
-                if child_group:
-                    self.logger.debug(
-                        f"🎯 Found exact match: {group_name} under {parent_name}"
-                    )
-                    return child_group
-
-        # Try to find any group with this name
-        cached_groups = [g for g in self._group_cache.values() if g.name == group_name]
-        if cached_groups:
-            # If multiple groups have the same name, try to find the most specific one
-            if len(cached_groups) == 1:
-                self.logger.debug(f"🎯 Found single match: {group_name}")
-                return cached_groups[0]
-            else:
-                # Multiple groups with same name - prefer the one with deepest hierarchy
-                deepest_group = max(
-                    cached_groups, key=lambda g: g.get_ancestors().count()
-                )
-                self.logger.debug(
-                    f"🎯 Found multiple matches for {group_name}, selected deepest: {deepest_group.get_full_path()}"
-                )
-                return deepest_group
-
-        # Final fallback: database query without parent context
-        try:
-            db_group = Group.objects.filter(name=group_name).first()
-            if db_group:
-                self.logger.debug(f"🎯 Found database match: {group_name}")
-                return db_group
-        except Exception as e:
-            self.logger.debug(f"Database query failed for {group_name}: {e}")
-
-        self.logger.debug(
-            f"❌ No match found for group: {group_name} (parent: {parent_name})"
-        )
-        return None
-
-    def _add_user_to_group_hierarchy(
-        self,
         user: User,
-        target_group: Group,
-        role: Role,
-        existing_memberships: Dict,
+        oracle_user: tuple,
+        existing_memberships: dict,
         dry_run: bool = False,
     ):
-        """Add user to target group and all ancestral groups with the same role."""
-        # Get the hierarchy from target group up to root
-        hierarchy_groups = list(target_group.get_ancestors(include_self=True))
-
-        # Reverse to process from root to target (more intuitive logging)
-        hierarchy_groups.reverse()
-
-        hierarchy_path = " -> ".join([g.name for g in hierarchy_groups])
-        self.logger.debug(
-            f"🔗 Adding {user.username} to hierarchy ({len(hierarchy_groups)} groups): {hierarchy_path}"
+        """Handle group membership assignments via MembershipSyncService."""
+        result = self._membership_sync.sync_user_membership(
+            user=user,
+            oracle_row=oracle_user,
+            existing_memberships=existing_memberships,
+            dry_run=dry_run,
         )
 
-        for i, group in enumerate(hierarchy_groups):
-            membership_key = (user.id, group.id) if user.id != -1 else None
-            existing_membership = (
-                existing_memberships.get(membership_key) if membership_key else None
-            )
-
-            if not existing_membership:
-                if dry_run:
-                    self.logger.debug(
-                        f"🔍 [DRY RUN] Would create membership: {user.username} -> {group.name} as {role.name}"
-                    )
-                else:
-                    GroupMembership.objects.create(
-                        user=user,
-                        group=group,
-                        role=role,
-                        start_date=timezone.now().date(),
-                        is_active=True,
-                    )
-                    level_indicator = "  " * i  # Indent based on hierarchy level
-                    self.logger.debug(
-                        f"{level_indicator}✨ Created membership: {user.username} -> {group.name} as {role.name}"
-                    )
-                self.stats["new_memberships"] += 1
-            elif not existing_membership.is_active:
-                if dry_run:
-                    self.logger.debug(
-                        f"🔍 [DRY RUN] Would reactivate membership: {user.username} -> {group.name}"
-                    )
-                else:
-                    existing_membership.is_active = True
-                    existing_membership.end_date = None
-                    existing_membership.role = role
-                    existing_membership.save(
-                        update_fields=["is_active", "end_date", "role"]
-                    )
-                    level_indicator = "  " * i
-                    self.logger.debug(
-                        f"{level_indicator}🔄 Reactivated membership: {user.username} -> {group.name} as {role.name}"
-                    )
-                self.stats["updated_memberships"] += 1
-            elif existing_membership.role != role:
-                if dry_run:
-                    self.logger.debug(
-                        f"🔍 [DRY RUN] Would update role: {user.username} in {group.name} from {existing_membership.role.name} to {role.name}"
-                    )
-                else:
-                    existing_membership.role = role
-                    existing_membership.save(update_fields=["role"])
-                    level_indicator = "  " * i
-                    self.logger.debug(
-                        f"{level_indicator}🔄 Updated role: {user.username} in {group.name} to {role.name}"
-                    )
-                self.stats["updated_memberships"] += 1
-            else:
-                level_indicator = "  " * i
-                self.logger.debug(
-                    f"{level_indicator}📋 Membership already exists: {user.username} -> {group.name} as {role.name}"
-                )
-
-        # Log summary for this user
-        self.logger.debug(
-            f"✅ Completed hierarchy assignment for {user.username}: {len(hierarchy_groups)} groups processed"
-        )
+        self.stats["new_memberships"] += result.get("created", 0)
+        self.stats["updated_memberships"] += result.get("updated", 0)
+        # Skipped means a group/role could not be resolved for this user.
+        self.stats["warnings"] += result.get("skipped", 0)
 
     def deactivate_missing_users(
         self,
-        oracle_users: Dict[str, Tuple],
-        existing_users: Dict[str, User],
+        oracle_users: dict[str, tuple],
+        existing_users: dict[str, User],
         dry_run: bool,
     ):
         """Deactivate local users that are no longer present in Oracle."""
         oracle_hmacs = set(
             filter(
                 None,
-                [User._compute_idno_hmac(idno) for idno in oracle_users.keys()],
+                [User._compute_idno_hmac(idno) for idno in oracle_users],
             )
         )
         local_hmacs = set(existing_users.keys())
@@ -639,7 +512,7 @@ class Command(OracleSyncBase):
                         active_qs.update(is_active=False, end_date=today)
                 except Exception as e:
                     self.logger.error(
-                        f"Error deactivating user {user.username}: {str(e)}",
+                        f"Error deactivating user {user.username}: {e!s}",
                         exc_info=True,
                     )
                     self.stats["errors"] += 1
@@ -651,7 +524,7 @@ class Command(OracleSyncBase):
                 f"{'[DRY RUN] ' if dry_run else ''}Deactivated user: {user.username}; memberships deactivated: {active_count}"
             )
 
-    def normalize_name_fields(self, user_data: Tuple) -> Dict[str, str]:
+    def normalize_name_fields(self, user_data: tuple) -> dict[str, str]:
         """Normalize and clean name fields from Oracle data."""
         title, lastname, firstname, middlenames = user_data[0:4]
 

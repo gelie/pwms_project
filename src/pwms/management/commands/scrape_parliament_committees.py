@@ -8,13 +8,12 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
+from pwms.models import Group, GroupMembership, Role, User
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
-
-from workflows.models import Group, GroupMembership, Role, User
 
 # Set up logging
 logger = logging.getLogger("committee_scraper")
@@ -215,7 +214,7 @@ class Command(BaseCommand):
                             var link = cells[0].querySelector('a');
                             var rawName = link ? link.textContent.trim() : cells[0].textContent.trim();
                             // Clean up extra spaces in committee name
-                            var name = rawName.replace(/\s+/g, ' ').trim();
+                            var name = rawName.replace(/\\s+/g, ' ').trim();
                             var house = cells[1].textContent.trim();
 
                             // Try to get URL/ID from various sources
@@ -225,7 +224,7 @@ class Command(BaseCommand):
                             // Check row onclick first (most reliable)
                             var rowOnclick = row.getAttribute('onclick');
                             if (rowOnclick && rowOnclick.includes('window.location.replace')) {
-                                var match = rowOnclick.match(/window\.location\.replace\('([^']+)'\)/);
+                                var match = rowOnclick.match(/window\\.location\\.replace\\('([^']+)'\\)/);
                                 if (match) {
                                     url = match[1];
                                 }
@@ -256,7 +255,7 @@ class Command(BaseCommand):
                                 if (!committeeId) {
                                     var to = link.getAttribute('to') || link.getAttribute(':to') || link.getAttribute('v-bind:to');
                                     if (to && to.includes('committee-details')) {
-                                        var match = to.match(/committee-details['\\/\"]*(\d+)/);
+                                        var match = to.match(/committee-details['\\/\"]*(\\d+)/);
                                         if (match) {
                                             committeeId = match[1];
                                         }
@@ -677,7 +676,7 @@ class Command(BaseCommand):
         # Try exact match first
         group = Group.objects.filter(name__iexact=committee_name).first()
         if group:
-            return group
+            return self._ensure_committee_under_umbrella(group, parent_group_name)
 
         # Try partial matches
         for group in Group.objects.filter(name__icontains="committee"):
@@ -685,7 +684,7 @@ class Command(BaseCommand):
                 logger.info(
                     f'Matched "{committee_name}" to existing group "{group.name}"'
                 )
-                return group
+                return self._ensure_committee_under_umbrella(group, parent_group_name)
 
         # If no match found, create the missing committee with parent
         logger.info(f"Committee not found in database, creating: {committee_name}")
@@ -725,23 +724,9 @@ class Command(BaseCommand):
                 if len(short_name) > 20:
                     short_name = short_name[:17] + "..."
 
-            # Get or create parent group
-            parent_group, created = Group.objects.get_or_create(
-                name=parent_group_name,
-                defaults={
-                    "short_name": parent_group_name,
-                    "description": f"{parent_group_name} parliamentary house",
-                    "group_type": "house",
-                    "is_active": True,
-                    "start_date": timezone.now().date(),
-                },
-            )
-
-            if created:
-                self.stdout.write(
-                    self.style.SUCCESS(f"Created parent group: {parent_group_name}")
-                )
-                logger.info(f"Created parent group: {parent_group_name}")
+            # Resolve the umbrella committee group (e.g. "NA Committees" /
+            # "NCOP Committees" / "Joint Committees") this committee belongs to.
+            parent_group = self._get_or_create_committee_umbrella(parent_group_name)
 
             # Create the group
             group = Group.objects.create(
@@ -758,7 +743,8 @@ class Command(BaseCommand):
                 self.style.SUCCESS(f"Created missing committee: {committee_name}")
             )
             logger.info(
-                f"Created missing committee: {committee_name} (type: {committee_type}, parent: {parent_group_name})"
+                f"Created missing committee: {committee_name} "
+                f"(type: {committee_type}, parent: {parent_group.name})"
             )
 
             # Track in statistics
@@ -894,64 +880,136 @@ class Command(BaseCommand):
             return None
 
     def determine_committee_type(self, committee_name):
-        """Determine committee type based on name patterns"""
+        """Map a committee name to a valid ``Group.group_type`` choice."""
         name_lower = committee_name.lower()
 
         if "portfolio committee" in name_lower:
             return "portfolio_committee"
-        elif "select committee" in name_lower:
+        if "select committee" in name_lower:
             return "select_committee"
-        elif "joint committee" in name_lower:
-            return "joint_committee"
-        elif "joint standing committee" in name_lower:
-            return "joint_standing_committee"
-        elif "subcommittee" in name_lower:
-            return "subcommittee"
-        elif "standing committee" in name_lower:
-            return "standing_committee"
-        elif "constitutional review" in name_lower:
-            return "constitutional_review_committee"
-        elif "ad hoc" in name_lower:
+        if "public accounts" in name_lower:
+            return "public_accounts_committee"
+        if "ad hoc" in name_lower:
             return "ad_hoc_committee"
-        elif "multi party" in name_lower or "caucus" in name_lower:
-            return "special_committee"
-        else:
-            return "internal_committee"  # Default
-
-    def get_or_create_parent_group(self, committee_name, committee_type):
-        """Get or create appropriate parent group for committee"""
-        name_lower = committee_name.lower()
-
-        # Determine parent based on committee type and name
+        if "joint" in name_lower:
+            return "joint_committee"
         if (
-            committee_type in ["joint_committee", "joint_standing_committee"]
-            or "joint" in name_lower
+            "special" in name_lower
+            or "multi party" in name_lower
+            or "multi-party" in name_lower
+            or "caucus" in name_lower
         ):
-            parent_name = "Joint"
-        elif committee_type == "select_committee" or "select committee" in name_lower:
-            parent_name = "National Council of Provinces"
-        else:
-            parent_name = "National Assembly"
+            return "special_committee"
+        if "internal" in name_lower:
+            return "internal_committee"
+        # Standing committees, subcommittees, constitutional review, etc. have
+        # no dedicated model choice, so fall back to the generic type.
+        return "committee"
 
-        # Get or create parent group
-        parent_group, created = Group.objects.get_or_create(
-            name=parent_name,
-            defaults={
-                "short_name": parent_name,
-                "description": f"{parent_name} parliamentary house",
-                "group_type": "house",
-                "is_active": True,
-                "start_date": timezone.now().date(),
-            },
+    def _normalize_house_name(self, house_name: str) -> str:
+        """Map the scraped house label to the canonical house name."""
+        name = (house_name or "").strip()
+        aliases = {
+            "NA": "National Assembly",
+            "NCOP": "National Council of Provinces",
+            "JOINT": "Joint Sitting",
+            "Joint": "Joint Sitting",
+        }
+        return aliases.get(name, name)
+
+    def _get_parliament_root(self):
+        return Group.objects.filter(name="Parliament", parent__isnull=True).first()
+
+    def _get_or_create_house(self, house_name: str):
+        house_name = self._normalize_house_name(house_name)
+        house = Group.objects.filter(name=house_name, group_type="house").first()
+        if house is not None:
+            return house
+        parliament = self._get_parliament_root()
+        return Group.objects.create(
+            name=house_name,
+            short_name=house_name[:50],
+            group_type="house",
+            description=f"{house_name} parliamentary house",
+            is_active=True,
+            parent=parliament,
+            start_date=timezone.now().date(),
         )
 
-        if created:
-            self.stdout.write(
-                self.style.SUCCESS(f"Created parent group: {parent_name}")
-            )
-            logger.info(f"Created parent group: {parent_name}")
+    def _get_or_create_committee_umbrella(self, house_name: str) -> Group:
+        """Return the umbrella committee group a committee belongs under.
 
-        return parent_group
+        Committees are stored under "NA Committees" / "NCOP Committees" (or a
+        single "Joint Committees" umbrella under Parliament), not directly under
+        the House.
+        """
+        house_name = self._normalize_house_name(house_name)
+
+        if house_name == "National Council of Provinces":
+            umbrella_name = "NCOP Committees"
+            parent = self._get_or_create_house(house_name)
+        elif house_name == "Joint Sitting":
+            umbrella_name = "Joint Committees"
+            parent = self._get_parliament_root()
+        else:  # National Assembly and anything unclassified
+            umbrella_name = "NA Committees"
+            parent = self._get_or_create_house("National Assembly")
+
+        umbrella = Group.objects.filter(name=umbrella_name, parent=parent).first()
+        if umbrella is None:
+            umbrella = Group.objects.create(
+                name=umbrella_name,
+                short_name=umbrella_name[:50],
+                group_type="committee",
+                description=f"Umbrella group for {umbrella_name}",
+                is_active=True,
+                parent=parent,
+            )
+        return umbrella
+
+    def _ensure_committee_under_umbrella(self, group, house_name):
+        """Move an existing committee into its umbrella if it sits under a house.
+
+        Committees scraped by older versions of this command were parented
+        directly under the House; re-parent them to "NA Committees" /
+        "NCOP Committees" / "Joint Committees" so the tree stays consistent.
+        """
+        if group.parent is None or group.parent.group_type != "house":
+            return group
+        if group.group_type not in {
+            "committee",
+            "portfolio_committee",
+            "select_committee",
+            "special_committee",
+            "public_accounts_committee",
+            "internal_committee",
+            "ad_hoc_committee",
+            "joint_committee",
+        }:
+            return group
+
+        umbrella = self._get_or_create_committee_umbrella(house_name)
+        if group.parent_id == umbrella.id:
+            return group
+
+        old_parent = group.parent.name
+        group.parent = umbrella
+        group.save(update_fields=["parent"])
+        logger.info(
+            f"Re-parented committee '{group.name}' from '{old_parent}' to '{umbrella.name}'"
+        )
+        return group
+
+    def get_or_create_parent_group(self, committee_name, committee_type):
+        """Backward-compatible wrapper: parent is the committee umbrella."""
+        name_lower = committee_name.lower()
+        if committee_type == "joint_committee" or "joint" in name_lower:
+            return self._get_or_create_committee_umbrella("Joint Sitting")
+        if committee_type == "select_committee" or "select committee" in name_lower:
+            return self._get_or_create_committee_umbrella(
+                "National Council of Provinces"
+            )
+        return self._get_or_create_committee_umbrella("National Assembly")
 
     def scrape_committee_members(self, committee_url):
         """Scrape detailed committee membership from committee page, handling Composition and Alternate sections"""
@@ -1219,9 +1277,9 @@ class Command(BaseCommand):
 
                 # Check for various role types
                 role = None
-                if re.search(r"\bcommittee\s+secretary\b", li_text):
-                    role = "Committee Secretary"
-                elif re.search(r"\bsecretary\b", li_text):
+                if re.search(r"\bcommittee\s+secretary\b", li_text) or re.search(
+                    r"\bsecretary\b", li_text
+                ):
                     role = "Committee Secretary"
                 elif re.search(r"\bdeputy\s+chairperson\b", li_text):
                     role = "Committee Deputy Chairperson"
@@ -1721,53 +1779,45 @@ class Command(BaseCommand):
 
     @transaction.atomic
     def create_membership(self, user, group, role_name):
-        """Create group membership and user role"""
-        if not self.dry_run:
-            try:
-                role = Role.objects.get(name=role_name)
-
-                # Create or get the group membership with role
-                membership, created = GroupMembership.objects.get_or_create(
-                    user=user,
-                    group=group,
-                    defaults={
-                        "role": role,
-                        "is_active": True,
-                        "start_date": timezone.now().date(),
-                    },
-                )
-
-                if created:
-                    self.stats["memberships_created"] += 1
-                    if self.verbose:
-                        self.stdout.write(f"Created membership: {user} -> {group}")
-                    logger.info(f"Created membership: {user.username} -> {group.name}")
-                else:
-                    # Update existing membership to be active
-                    if not membership.is_active:
-                        membership.is_active = True
-                        membership.save()
-                        self.stats["memberships_updated"] += 1
-
-                # Update membership role if it changed
-                if membership.role != role:
-                    old_role = membership.role.name if membership.role else "None"
-                    membership.role = role
-                    membership.save()
-                    if self.verbose:
-                        self.stdout.write(
-                            f"Updated membership role: {user} from {old_role} to {role_name}"
-                        )
-                    logger.info(
-                        f"Updated user role: {user.username} from {old_role} to {role_name}"
-                    )
-
-            except Role.DoesNotExist:
-                logger.error(f"Role not found: {role_name}")
-                self.stdout.write(self.style.ERROR(f"Role not found: {role_name}"))
-        else:
+        """Create or reactivate a membership keyed by (user, group, role)."""
+        if self.dry_run:
             self.stdout.write(
                 f"[DRY RUN] Would create membership: {user} -> {group} as {role_name}"
+            )
+            return
+
+        try:
+            role = Role.objects.get(name=role_name)
+        except Role.DoesNotExist:
+            logger.error(f"Role not found: {role_name}")
+            self.stdout.write(self.style.ERROR(f"Role not found: {role_name}"))
+            return
+
+        membership = GroupMembership.objects.filter(
+            user=user, group=group, role=role
+        ).first()
+
+        if membership is None:
+            GroupMembership.objects.create(
+                user=user,
+                group=group,
+                role=role,
+                is_active=True,
+                start_date=timezone.now().date(),
+            )
+            self.stats["memberships_created"] += 1
+            if self.verbose:
+                self.stdout.write(f"Created membership: {user} -> {group}")
+            logger.info(
+                f"Created membership: {user.username} -> {group.name} ({role_name})"
+            )
+        elif not membership.is_active:
+            membership.is_active = True
+            membership.end_date = None
+            membership.save(update_fields=["is_active", "end_date"])
+            self.stats["memberships_updated"] += 1
+            logger.info(
+                f"Reactivated membership: {user.username} -> {group.name} ({role_name})"
             )
 
     def print_statistics(self):

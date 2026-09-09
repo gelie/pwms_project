@@ -9,7 +9,7 @@
 | Database | PostgreSQL | accessed via `psycopg2-binary` |
 | Settings | `python-decouple` | values read from a local `.env` |
 | Package manager | uv | `uv.lock` pinned; `uv sync` to install |
-| Project layout | `src` layout | Django project lives in `src/pwms_project/` |
+| Project layout | `src` layout | single top-level package `pwms` in `src/pwms/`; project assets (`manage.py`, `.env`, `templates/`, `static/`, `logs/`) at the repo root |
 
 ## Django apps / libraries
 
@@ -39,13 +39,13 @@
 | `pillow` | image handling (user avatars) |
 | `djlint` | template linting / formatting |
 
-## Configuration highlights (`config/settings.py`)
+## Configuration highlights (`src/pwms/settings.py`)
 
 - `INSTALLED_APPS`: core Django + `auditlog`, `background_task`, `rest_framework`,
   `drf_spectacular`, `django_flatpickr`, `lucide`, `mptt`, `django_htmx`,
   `django_bootstrap5`, `pwms`.
 - `AUTH_USER_MODEL = "pwms.User"`.
-- `ROOT_URLCONF = "config.urls"` — see [System Design → URL map](#) and
+- `ROOT_URLCONF = "pwms.root_urls"` — see [System Design → URL map](#) and
   [API Reference](./API%20Reference.md).
 - `REST_FRAMEWORK`: Session + Basic authentication, `IsAuthenticated` default,
   `drf_spectacular.openapi.AutoSchema`.
@@ -61,34 +61,33 @@
 
 ## Environment / tooling notes
 
-- **Run everything from `src/pwms_project/`** — that is the Django project root
-  (contains `manage.py` and `config/`).
-- Because the package is installed as `pwms-project` (editable) with a `src`
-  layout, the same files are importable two ways (`pwms.*` and
-  `pwms_project.pwms.*`). Use the `pwms.*` identity (matches the installed app
-  label). This affects test discovery — see below.
+- **Run everything from the repo root** — that is where `manage.py`, `.env`,
+  `templates/`, `static/` and `logs/` live.
+- The package installs (editable) as `pwms` with the module at `src/pwms/`, so
+  there is exactly **one** import identity: `pwms.*`. The old dual-import hazard
+  (`pwms_project.pwms.*` vs `pwms.*`) is gone.
+- `DJANGO_SETTINGS_MODULE=pwms.settings`, WSGI/ASGI = `pwms.wsgi.application`,
+  root URLconf = `pwms.root_urls` (which includes the app URLs at `/pwms/`).
 
 ## Testing
 
 - Test modules: `pwms/tests.py` (auditing), `pwms/tests_api.py` (DRF API),
   `pwms/tests_ninja.py` (ninja spike).
-- **Always pass the top-level directory** so discovery imports models as
-  `pwms.*` (not `pwms_project.pwms.*`, which breaks model registration):
+- Run from the repo root; `pwms.*` test modules resolve through the editable
+  install (single import identity):
 
 ```bash
-cd src/pwms_project
-.venv/bin/python manage.py test pwms.tests pwms.tests_api pwms.tests_ninja \
-  --top-level-directory="$PWD"
+.venv/bin/python manage.py test pwms.tests pwms.tests_api pwms.tests_ninja
 ```
 
 - Tests run on a throwaway test database (PostgreSQL test DB).
 
 ## Database reset (development)
 
-The dev schema can be fully reset (destructive — all data is lost):
+The dev schema can be fully reset (destructive — all data is lost). Run from the
+repo root:
 
 ```bash
-cd src/pwms_project
 .venv/bin/python manage.py shell -c "from django.db import connection; c=connection.cursor(); c.execute('DROP SCHEMA IF EXISTS public CASCADE'); c.execute('CREATE SCHEMA public')"
 .venv/bin/python manage.py migrate
 ```

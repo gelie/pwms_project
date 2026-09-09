@@ -12,7 +12,7 @@ ContentType-linked RBAC layer, and everything that happens to an instrument is
 > **Status:** active early development (`0.1.0`). The workflow/RBAC/audit core,
 > DRF audit API, OpenAPI docs, and a django-ninja evaluation spike are in place.
 > Email, notifications and SharePoint integration are planned — see
-> [Roadmap & Planned Integrations](src/pwms_project/pwms/docs/Roadmap%20&%20Planned%20Integrations.md).
+> [Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md).
 
 ---
 
@@ -39,38 +39,44 @@ ContentType-linked RBAC layer, and everything that happens to an instrument is
 ```
 pwms_project/
 ├── pyproject.toml / uv.lock        # uv-managed dependencies
-└── src/pwms_project/               # Django project (run from here)
-    ├── manage.py
-    ├── config/                     # settings, root urls (project glue)
-    └── pwms/                       # the application
-        ├── models/                 # User, Group, Role, workflows, RBAC
-        ├── api/                    # DRF + django-ninja endpoints
-        ├── management/commands/    # sync, notifications, diagrams, ...
-        ├── templates/ static/      # server-rendered UI (Bootstrap 5 + HTMX)
-        ├── utils/                  # audit helpers, etc.
-        ├── tests*.py               # unit/integration tests
-        └── docs/                   # technical documentation
+├── manage.py                       # Django entry point (run from repo root)
+├── .env                            # python-decouple config (secrets)
+├── templates/ static/              # server-rendered UI (Bootstrap 5 + HTMX)
+├── docs/                           # project-level docs
+└── src/pwms/                       # single top-level package (project + app)
+    ├── settings.py                 # Django settings (pwms.settings)
+    ├── root_urls.py                # root URLconf (pwms.root_urls)
+    ├── asgi.py  wsgi.py
+    ├── pwms/                       # the application subpackage is split into:
+    ├── models/                     # User, Group, Role, workflows, RBAC, SharePoint
+    ├── api/                        # DRF + django-ninja endpoints
+    ├── membership/                 # sync services (e.g. MembershipSyncService)
+    ├── management/commands/        # sync, notifications, diagrams, ...
+    ├── templates/ static/          # app-level templates/static
+    ├── utils/                      # audit helpers, sharepoint client, etc.
+    ├── tests*.py                   # unit/integration tests
+    └── docs/                       # technical documentation
 ```
 
 Full annotated tree and responsibilities live in
-[System Design.md](src/pwms_project/pwms/docs/System%20Design.md).
+[System Design.md](src/pwms/docs/System%20Design.md).
 
 ---
 
 ## Documentation
 
-The self-documentation lives in [`pwms/docs/`](src/pwms_project/pwms/docs/):
+The self-documentation lives in [`pwms/docs/`](src/pwms/docs/):
 
 | Document | Contents |
 | --- | --- |
-| [Docs index](src/pwms_project/pwms/docs/README.md) | How the documentation is organised |
-| [System Design](src/pwms_project/pwms/docs/System%20Design.md) | Architecture, layers, workflows & RBAC, module map, sequence diagram |
-| [Data Model](src/pwms_project/pwms/docs/Data%20Model.md) | Every model, its fields, relations & ERD |
-| [Functional Design](src/pwms_project/pwms/docs/Functional%20Design.md) | What the system does, feature-by-feature |
-| [Technical Stack](src/pwms_project/pwms/docs/Technical%20Stack.md) | Frameworks, libraries, config, environment |
-| [API Reference](src/pwms_project/pwms/docs/API%20Reference.md) | Endpoints, auth, schema/docs URLs |
-| [Management Commands](src/pwms_project/pwms/docs/Management%20Commands.md) | Every `manage.py` command and its purpose |
-| [Roadmap & Planned Integrations](src/pwms_project/pwms/docs/Roadmap%20&%20Planned%20Integrations.md) | Email, notifications, SharePoint, exports |
+| [Docs index](src/pwms/docs/README.md) | How the documentation is organised |
+| [System Design](src/pwms/docs/System%20Design.md) | Architecture, layers, workflows & RBAC, module map, sequence diagram |
+| [Data Model](src/pwms/docs/Data%20Model.md) | Every model, its fields, relations & ERD |
+| [Functional Design](src/pwms/docs/Functional%20Design.md) | What the system does, feature-by-feature |
+| [Technical Stack](src/pwms/docs/Technical%20Stack.md) | Frameworks, libraries, config, environment |
+| [API Reference](src/pwms/docs/API%20Reference.md) | Endpoints, auth, schema/docs URLs |
+| [Management Commands](src/pwms/docs/Management%20Commands.md) | Every `manage.py` command and its purpose |
+| [Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md) | Email, notifications, SharePoint, exports |
 
 ---
 
@@ -79,11 +85,10 @@ The self-documentation lives in [`pwms/docs/`](src/pwms_project/pwms/docs/):
 Requirements: Python ≥ 3.14, [uv](https://docs.astral.sh/uv/), PostgreSQL.
 
 ```bash
-# 1. Install dependencies
+# 1. Install dependencies (editable install adds src/ to the Python path)
 uv sync
 
-# 2. Configure environment (python-decouple reads .env)
-cd src/pwms_project
+# 2. Configure environment — python-decouple reads .env from the repo root
 cat > .env <<'EOF'
 SECRET_KEY=change-me
 DEBUG=True
@@ -101,7 +106,7 @@ python manage.py migrate
 # 4. First admin user
 python manage.py createsuperuser
 
-# 5. Run
+# 5. Run (manage.py and everything else live at the repo root)
 python manage.py runserver
 ```
 
@@ -112,27 +117,26 @@ Then open:
 - Swagger UI → <http://127.0.0.1:8000/api/docs/>
 
 > **Database reset:** the schema can be dropped and recreated safely in
-> development, see [System Design](src/pwms_project/pwms/docs/System%20Design.md#database-reset).
+> development, see [System Design](src/pwms/docs/System%20Design.md#database-reset).
 
 ---
 
 ## Running tests
 
 ```bash
-cd src/pwms_project
-.venv/bin/python manage.py test pwms.tests pwms.tests_api pwms.tests_ninja \
-  --top-level-directory="$PWD"
+.venv/bin/python manage.py test pwms.tests pwms.tests_api pwms.tests_ninja
 ```
 
-The `--top-level-directory` flag is **required** (see
-[Technical Stack](src/pwms_project/pwms/docs/Technical%20Stack.md#testing)).
+Run from the repo root; `pwms.*` test modules are importable via the editable
+install. See
+[Technical Stack](src/pwms/docs/Technical%20Stack.md#testing).
 
 ---
 
 ## Roadmap
 
 Email, notifications and SharePoint integration are next on the roadmap. See
-[Roadmap & Planned Integrations](src/pwms_project/pwms/docs/Roadmap%20&%20Planned%20Integrations.md)
+[Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md)
 for detail.
 
 ---

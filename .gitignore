@@ -8,5 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
-src/pwms_project/.env
-src/pwms_project/logs/*
+
+# Local secrets & runtime logs (Django project root = repo root)
+.env
+logs/*

@@ -1,6 +1,13 @@
 from .base import BaseModel
 from .groups import Group
 from .permissions import GroupMembership, Role
+from .sharepoint import (
+    SharepointDrive,
+    SharepointFolder,
+    SharepointSite,
+    SharepointSiteMember,
+    SharepointToken,
+)
 from .users import User
 from .workflows import (
     AbstractLegislativeWorkflow,
@@ -21,6 +28,11 @@ __all__ = [
     "GroupMembership",
     "InternationalResolution",
     "Role",
+    "SharepointDrive",
+    "SharepointFolder",
+    "SharepointSite",
+    "SharepointSiteMember",
+    "SharepointToken",
     "State",
     "Transition",
     "TransitionLog",

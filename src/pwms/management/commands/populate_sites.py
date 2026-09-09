@@ -4,9 +4,14 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
-
-from workflows.models import Drive, Site
-from workflows.sharepoint import get_all_sites, get_site_drives, get_token
+from pwms.models import SharepointDrive, SharepointSite, SharepointSiteMember, User
+from pwms.utils.sharepoint import (
+    get_all_sites,
+    get_site_drives,
+    get_site_permissions,
+    get_token,
+    iter_permission_identities,
+)
 
 
 class Command(BaseCommand):
@@ -34,6 +39,8 @@ class Command(BaseCommand):
             token_data = get_token()
             sites_response = asyncio.run(get_all_sites(token_data))
             self._process_sites(sites_response, token_data)
+            # Members need a site + drive sync first (we operate on stored rows).
+            self._process_site_members(token_data)
         except Exception as exc:  # pragma: no cover – Django will wrap this.
             raise CommandError(f"Failed to populate sites: {exc}")
 
@@ -55,6 +62,11 @@ class Command(BaseCommand):
                 self.stdout.write(self.style.WARNING("Skipping site with missing id"))
                 continue
 
+            # The Graph query no longer filters personal (OneDrive) sites, so
+            # exclude them here to preserve the original behaviour.
+            if site.get("isPersonalSite"):
+                continue
+
             incoming_by_id[site_id] = {
                 "name": site.get("displayName") or site.get("name") or "",
                 "url": site.get("webUrl") or "",
@@ -68,7 +80,9 @@ class Command(BaseCommand):
         # ------------------------------------------------------------------
         # 2️⃣ Load existing ``Site`` objects that match the incoming IDs.
         # ------------------------------------------------------------------
-        existing_qs = Site.objects.filter(site_id__in=list(incoming_by_id.keys()))
+        existing_qs = SharepointSite.objects.filter(
+            site_id__in=list(incoming_by_id.keys())
+        )
         existing_by_id = {obj.site_id: obj for obj in existing_qs}
 
         # ------------------------------------------------------------------
@@ -100,7 +114,7 @@ class Command(BaseCommand):
                 obj.remote_modified_at = defaults["remote_modified_at"]
                 to_update.append(obj)
             else:
-                to_create.append(Site(site_id=site_id, **defaults))
+                to_create.append(SharepointSite(site_id=site_id, **defaults))
 
         created_cnt, updated_cnt = 0, 0
 
@@ -109,13 +123,13 @@ class Command(BaseCommand):
         # ------------------------------------------------------------------
         with transaction.atomic():
             if to_create:
-                Site.objects.bulk_create(to_create)
+                SharepointSite.objects.bulk_create(to_create)
                 created_cnt = len(to_create)
                 self.stdout.write(
                     self.style.SUCCESS(f"Created {created_cnt} new site(s)")
                 )
             if to_update:
-                Site.objects.bulk_update(
+                SharepointSite.objects.bulk_update(
                     to_update,
                     [
                         "name",
@@ -146,7 +160,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.HTTP_INFO("Processing drives for all sites..."))
 
         # Get all sites from the database
-        sites = Site.objects.all()
+        sites = SharepointSite.objects.all()
         total_drives_created = 0
         total_drives_updated = 0
 
@@ -185,7 +199,7 @@ class Command(BaseCommand):
                 # ------------------------------------------------------------------
                 # Load existing ``Drive`` objects for this site.
                 # ------------------------------------------------------------------
-                existing_drives_qs = Drive.objects.filter(
+                existing_drives_qs = SharepointDrive.objects.filter(
                     site=site, drive_id__in=list(incoming_drives_by_id.keys())
                 )
                 existing_drives_by_id = {
@@ -205,7 +219,7 @@ class Command(BaseCommand):
                         drives_to_update.append(obj)
                     else:
                         drives_to_create.append(
-                            Drive(site=site, drive_id=drive_id, **defaults)
+                            SharepointDrive(site=site, drive_id=drive_id, **defaults)
                         )
 
                 # ------------------------------------------------------------------
@@ -213,7 +227,7 @@ class Command(BaseCommand):
                 # ------------------------------------------------------------------
                 with transaction.atomic():
                     if drives_to_create:
-                        Drive.objects.bulk_create(drives_to_create)
+                        SharepointDrive.objects.bulk_create(drives_to_create)
                         drives_created_cnt = len(drives_to_create)
                         total_drives_created += drives_created_cnt
                         self.stdout.write(
@@ -223,7 +237,7 @@ class Command(BaseCommand):
                         )
 
                     if drives_to_update:
-                        Drive.objects.bulk_update(drives_to_update, ["name"])
+                        SharepointDrive.objects.bulk_update(drives_to_update, ["name"])
                         drives_updated_cnt = len(drives_to_update)
                         total_drives_updated += drives_updated_cnt
                         self.stdout.write(
@@ -235,7 +249,7 @@ class Command(BaseCommand):
             except Exception as e:
                 self.stdout.write(
                     self.style.ERROR(
-                        f"Failed to process drives for site {site.name}: {str(e)}"
+                        f"Failed to process drives for site {site.name}: {e!s}"
                     )
                 )
                 continue
@@ -243,5 +257,111 @@ class Command(BaseCommand):
         self.stdout.write(
             self.style.SUCCESS(
                 f"Finished processing drives – {total_drives_created} created, {total_drives_updated} updated."
+            )
+        )
+
+    def _process_site_members(self, token_data):
+        """Synchronise ``SharepointSiteMember`` rows for every stored site.
+
+        The remote site "members" are obtained from Graph's site permissions
+        (``GET /sites/{id}/permissions``). Identities that resolve to people
+        are matched to local :class:`User` records by email / UPN and stored
+        with a ``(site, user)`` natural key. Members who no longer hold access
+        are deactivated rather than deleted.
+
+        Requires the application token to be granted ``Sites.Manage.All`` /
+        ``Sites.FullControl.All``; sites where that call is forbidden are
+        reported and skipped (the site/drive sync is unaffected).
+        """
+        self.stdout.write(self.style.HTTP_INFO("Processing site members..."))
+
+        # Local users, keyed by lower-cased email and username, for O(1) matching.
+        user_by_email, user_by_username = {}, {}
+        for user in User.objects.all().only("id", "email", "username"):
+            if user.email:
+                user_by_email[user.email.strip().lower()] = user
+            if user.username:
+                user_by_username[user.username.strip().lower()] = user
+
+        total = {
+            "created": 0,
+            "deactivated": 0,
+            "unmatched": 0,
+            "sites_skipped": 0,
+        }
+
+        for site in SharepointSite.objects.all().only("id", "site_id", "name"):
+            try:
+                response = asyncio.run(get_site_permissions(token_data, site.site_id))
+            except Exception as e:
+                self.stdout.write(
+                    self.style.WARNING(
+                        f"Site members unavailable for {site.name}: {e!s}"
+                    )
+                )
+                total["sites_skipped"] += 1
+                continue
+
+            # People actually granted access (users/site users), lower-cased.
+            matched_users = {}
+            unmatched = 0
+            for permission in response.get("value", []):
+                for identity in iter_permission_identities(permission):
+                    if identity["kind"] != "user":
+                        continue  # groups are not individual people here
+                    key = (
+                        (
+                            identity.get("email")
+                            or identity.get("upn")
+                            or identity.get("display_name")
+                            or ""
+                        )
+                        .strip()
+                        .lower()
+                    )
+                    if not key:
+                        continue
+                    user = user_by_email.get(key) or user_by_username.get(key)
+                    if user is None:
+                        unmatched += 1
+                        continue
+                    matched_users[user.id] = user
+
+            with transaction.atomic():
+                existing = SharepointSiteMember.objects.filter(site=site)
+                existing_by_user = {m.user_id: m for m in existing}
+                active_user_ids = {
+                    uid for uid, m in existing_by_user.items() if m.is_active
+                }
+
+                to_create = [
+                    SharepointSiteMember(site=site, user=user, is_active=True)
+                    for uid, user in matched_users.items()
+                    if uid not in existing_by_user
+                ]
+                if to_create:
+                    SharepointSiteMember.objects.bulk_create(to_create)
+                    total["created"] += len(to_create)
+
+                # Deactivate rows for members who no longer have access.
+                deactivate = [
+                    existing_by_user[uid]
+                    for uid in (active_user_ids - set(matched_users.keys()))
+                ]
+                if deactivate:
+                    SharepointSiteMember.objects.filter(
+                        pk__in=[m.pk for m in deactivate]
+                    ).update(is_active=False)
+                    total["deactivated"] += len(deactivate)
+
+            if unmatched:
+                total["unmatched"] += unmatched
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                "Finished processing site members – "
+                f"{total['created']} created, {total['deactivated']} deactivated, "
+                f"{total['unmatched']} remote principals had no local user, "
+                f"{total['sites_skipped']} site(s) skipped (permissions API unavailable)."
             )
         )

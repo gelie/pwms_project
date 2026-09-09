@@ -59,31 +59,36 @@ flowchart TB
 ### Module map
 
 ```
-src/pwms_project/
+pwms_project/                     # repo root (git) — run manage.py from here
 ├── manage.py                     # entry point
-├── config/
-│   ├── settings.py               # env-driven settings (python-decouple)
-│   ├── urls.py                   # project URL root (admin, pwms, api, ninja, docs)
-│   ├── asgi.py / wsgi.py
-│   └── logs/                     # runtime logs
-└── pwms/
+├── .env                          # python-decouple secrets
+├── pyproject.toml / uv.lock      # uv-managed dependencies (distribution: pwms)
+├── templates/ static/            # shared server-rendered UI (Bootstrap 5 + HTMX)
+├── logs/                         # runtime logs
+├── docs/                         # project-level documentation
+└── src/pwms/                     # single top-level package (installed as `pwms`)
+    ├── settings.py               # env-driven settings (python-decouple)
+    ├── root_urls.py              # project URL root (admin, pwms, api, ninja, docs)
+    ├── asgi.py / wsgi.py
     ├── admin.py                  # admin registrations
     ├── apps.py                   # PwmsConfig; ready() registers auditlog
-    ├── urls.py / views.py        # app pages (home, login, logout)
+    ├── urls.py / views.py        # app pages under /pwms/ (home, login, logout)
     ├── decorators.py             # shared decorators
     ├── models/
     │   ├── base.py               # BaseModel (uuid7 public_id, timestamps)
     │   ├── users.py              # User
     │   ├── groups.py             # Group (MPTT)
     │   ├── permissions.py        # Role, GroupMembership
+    │   ├── sharepoint.py         # SharePoint sync models
     │   └── workflows.py          # engine + instances + RBAC + TransitionLog
     ├── api/
     │   ├── urls.py / views.py / serializers.py   # DRF endpoints
     │   └── ninja.py              # django-ninja evaluation spike
+    ├── membership/
+    │   └── sync_service.py       # MembershipSyncService (Oracle/legacy sync)
     ├── management/commands/      # sync, jobs, diagrams (see Management Commands)
-    ├── utils/audit_helpers.py    # LogEntry query helpers
+    ├── utils/                    # audit_helpers.py, sharepoint.py
     ├── migrations/
-    ├── templates/ static/        # server-rendered UI
     ├── tests.py / tests_api.py / tests_ninja.py
     └── docs/                     # this documentation
 ```
