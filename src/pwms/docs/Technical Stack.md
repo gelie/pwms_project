@@ -9,7 +9,7 @@
 | Database | PostgreSQL | accessed via `psycopg2-binary` |
 | Settings | `python-decouple` | values read from a local `.env` |
 | Package manager | uv | `uv.lock` pinned; `uv sync` to install |
-| Project layout | `src` layout | single top-level package `pwms` in `src/pwms/`; project assets (`manage.py`, `.env`, `templates/`, `static/`, `logs/`) at the repo root |
+| Project layout | `src` layout | single top-level package `pwms` in `src/pwms/` (incl. its `templates/` + `static/`); project assets (`manage.py`, `.env`, `logs/`) at the repo root |
 
 ## Django apps / libraries
 
@@ -61,8 +61,10 @@
 
 ## Environment / tooling notes
 
-- **Run everything from the repo root** — that is where `manage.py`, `.env`,
-  `templates/`, `static/` and `logs/` live.
+- **Run everything from the repo root** — that is where `manage.py`, `.env` and
+  `logs/` live. `templates/` and `static/` live inside the app package
+  (`src/pwms/`) and are auto-discovered (`APP_DIRS = True`;
+  `STATICFILES_DIRS` empty).
 - The package installs (editable) as `pwms` with the module at `src/pwms/`, so
   there is exactly **one** import identity: `pwms.*`. The old dual-import hazard
   (`pwms_project.pwms.*` vs `pwms.*`) is gone.

@@ -63,13 +63,14 @@ pwms_project/                     # repo root (git) — run manage.py from here
 ├── manage.py                     # entry point
 ├── .env                          # python-decouple secrets
 ├── pyproject.toml / uv.lock      # uv-managed dependencies (distribution: pwms)
-├── templates/ static/            # shared server-rendered UI (Bootstrap 5 + HTMX)
 ├── logs/                         # runtime logs
 ├── docs/                         # project-level documentation
 └── src/pwms/                     # single top-level package (installed as `pwms`)
     ├── settings.py               # env-driven settings (python-decouple)
     ├── root_urls.py              # project URL root (admin, pwms, api, ninja, docs)
     ├── asgi.py / wsgi.py
+    ├── templates/                # server-rendered UI (Bootstrap 5 + HTMX)
+    ├── static/                   # CSS / JS / images
     ├── admin.py                  # admin registrations
     ├── apps.py                   # PwmsConfig; ready() registers auditlog
     ├── urls.py / views.py        # app pages under /pwms/ (home, login, logout)

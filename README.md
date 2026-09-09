@@ -37,25 +37,25 @@ ContentType-linked RBAC layer, and everything that happens to an instrument is
 ## Project layout
 
 ```
-pwms_project/
-├── pyproject.toml / uv.lock        # uv-managed dependencies
-├── manage.py                       # Django entry point (run from repo root)
-├── .env                            # python-decouple config (secrets)
-├── templates/ static/              # server-rendered UI (Bootstrap 5 + HTMX)
-├── docs/                           # project-level docs
-└── src/pwms/                       # single top-level package (project + app)
-    ├── settings.py                 # Django settings (pwms.settings)
-    ├── root_urls.py                # root URLconf (pwms.root_urls)
+pwms_project/                     # repo root — run manage.py from here
+├── pyproject.toml / uv.lock      # uv-managed dependencies (distribution: pwms)
+├── manage.py                     # Django entry point
+├── .env                          # python-decouple config (secrets)
+├── logs/                         # runtime logs
+├── docs/                         # project-level docs
+└── src/pwms/                     # single top-level package `pwms` (project + app)
+    ├── settings.py               # Django settings (pwms.settings)
+    ├── root_urls.py              # root URLconf (pwms.root_urls, includes /pwms/)
     ├── asgi.py  wsgi.py
-    ├── pwms/                       # the application subpackage is split into:
-    ├── models/                     # User, Group, Role, workflows, RBAC, SharePoint
-    ├── api/                        # DRF + django-ninja endpoints
-    ├── membership/                 # sync services (e.g. MembershipSyncService)
-    ├── management/commands/        # sync, notifications, diagrams, ...
-    ├── templates/ static/          # app-level templates/static
-    ├── utils/                      # audit helpers, sharepoint client, etc.
-    ├── tests*.py                   # unit/integration tests
-    └── docs/                       # technical documentation
+    ├── templates/                # server-rendered UI (Bootstrap 5 + HTMX) — auto-discovered
+    ├── static/                   # CSS / JS / images — auto-discovered
+    ├── models/                   # User, Group, Role, workflows, RBAC, SharePoint
+    ├── api/                      # DRF + django-ninja endpoints
+    ├── membership/               # sync services (e.g. MembershipSyncService)
+    ├── management/commands/      # sync, notifications, diagrams, ...
+    ├── utils/                    # audit helpers, sharepoint client, etc.
+    ├── tests*.py                 # unit/integration tests
+    └── docs/                     # technical documentation
 ```
 
 Full annotated tree and responsibilities live in

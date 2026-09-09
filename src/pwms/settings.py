@@ -12,7 +12,8 @@ from pathlib import Path
 
 from decouple import config
 
-# Repo root (manage.py, .env, templates/, static/, logs/ all live here).
+# Repo root (manage.py, .env, logs/, docs/ live here; templates/ and static/
+# live inside the app package at src/pwms/).
 # src/pwms/settings.py -> parents[0]=src/pwms, [1]=src, [2]=repo root.
 BASE_DIR = Path(__file__).resolve().parents[2]
 
@@ -95,17 +96,13 @@ ROOT_URLCONF = "pwms.root_urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / "templates"],
-        "APP_DIRS": False,
+        "DIRS": [],
+        "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
-            ],
-            "loaders": [
-                "django.template.loaders.filesystem.Loader",
-                "django.template.loaders.app_directories.Loader",
             ],
             "builtins": ["lucide.templatetags.lucide"],
         },
@@ -166,7 +163,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = "static/"
-STATICFILES_DIRS = [BASE_DIR / "static"]
+# Static lives in the app package (src/pwms/static) and is auto-discovered.
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_ROOT = BASE_DIR / "media"
 MEDIA_URL = "media/"
