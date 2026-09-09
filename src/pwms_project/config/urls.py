@@ -18,9 +18,42 @@ Including another URLconf
 from django.contrib import admin
 from django.urls import include, path
 from django.views.generic.base import RedirectView
+from drf_spectacular.views import (
+    SpectacularAPIView,
+    SpectacularRedocView,
+    SpectacularSwaggerView,
+)
+from pwms.api.ninja import api as ninja_api
+from rest_framework.permissions import AllowAny
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("", RedirectView.as_view(url="pwms:home", permanent=False)),
+    path("", RedirectView.as_view(url="pwms/", permanent=False)),
     path("pwms/", include("pwms.urls")),
+    # Django REST Framework API (audit history for workflow instances)
+    path("api/", include("pwms.api.urls")),
+    # DRF browsable-API login/logout endpoints
+    path("api/auth/", include("rest_framework.urls")),
+    # django-ninja spike (same audit endpoint, FastAPI-style) - compare/remove
+    path("ninja/", ninja_api.urls),
+    # OpenAPI schema + interactive docs (schema/UI are public; data stays auth'd)
+    path(
+        "api/schema/",
+        SpectacularAPIView.as_view(permission_classes=[AllowAny]),
+        name="api-schema",
+    ),
+    path(
+        "api/docs/",
+        SpectacularSwaggerView.as_view(
+            url_name="api-schema", permission_classes=[AllowAny]
+        ),
+        name="api-docs",
+    ),
+    path(
+        "api/redoc/",
+        SpectacularRedocView.as_view(
+            url_name="api-schema", permission_classes=[AllowAny]
+        ),
+        name="api-redoc",
+    ),
 ]

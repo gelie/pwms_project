@@ -40,7 +40,10 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "auditlog",
     "background_task",
+    "rest_framework",
+    "drf_spectacular",
     # "chartjs",
     "django_flatpickr",
     "lucide",
@@ -57,10 +60,36 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "auditlog.middleware.AuditlogMiddleware",  # Add after AuthenticationMiddleware
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django_htmx.middleware.HtmxMiddleware",
 ]
+
+# Django REST Framework
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework.authentication.SessionAuthentication",
+        "rest_framework.authentication.BasicAuthentication",
+    ],
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
+    ],
+    # OpenAPI schema generation (drf-spectacular)
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# drf-spectacular (OpenAPI 3 + Swagger UI / ReDoc)
+SPECTACULAR_SETTINGS = {
+    "TITLE": "PWMS Workflow Audit API",
+    "DESCRIPTION": (
+        "API for parliamentary workflow instances: auditlog CRUD history and "
+        "domain TransitionLog events."
+    ),
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+}
 
 ROOT_URLCONF = "config.urls"
 

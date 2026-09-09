@@ -9,7 +9,7 @@ from .groups import Group
 from .users import User
 
 
-class UserRole(BaseModel):
+class Role(BaseModel):
     """Roles and non-state-dependent workflow permissions for groups."""
 
     name = models.CharField(max_length=100, unique=True)
@@ -43,7 +43,7 @@ class GroupMembership(BaseModel):
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="memberships")
     group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name="members")
-    role = models.ForeignKey(UserRole, on_delete=models.PROTECT)
+    role = models.ForeignKey(Role, on_delete=models.PROTECT)
     start_date = models.DateField(default=timezone.now)
     end_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)  # type: ignore
