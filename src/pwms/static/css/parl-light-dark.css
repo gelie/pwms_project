@@ -20,8 +20,9 @@
   --theme-dark-yellow: light-dark(#C79900, #C79900);
   --theme-orange: light-dark(#E17000, #E17000);
   --theme-green: light-dark(#275937, #2D663F);
-  /* Brightened slightly for dark mode contrast */
-  --theme-dark-green: #1f472c;
+  /* Dropdown row hover. It sits ON a --theme-green menu, so it has to be LIGHTER than
+     that green to read as a hover — the old #1f472c was darker and all but invisible. */
+  --theme-menu-hover: light-dark(#326B44, #3C7F52);
 
   /* Adaptive Surfaces (Switches with mode) */
   --theme-light-gold: light-dark(#f6f3ec, #2A2620);
@@ -37,20 +38,72 @@
   --bs-tertiary-bg: light-dark(#f8f9fa, #1C1C1C);
   --bs-emphasis-color: light-dark(#000, #F1ECE3);
 
+  /* Bootstrap only switches these DERIVED colors under [data-bs-theme=dark], which
+     this project does not use (base.html keeps data-bs-theme="light" while the theme
+     follows the OS through color-scheme). Left at Bootstrap's light defaults, they
+     painted dark-on-dark text (.text-muted / .text-body-secondary, e.g. the breadcrumb
+     path and card captions) and near-black dividers on the #121212 body. */
+  --bs-secondary-color: light-dark(rgba(39, 89, 55, 0.75), rgba(211, 204, 192, 0.75));
+  --bs-tertiary-color: light-dark(rgba(39, 89, 55, 0.5), rgba(211, 204, 192, 0.5));
+  --bs-border-color-translucent: light-dark(rgba(0, 0, 0, 0.175), rgba(255, 255, 255, 0.15));
+  --bs-highlight-color: light-dark(#275937, #D3CCC0);
+  --bs-highlight-bg: light-dark(#fefaeb, #2A2418);
+
   /* Fonts */
   --bs-font-sans-serif: "Helvetica Neue", Helvetica, Roboto, Arial, sans-serif;
   --bs-font-serif: 'ff-dax-pro', sans-serif;
 
   /* Image Paths */
   --img-top-header: url('../images/BGs3_top_header.png');
-  --img-header: url('../images/bg-2_header.png');
   --img-footer: url('../images/bg-2_footer.png');
+}
+
+/* Manual theme override. `light-dark()` resolves against the element's USED
+   color-scheme, so pinning color-scheme on :root flips every light-dark() pair in
+   this file at once. "auto" (or no attribute at all) falls through to the
+   `color-scheme: light dark` above, i.e. the OS preference. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 /* 2. Global Typography & Links */
 body {
   background-color: var(--bs-body-bg);
   color: var(--bs-body-color);
+}
+
+/* Bootstrap's rgb-triplet variables cannot hold a light-dark() value, yet a few
+   utilities read them directly (.text-body, .bg-body, --bs-navbar-*), so the dark
+   triplets are declared the same way Bootstrap declares them in its dark theme.
+   `:not([data-theme="light"])` keeps "auto" working while letting an explicit light
+   choice opt out. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bs-body-color-rgb: 211, 204, 192;
+    --bs-body-bg-rgb: 18, 18, 18;
+    --bs-secondary-color-rgb: 211, 204, 192;
+    --bs-tertiary-color-rgb: 211, 204, 192;
+    --bs-emphasis-color-rgb: 241, 236, 227;
+    --bs-secondary-bg-rgb: 36, 36, 36;
+    --bs-tertiary-bg-rgb: 28, 28, 28;
+  }
+}
+
+/* The manual toggle has to repeat them: a media query cannot be combined with the
+   attribute selector, and these values are raw triplets, not colors. Picking light
+   needs no block -- it falls back to Bootstrap's own light defaults. */
+html[data-theme="dark"] {
+  --bs-body-color-rgb: 211, 204, 192;
+  --bs-body-bg-rgb: 18, 18, 18;
+  --bs-secondary-color-rgb: 211, 204, 192;
+  --bs-tertiary-color-rgb: 211, 204, 192;
+  --bs-emphasis-color-rgb: 241, 236, 227;
+  --bs-secondary-bg-rgb: 36, 36, 36;
+  --bs-tertiary-bg-rgb: 28, 28, 28;
 }
 
 h1,
@@ -66,7 +119,7 @@ h5,
 h6,
 .h6 {
   font-family: var(--bs-font-serif);
-  font-weight: normal;
+  font-weight: 600;
   /* color: light-dark(#212529, #F1ECE3); */
   color: var(--theme-dark-gold);
 }
@@ -205,9 +258,9 @@ a:hover {
 /* 6. Page Header (Hero) */
 .page-header {
   background-color: light-dark(var(--theme-green), #1C1C1C);
-  background-image: var(--img-header);
   background-size: cover;
   background-position: center center;
+  background-repeat: no-repeat;
   background-blend-mode: multiply;
   padding: 23px;
   margin-bottom: 30px;
@@ -247,14 +300,16 @@ a:hover {
   font-family: var(--bs-font-serif);
 }
 
+/* Bootstrap 5.3 replaced --bs-table-accent-bg with --bs-table-bg-type (striping) and
+   --bs-table-bg-state (hover), so the old hook was dead and the rows fell back to
+   rgba(var(--bs-emphasis-color-rgb), .05) -- a dark overlay on an already dark table. */
 .table-striped>tbody>tr:nth-of-type(odd)>* {
-  --bs-table-accent-bg: light-dark(#eee9dc, #242424);
-  color: var(--bs-body-color);
+  --bs-table-bg-type: light-dark(#eee9dc, #242424);
+  --bs-table-color-type: var(--bs-body-color);
 }
 
 .table-hover>tbody>tr:hover>* {
-  --bs-table-accent-bg: light-dark(#f3efe5, #2D2D2D);
-  color: light-dark(inherit, #fff);
+  --bs-table-bg-state: light-dark(#f3efe5, #2D2D2D);
 }
 
 /* 8. Cards */

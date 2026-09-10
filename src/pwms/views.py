@@ -3,8 +3,12 @@ from django.contrib.auth.decorators import login_not_required
 from django.contrib.auth.forms import AuthenticationForm, UsernameField
 from django.contrib.auth.views import LoginView as BaseLoginView
 from django.contrib.auth.views import LogoutView as BaseLogoutView
-from django.shortcuts import render
+from django.db.models import Case, CharField, Value, When
+from django.shortcuts import get_object_or_404, render
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+
+from .models import Group
 
 
 @login_not_required
@@ -21,8 +25,47 @@ def workflows(request):
     return render(request, "pwms/workflows.html")
 
 
-def groups(request):
-    return render(request, "pwms/groups.html")
+def all_groups(request):
+    """List every group in the organisational hierarchy (sign-in required)."""
+    groups = Group.objects.select_related("parent").order_by("name")
+    return render(request, "pwms/all-groups.html", {"groups": groups})
+
+
+def my_groups(request):
+    """List the groups the signed-in user is a member of (sign-in required)."""
+    today = timezone.localdate()
+    memberships = (
+        request.user.get_groups_with_roles()
+        .select_related("group__parent")
+        .annotate(
+            status=Case(
+                When(is_active=False, then=Value("Inactive")),
+                When(end_date__lt=today, then=Value("Expired")),
+                default=Value("Active"),
+                output_field=CharField(),
+            )
+        )
+        .order_by("group__name", "role__name")
+    )
+    return render(request, "pwms/my-groups.html", {"memberships": memberships})
+
+
+def group_detail(request, pk):
+    """Show one group: hierarchy context, details and its member count."""
+    group = get_object_or_404(Group.objects.select_related("parent"), pk=pk)
+    memberships = (
+        group.members.filter(is_active=True)
+        .select_related("user", "role")
+        .order_by("user__last_name", "user__first_name", "role__name")
+    )
+    context = {
+        "group": group,
+        "memberships": memberships,
+        # Distinct users with an active membership (the model's own helper).
+        "member_count": group.get_active_members().count(),
+        "child_groups": group.children.order_by("name"),
+    }
+    return render(request, "pwms/group-detail.html", context)
 
 
 def reports(request):

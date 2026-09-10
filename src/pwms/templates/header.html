@@ -14,17 +14,26 @@
     <div id="middle-top-content" class="container">
       <div id="topbar-left">
         <a id="topbar-logo" href="{% url 'pwms:home' %}">
-          <img src="{% static "images/parliament-logo2.png" %}"
-               alt="parliament logo"
-               srcset="">
+          {% comment %}
+            Wide lockup from md up, stacked lockup below md. The sizing breakpoints in
+            style.css mirror this source's media query, and a picture element only
+            downloads the source that matches, so phones never fetch the large asset.
+          {% endcomment %}
+          <picture>
+            <source media="(max-width: 767.98px)"
+                    srcset="{% static "images/logo-stacked-small.png" %}">
+            <img src="{% static "images/parliament-logo.png" %}"
+                 alt="Parliament of the Republic of South Africa">
+          </picture>
         </a>
       </div>
       <div id="topbar-center">
         <h1 class="title">PWMS</h1>
-        <h6 class="subtitle">PARLIAMENT WORKFLOW MANAGEMENT SYSTEM</h6>
+        <h6 class="subtitle d-none d-lg-block">PARLIAMENT WORKFLOW MANAGEMENT SYSTEM</h6>
       </div>
       <div id="topbar-right">
-        <div id="parliament-sitting"></div>
+        {# Hidden below lg: Bootstrap display utilities are min-width, so d-none + d-lg-block. #}
+        <div id="parliament-sitting" class="d-none d-lg-block"></div>
       </div>
     </div>
   </div>

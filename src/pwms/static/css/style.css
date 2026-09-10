@@ -1,6 +1,18 @@
+body {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+#content {
+    flex: 1;
+}
+
 .site-header {
     z-index: 99;
-    background: #fefefe;
+    /* Was hard-coded #fefefe, which kept the whole header a bright slab above an
+       otherwise dark page (the middle band only tints whatever is behind it). */
+    background: light-dark(#fefefe, #121212);
 }
 
 #top-nav {
@@ -15,7 +27,9 @@
 
 #middle-topbar {
     border: none;
-    background: rgba(179, 153, 93, 0.2);
+    /* Deeper than the old rgba(179, 153, 93, 0.2) wash, and it now follows the theme
+       so dark mode gets a dark band instead of light gold over white. */
+    background: light-dark(rgba(179, 153, 93, 0.2), #1A1712);
     padding: 0;
     position: relative;
     height: 120px;
@@ -59,7 +73,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 0.5rem 1rem;
+    /* padding: 0.5rem 1rem; */
 }
 
 #topbar-left {
@@ -83,6 +97,25 @@
     width: 270px;
 }
 
+/* The header logo swaps at md (see the <picture> in header.html). The wide lockup is sized
+   by width; the stacked one has to be sized by height, because the width rule above would
+   render the 200x223 asset 270x301 inside the 120px-tall band. Keep these breakpoints in
+   sync with the <source media> in header.html. Same specificity as the rule above, hence
+   the later position. */
+@media (min-width: 768px) {
+    #topbar-logo img {
+        width: 270px;
+        height: auto;
+    }
+}
+
+@media (max-width: 767.98px) {
+    #topbar-logo img {
+        height: 60px;
+        width: auto;
+    }
+}
+
 #topbar-center {
     display: flex;
     flex-direction: column;
@@ -92,9 +125,10 @@
     width: 100%;
 }
 
-
 #topbar-center h1 {
-    color: var(--theme-green);
+    /* Dark-mode swap follows the same pattern the theme already uses for links
+       and headings, keeping the wordmark on-brand against the darker band. */
+    color: light-dark(var(--theme-green), var(--theme-yellow));
     font-weight: 700;
     text-transform: uppercase;
 }
@@ -117,9 +151,56 @@
     background-position: center center;
     background-repeat: no-repeat;
     background-image: url(../images/bg-2_small.png);
-    width: 1000%;
+    width: 10rem;
     height: 120px;
 }
+
+/* Below lg there is room to spare: #topbar-right is empty (its graphic is hidden by the
+   utilities on the element itself), the 270px logo column leaves a big gap beside the ~54px
+   stacked logo, and the fixed 120px band left ~30px of dead space under 90px of content.
+   Hug the content and group the wordmark next to the logo.
+
+   This block MUST stay after the base rules above: #topbar-right, #topbar-left a and the
+   #topbar-center/#middle-top-content rules are the same specificity, so source order decides. */
+@media (max-width: 991.98px) {
+    #middle-topbar {
+        height: auto;
+    }
+
+    #middle-top-content {
+        justify-content: flex-start;
+        gap: 1rem;
+    }
+
+    /* The column AND its anchor both carry the 270px desktop width; let them hug the
+       ~54px stacked logo instead of reserving the full lockup width. */
+    #topbar-left,
+    #topbar-left a {
+        width: auto;
+    }
+
+    /* Only ever holds the (already hidden) graphic, so drop the empty column. */
+    #topbar-right {
+        display: none;
+    }
+
+    #topbar-center {
+        width: auto;
+        align-items: flex-start;
+        text-align: left;
+    }
+
+    /* Bootstrap's h1 carries margin-bottom: .5rem, which otherwise leaves the wordmark ~4px
+       above the band's centre once the subtitle is hidden. */
+    #topbar-center h1 {
+        margin-bottom: 0;
+    }
+}
+
+/* Visibility is handled by Bootstrap display utilities on the element itself
+   (d-none d-lg-block in header.html), because the flex row squeezes #topbar-right
+   below lg: the graphic measured 94px wide (md) / 67px (sm) and 0 on phones, so
+   `cover` was showing a heavily cropped sliver of it. */
 
 /* #topbar-right #watch-listen-links {
     display: flex;
@@ -188,6 +269,26 @@
     padding-bottom: 0;
 }
 
+/* Offcanvas (hamburger) panel — painted the same gold as the bar so the white
+   .nav-link / .auth-status / .theme-toggle text inside it stays legible. Without
+   this the panel inherited var(--bs-body-bg) and rendered white-on-white in light
+   mode. Bootstrap resets the offcanvas to `background-color: transparent !important`
+   at >=992px, where the bar shows inline, so this only affects the collapsed panel. */
+#desktop-nav #offcanvasNavbar {
+    background-color: light-dark(var(--theme-dark-gold), #4A3F28);
+}
+
+/* The title inherits the theme's heading gold, which would vanish on a gold panel. */
+#desktop-nav #offcanvasNavbar .offcanvas-title {
+    color: #fff;
+}
+
+/* Bootstrap exposes the white close button only as the .btn-close-white class, so
+   set the custom property it feeds instead of touching the markup. */
+#desktop-nav #offcanvasNavbar .btn-close {
+    --bs-btn-close-filter: invert(1) grayscale(100%) brightness(200%);
+}
+
 #desktop-nav #desktop-nav-container {
     /* display: flex;
     justify-content: space-between;
@@ -196,6 +297,15 @@
     /* margin: 0;
     padding: 0;
     list-style: none; */
+}
+
+/* Pin the nav row to the bar height — but ONLY at the expanded breakpoint. Unscoped,
+   this also clamped the offcanvas body on phones: Bootstrap gives it `overflow-y: auto`,
+   so the hamburger panel became a 60px scrolling strip (measured 60 vs 456px of content). */
+@media (min-width: 992px) {
+    .offcanvas-body {
+        max-height: 60px;
+    }
 }
 
 #desktop-nav #main-horiz-menu>li:first-child {
@@ -228,14 +338,37 @@
     height: auto;
 }
 
-/* Open the main-nav dropdowns on hover instead of only on click.
-   Scoped to devices that support hover (mouse/trackpad) so touch devices
-   keep the native click behaviour. */
-@media (hover: hover) and (pointer: fine) {
+/* Open the main-nav dropdowns on hover instead of only on click — but only in the
+   EXPANDED bar: Bootstrap's navbar-expand-lg breakpoint (992px) and up, on devices
+   that really have a fine pointer. The breakpoint matters more than the pointer query:
+   a desktop browser narrowed below lg still reports hover/pointer:fine, yet there the
+   nav is an offcanvas, and a hover-opened menu (plus :focus-within, which sticks after
+   a tap) fights Bootstrap's tap/click toggle. Inside the offcanvas the native click
+   behaviour is therefore left alone. */
+@media (min-width: 992px) and (hover: hover) and (pointer: fine) {
 
     #desktop-nav #main-horiz-menu .nav-item.dropdown:hover>.dropdown-menu,
     #desktop-nav #main-horiz-menu .nav-item.dropdown:focus-within>.dropdown-menu {
         display: block;
+    }
+
+    /* Only one menu at a time. :hover and :focus-within are independent conditions on
+       sibling items, so a focused toggle (keyboard, or a browser that focuses a clicked
+       link) kept its menu rendered next to the one being hovered — two overlapping
+       260px-wide panels. While the pointer is anywhere inside the bar, only the hovered
+       item's menu survives; the focused one comes back as soon as the pointer leaves.
+       Needs both ids to outrank the :focus-within rule above. */
+    #desktop-nav #main-horiz-menu:hover .nav-item.dropdown:not(:hover)>.dropdown-menu {
+        display: none;
+    }
+
+    /* Keep the parent item highlighted while the pointer is inside its menu. The link
+       stops matching :hover as soon as the pointer moves down into .dropdown-menu, so
+       the green block vanished the moment you reached a row. */
+    #desktop-nav #main-horiz-menu .nav-item.dropdown:hover>.nav-link,
+    #desktop-nav #main-horiz-menu .nav-item.dropdown:focus-within>.nav-link {
+        background-color: var(--theme-green);
+        color: #fff;
     }
 }
 
@@ -270,7 +403,7 @@
 
 .navbar-nav .nav-item.dropdown>.dropdown-menu a:hover {
     color: #fefefe;
-    background-color: var(--theme-dark-green);
+    background-color: var(--theme-menu-hover);
     font-size: 0.9rem;
     /* text-decoration: none; */
 }
@@ -289,7 +422,7 @@
     background-size: cover;
     background-position: center center;
     background-repeat: no-repeat;
-    background-image: url(/static/images/bg-2_footer.png);
+    background-image: url(../images/bg-2_footer.png);
     background-blend-mode: multiply;
     color: #fefefe;
     font-size: 14px;
@@ -329,4 +462,66 @@
 #desktop-nav .auth-action svg,
 #desktop-nav .auth-status svg {
     flex-shrink: 0;
+}
+
+/* Theme toggle — sits in the auth cluster next to the user / log-out controls.
+   theme.js flips <html data-theme>, which selects the icon here; without an
+   attribute (JS disabled) "auto" is the sensible default. */
+#desktop-nav .theme-toggle {
+    /* Revealed by theme.js: without JS the button could not toggle anything. */
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    background: none;
+    border: 0;
+    padding: 0 0.75rem;
+    color: #fff;
+    cursor: pointer;
+}
+
+html.theme-ready #desktop-nav .theme-toggle {
+    display: inline-flex;
+}
+
+#desktop-nav .theme-toggle:hover {
+    /* Matches #desktop-nav .nav-link:hover. */
+    background-color: var(--theme-green);
+    color: #fff;
+}
+
+#desktop-nav .theme-toggle svg {
+    flex-shrink: 0;
+}
+
+.theme-toggle .theme-icon {
+    display: none;
+}
+
+html[data-theme="auto"] .theme-toggle .theme-icon-when-auto,
+html[data-theme="light"] .theme-toggle .theme-icon-when-light,
+html[data-theme="dark"] .theme-toggle .theme-icon-when-dark,
+html:not([data-theme]) .theme-toggle .theme-icon-when-auto {
+    display: inline-flex;
+}
+
+/* All-groups table: indent each group by its depth in the MPTT hierarchy. */
+.group-name[data-level="1"] {
+    padding-left: 1rem;
+}
+
+.group-name[data-level="2"] {
+    padding-left: 2rem;
+}
+
+.group-name[data-level="3"] {
+    padding-left: 3rem;
+}
+
+.group-name[data-level="4"] {
+    padding-left: 4rem;
+}
+
+.group-name[data-level="5"] {
+    padding-left: 5rem;
 }

@@ -34,25 +34,25 @@
                 <a class="nav-link" href="{% url "pwms:dashboard" %}">Dashboard</a>
               </li>
               <li class="nav-item">
-                <a class="nav-link" href="{% url "pwms:workflows" %}"" >Workflows</a>
+                <a class="nav-link" href="{% url "pwms:workflows" %}">Workflows</a>
               </li>
               <li class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle"
-                  href="#"
-                  role="button"
-                  data-bs-toggle="dropdown"
-                aria-expanded="false">Groups</a>
+                   href="#"
+                   role="button"
+                   data-bs-toggle="dropdown"
+                   aria-expanded="false">Groups</a>
                 <ul class="dropdown-menu">
-                  <li><a class="dropdown-item" href="{% url "pwms:groups" %}">My Groups</a></li>
-                  <li><a class="dropdown-item" href="#">All Groups</a></li>
+                  <li><a class="dropdown-item" href="{% url "pwms:my_groups" %}">My Groups</a></li>
+                  <li><a class="dropdown-item" href="{% url "pwms:all_groups" %}">All Groups</a></li>
                 </ul>
               </li>
               <li class="nav-item dropdown">
                 <a class="nav-link dropdown-toggle"
-                  href="#"
-                  role="button"
-                  data-bs-toggle="dropdown"
-                aria-expanded="false">Reports</a>
+                   href="#"
+                   role="button"
+                   data-bs-toggle="dropdown"
+                   aria-expanded="false">Reports</a>
                 <ul class="dropdown-menu">
                   <li><a class="dropdown-item" href="{% url "pwms:reports" %}">Action</a></li>
                   <li><a class="dropdown-item" href="#">Another action</a></li>
@@ -67,14 +67,22 @@
               </li>
             </ul>
             <div class="auth-menu">
+              <button type="button"
+                      class="theme-toggle"
+                      aria-label="Toggle colour theme"
+                      title="Toggle colour theme (auto, light, dark)">
+                <span class="theme-icon theme-icon-when-auto">{% lucide "sun-moon" size=20 %}</span>
+                <span class="theme-icon theme-icon-when-light">{% lucide "sun" size=20 %}</span>
+                <span class="theme-icon theme-icon-when-dark">{% lucide "moon" size=20 %}</span>
+              </button>
               {% if user.is_authenticated %}
                 <span class="auth-status">
                   {% lucide "circle-user" size=20 %}
                   <span>{{ user.get_full_name|default:user.get_username }}</span>
                 </span>
                 <a class="nav-link auth-action"
-                  href="{% url "pwms:logout" %}"
-                  title="Sign out">
+                   href="{% url "pwms:logout" %}"
+                   title="Sign out">
                   {% lucide "log-out" size=20 %}
                   <span>Log out</span>
                 </a>

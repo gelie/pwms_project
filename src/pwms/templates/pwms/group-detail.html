@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}{{ group.name }}{% endblock title %}
+{% block content %}
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:all_groups" %}">All Groups</a>
+      </li>
+      <li class="breadcrumb-item active" aria-current="page">{{ group.name }}</li>
+    </ol>
+  </nav>
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+      <h1 class="mb-1">{{ group.name }}</h1>
+      {% if group.get_full_path %}<p class="text-muted mb-0">{{ group.get_full_path }}</p>{% endif %}
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <span class="badge text-bg-secondary">{{ group.get_group_type_display }}</span>
+      {% if group.is_active %}
+        <span class="badge text-bg-success">Active</span>
+      {% else %}
+        <span class="badge text-bg-danger">Inactive</span>
+      {% endif %}
+    </div>
+  </div>
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-sm-6 col-lg-4">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="small text-uppercase text-muted">Members</div>
+          <div class="fs-2 fw-semibold">{{ member_count }}</div>
+          <div class="small text-muted">Users with an active membership</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-4">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="small text-uppercase text-muted">Sub-groups</div>
+          <div class="fs-2 fw-semibold">{{ child_groups|length }}</div>
+          <div class="small text-muted">Groups directly below this one</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <h2 class="h4">Details</h2>
+  <div class="table-responsive mb-4">
+    <table class="table align-middle">
+      <caption class="visually-hidden">Group details</caption>
+      <tbody>
+        <tr>
+          <th scope="row">Short name</th>
+          <td>{{ group.short_name|default:"—" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Type</th>
+          <td>{{ group.get_group_type_display }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Parent</th>
+          <td>
+            {% if group.parent %}
+              <a href="{% url "pwms:group_detail" group.parent.pk %}">{{ group.parent.name }}</a>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Dates</th>
+          <td>
+            {{ group.start_date|date:"Y-m-d"|default:"—" }}
+            {% if group.end_date %}to {{ group.end_date|date:"Y-m-d" }}{% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Location</th>
+          <td>{{ group.location|default:"—" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Contact</th>
+          <td>
+            {% if group.contact_email %}
+              <a href="mailto:{{ group.contact_email }}">{{ group.contact_email }}</a>
+            {% endif %}
+            {% if group.contact_phone %}<span class="d-block">{{ group.contact_phone }}</span>{% endif %}
+            {% if not group.contact_email and not group.contact_phone %}—{% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Description</th>
+          <td>{{ group.description|linebreaks|default:"—" }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  {% if child_groups %}
+    <h2 class="h4">Sub-groups</h2>
+    <ul class="list-group mb-4">
+      {% for child in child_groups %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <a href="{% url "pwms:group_detail" child.pk %}">{{ child.name }}</a>
+          <span class="badge text-bg-secondary">{{ child.get_group_type_display }}</span>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+  <h2 class="h4">Members ({{ member_count }})</h2>
+  <div class="table-responsive">
+    <table class="table table-striped table-hover align-middle">
+      <caption class="visually-hidden">Users with an active membership in this group</caption>
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Role</th>
+          <th scope="col">Member since</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for membership in memberships %}
+          <tr>
+            <td>{{ membership.user.get_full_name|default:membership.user.get_username }}</td>
+            <td><span class="badge text-bg-secondary">{{ membership.role.name }}</span></td>
+            <td>{{ membership.start_date|date:"Y-m-d" }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="3" class="text-center text-muted py-4">This group has no active members.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock content %}

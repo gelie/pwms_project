@@ -22,14 +22,24 @@
     <link rel="stylesheet" href="{% static "css/parl-light-dark.css" %}">
     <link rel="stylesheet" href="{% static "css/style.css" %}">
     <link rel="stylesheet" href="{% static "css/fonts.css" %}">
+    {# Not deferred: sets <html data-theme> during parsing, before the first paint. #}
+    <script src="{% static "js/theme.js" %}"></script>
     <script src="{% static "js/bootstrap.bundle.min.js" %}" defer></script>
+    <script src="{% static "js/navbar.js" %}" defer></script>
     <title>PWMS</title>
   </head>
   <body>
     {% include "header.html" %}
     {% include "navbar.html" %}
-    {% block content %}
-    {% endblock content %}
+    {% comment %}
+      One responsive container for every page: full width up to Bootstrap's per-breakpoint
+      max-widths, instead of the old container/col-lg-10/col-xl-8 grid that narrowed the
+      content. Pages contributing their own wrapper would double the gutters.
+    {% endcomment %}
+    <div id="content" class="container mt-5">
+      {% block content %}
+      {% endblock content %}
+    </div>
     <div id="site-footer">
       <p>
         Made with {% lucide "heart" fill="red" stroke="red" %}
