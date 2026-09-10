@@ -1,6 +1,7 @@
 from typing import ClassVar
 
 from django.contrib import admin
+from mptt.admin import MPTTModelAdmin
 
 from .models import (
     Group,
@@ -49,13 +50,20 @@ class UserAdmin(admin.ModelAdmin):
 
 
 @admin.register(Group)
-class GroupAdmin(admin.ModelAdmin):
-    """Admin for the hierarchical ``pwms.Group`` (MPTT)."""
+class GroupAdmin(MPTTModelAdmin):
+    """Admin for the hierarchical ``pwms.Group`` (MPTT).
+
+    Subclasses ``mptt.admin.MPTTModelAdmin`` so the change list is ordered as
+    a tree (``tree_id``, ``lft``) and every row is indented by its depth,
+    showing each group together with all of its descendants.
+    """
 
     list_display = ("name", "parent", "group_type", "short_name", "is_active")
     list_filter = ("group_type", "is_active")
     search_fields = ("name", "short_name")
-    ordering = ("name",)
+    # Note: deliberately no ``ordering`` here. MPTTModelAdmin falls back to
+    # tree ordering (tree_id, lft) when it's empty, which is what keeps the
+    # hierarchy visually intact. An explicit ordering would flatten the tree.
 
 
 @admin.register(Role)
