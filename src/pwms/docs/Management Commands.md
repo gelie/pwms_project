@@ -31,10 +31,15 @@ All commands live in `pwms/management/commands/` and run as:
 | --- | --- | --- |
 | `populate_sites` | mirror SharePoint sites, drives (and best-effort site members) into the local `Sharepoint*` tables | ✅ live — see [SharePoint Sync](./SharePoint%20Sync.md) |
 
+Key options: `--failures-file PATH` writes the sites whose member list could not
+be read to a CSV report for the SharePoint admin (default:
+`logs/site_member_failures_<timestamp>.csv`).
+
 > Site-**member** sync is implemented but is currently skipped at runtime: it
 > needs Graph application permissions (`Sites.Manage.All` /
 > `Sites.FullControl.All`) that the configured app token does not yet have.
-> Sites and drives sync fine with the current token.
+> Sites and drives sync fine with the current token. Skipped sites are written
+> to the CSV failure report described above.
 
 ## Committee scraping
 

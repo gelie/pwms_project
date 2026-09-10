@@ -1,9 +1,16 @@
 import asyncio
+import csv
+import logging
+from logging.handlers import RotatingFileHandler
+from pathlib import Path
+from typing import ClassVar
 
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
+
 from pwms.models import SharepointDrive, SharepointSite, SharepointSiteMember, User
 from pwms.utils.sharepoint import (
     get_all_sites,
@@ -12,6 +19,10 @@ from pwms.utils.sharepoint import (
     get_token,
     iter_permission_identities,
 )
+
+# Dedicated logger for this command – writes to logs/populate_sites.log and is
+# isolated from the project-wide root logger (see ``logger.propagate``).
+logger = logging.getLogger("pwms.populate_sites")
 
 
 class Command(BaseCommand):
@@ -28,20 +39,146 @@ class Command(BaseCommand):
 
     If a site already exists, it is only updated when the remote
     ``lastModifiedDateTime`` is newer than the value stored in the database.
+
+    All progress is written to a dedicated rotating log file
+    (``<LOG_DIR>/populate_sites.log``) in addition to stdout, so a run can be
+    audited without trawling the project-wide ``pwms.log``.
+
+    Sites whose ``/sites/{id}/permissions`` call fails are collected into a CSV
+    report (``--failures-file``) suitable for sending to the SharePoint admin.
     """
 
     help = "Populate or update the Site and Drive tables with data fetched from SharePoint."
 
+    #: Name of the dedicated log file created inside ``settings.LOG_DIR``.
+    log_filename = "populate_sites.log"
+
+    #: Columns of the hand-off report, in presentation order.
+    failure_columns = (
+        "Site Name",
+        "Site URL",
+        "Site ID",
+        "HTTP Status",
+        "Graph Endpoint",
+        "Error",
+        "Recommended Action",
+    )
+
+    #: Remediation hint per Graph HTTP status (a generic one is used otherwise).
+    _failure_actions: ClassVar[dict[int, str]] = {
+        401: "App-only token was rejected – confirm CLIENT_ID/CLIENT_SECRET are "
+        "correct and that the app registration still has admin consent.",
+        403: "Grant the calling app the Sites.Manage.All (or Sites.FullControl.All) "
+        "application permission with tenant-wide admin consent, then re-run the sync.",
+        404: "Site not found or not visible to the app – confirm the site still "
+        "exists and that the app has been granted access to it.",
+        429: "Graph throttled the request – re-run the sync later.",
+        503: "Graph was temporarily unavailable – re-run the sync later.",
+    }
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--failures-file",
+            default=None,
+            help=(
+                "Where to write the CSV report of sites whose members could not "
+                "be read. Defaults to "
+                "<LOG_DIR>/site_member_failures_<timestamp>.csv"
+            ),
+        )
+
+    def _setup_logging(self) -> logging.Logger:
+        """Attach a dedicated rotating file handler for this command.
+
+        The handler is recreated on every run (idempotently) and writes at
+        ``DEBUG`` level with the calling function/line captured via
+        ``stacklevel``. ``propagate`` is disabled so these records do not also
+        land in the shared ``pwms.log`` file.
+        """
+        logger.setLevel(logging.DEBUG)
+
+        # Avoid stacking duplicate handlers on repeated invocations.
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+
+        settings.LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+        file_handler = RotatingFileHandler(
+            settings.LOG_DIR / self.log_filename,
+            maxBytes=10 * 1024 * 1024,
+            backupCount=5,
+            encoding="utf-8",
+        )
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.setFormatter(
+            logging.Formatter(
+                "%(asctime)s - %(levelname)s - [%(funcName)s:%(lineno)d] - %(message)s"
+            )
+        )
+        logger.addHandler(file_handler)
+        logger.propagate = False
+        return logger
+
+    def _log(self, style, message: str, level: int = logging.INFO):
+        """Write ``message`` to the log file and echo it to stdout styled."""
+        logger.log(level, message, stacklevel=2)
+        self.stdout.write(style(message))
+
+    def _describe_permission_failure(self, site, exc) -> dict:
+        """Normalise one ``get_site_permissions`` failure into a report row."""
+        status = getattr(getattr(exc, "response", None), "status_code", "") or ""
+        if status:
+            action = self._failure_actions.get(
+                status,
+                "Investigate the Graph error above before re-running the sync.",
+            )
+        else:
+            action = (
+                "Not an HTTP error – check the message; if it concerns the access "
+                "token, re-run once a token can be retrieved."
+            )
+
+        return {
+            "Site Name": site.name,
+            "Site URL": site.url,
+            "Site ID": site.site_id,
+            "HTTP Status": status,
+            "Graph Endpoint": (
+                f"https://graph.microsoft.com/v1.0/sites/{site.site_id}/permissions"
+            ),
+            "Error": " ".join(str(exc).split()),
+            "Recommended Action": action,
+        }
+
+    def _write_failures_report(self, failures: list[dict], path: Path) -> Path:
+        """Write ``failures`` to ``path`` as a CSV for the SharePoint admin.
+
+        ``utf-8-sig`` is used so Excel detects the encoding from the BOM.
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("w", newline="", encoding="utf-8-sig") as handle:
+            writer = csv.DictWriter(handle, fieldnames=self.failure_columns)
+            writer.writeheader()
+            writer.writerows(failures)
+        return path
+
     def handle(self, *args, **options):
         """Entry point used by ``manage.py``."""
+        self._setup_logging()
+        self._log(
+            self.style.HTTP_INFO,
+            f"Starting SharePoint site sync (log file: {settings.LOG_DIR / self.log_filename})",
+        )
         try:
             # Retrieve token (synchronous) and sites (asynchronous) using the existing helpers.
             token_data = get_token()
             sites_response = asyncio.run(get_all_sites(token_data))
             self._process_sites(sites_response, token_data)
             # Members need a site + drive sync first (we operate on stored rows).
-            self._process_site_members(token_data)
+            self._process_site_members(token_data, options.get("failures_file"))
+            self._log(self.style.SUCCESS, "Finished SharePoint site sync")
         except Exception as exc:  # pragma: no cover – Django will wrap this.
+            logger.exception("Failed to populate sites")
             raise CommandError(f"Failed to populate sites: {exc}")
 
     def _process_sites(self, sites_response, token_data):
@@ -59,7 +196,11 @@ class Command(BaseCommand):
         for site in sites:
             site_id = site.get("id")
             if not site_id:
-                self.stdout.write(self.style.WARNING("Skipping site with missing id"))
+                self._log(
+                    self.style.WARNING,
+                    "Skipping site with missing id",
+                    level=logging.WARNING,
+                )
                 continue
 
             # The Graph query no longer filters personal (OneDrive) sites, so
@@ -125,9 +266,7 @@ class Command(BaseCommand):
             if to_create:
                 SharepointSite.objects.bulk_create(to_create)
                 created_cnt = len(to_create)
-                self.stdout.write(
-                    self.style.SUCCESS(f"Created {created_cnt} new site(s)")
-                )
+                self._log(self.style.SUCCESS, f"Created {created_cnt} new site(s)")
             if to_update:
                 SharepointSite.objects.bulk_update(
                     to_update,
@@ -140,14 +279,11 @@ class Command(BaseCommand):
                     ],
                 )
                 updated_cnt = len(to_update)
-                self.stdout.write(
-                    self.style.SUCCESS(f"Updated {updated_cnt} existing site(s)")
-                )
+                self._log(self.style.SUCCESS, f"Updated {updated_cnt} existing site(s)")
 
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Finished populating sites – {created_cnt} created, {updated_cnt} updated."
-            )
+        self._log(
+            self.style.SUCCESS,
+            f"Finished populating sites – {created_cnt} created, {updated_cnt} updated.",
         )
 
         # ------------------------------------------------------------------
@@ -157,7 +293,7 @@ class Command(BaseCommand):
 
     def _process_drives(self, token_data):
         """Synchronise the ``Drive`` model with the data returned from SharePoint."""
-        self.stdout.write(self.style.HTTP_INFO("Processing drives for all sites..."))
+        self._log(self.style.HTTP_INFO, "Processing drives for all sites...")
 
         # Get all sites from the database
         sites = SharepointSite.objects.all()
@@ -171,10 +307,10 @@ class Command(BaseCommand):
                 drives = drives_response.get("value", [])
 
                 if not isinstance(drives, list):
-                    self.stdout.write(
-                        self.style.WARNING(
-                            f"Unexpected drives response format for site {site.name}"
-                        )
+                    self._log(
+                        self.style.WARNING,
+                        f"Unexpected drives response format for site {site.name}",
+                        level=logging.WARNING,
                     )
                     continue
 
@@ -185,10 +321,10 @@ class Command(BaseCommand):
                 for drive in drives:
                     drive_id = drive.get("id")
                     if not drive_id:
-                        self.stdout.write(
-                            self.style.WARNING(
-                                f"Skipping drive with missing id for site {site.name}"
-                            )
+                        self._log(
+                            self.style.WARNING,
+                            f"Skipping drive with missing id for site {site.name}",
+                            level=logging.WARNING,
                         )
                         continue
 
@@ -230,37 +366,37 @@ class Command(BaseCommand):
                         SharepointDrive.objects.bulk_create(drives_to_create)
                         drives_created_cnt = len(drives_to_create)
                         total_drives_created += drives_created_cnt
-                        self.stdout.write(
-                            self.style.SUCCESS(
-                                f"Created {drives_created_cnt} drive(s) for site {site.name}"
-                            )
+                        self._log(
+                            self.style.SUCCESS,
+                            f"Created {drives_created_cnt} drive(s) for site {site.name}",
+                            level=logging.DEBUG,
                         )
 
                     if drives_to_update:
                         SharepointDrive.objects.bulk_update(drives_to_update, ["name"])
                         drives_updated_cnt = len(drives_to_update)
                         total_drives_updated += drives_updated_cnt
-                        self.stdout.write(
-                            self.style.SUCCESS(
-                                f"Updated {drives_updated_cnt} drive(s) for site {site.name}"
-                            )
+                        self._log(
+                            self.style.SUCCESS,
+                            f"Updated {drives_updated_cnt} drive(s) for site {site.name}",
+                            level=logging.DEBUG,
                         )
 
             except Exception as e:
-                self.stdout.write(
-                    self.style.ERROR(
-                        f"Failed to process drives for site {site.name}: {e!s}"
-                    )
+                self._log(
+                    self.style.ERROR,
+                    f"Failed to process drives for site {site.name}: {e!s}",
+                    level=logging.ERROR,
                 )
+                logger.debug("Drive sync failure detail", exc_info=True)
                 continue
 
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"Finished processing drives – {total_drives_created} created, {total_drives_updated} updated."
-            )
+        self._log(
+            self.style.SUCCESS,
+            f"Finished processing drives – {total_drives_created} created, {total_drives_updated} updated.",
         )
 
-    def _process_site_members(self, token_data):
+    def _process_site_members(self, token_data, failures_file: str | None = None):
         """Synchronise ``SharepointSiteMember`` rows for every stored site.
 
         The remote site "members" are obtained from Graph's site permissions
@@ -271,9 +407,12 @@ class Command(BaseCommand):
 
         Requires the application token to be granted ``Sites.Manage.All`` /
         ``Sites.FullControl.All``; sites where that call is forbidden are
-        reported and skipped (the site/drive sync is unaffected).
+        reported and skipped (the site/drive sync is unaffected). Those sites
+        are also written to ``failures_file`` (default
+        ``<LOG_DIR>/site_member_failures_<timestamp>.csv``) so the failures can
+        be handed to a SharePoint admin.
         """
-        self.stdout.write(self.style.HTTP_INFO("Processing site members..."))
+        self._log(self.style.HTTP_INFO, "Processing site members...")
 
         # Local users, keyed by lower-cased email and username, for O(1) matching.
         user_by_email, user_by_username = {}, {}
@@ -289,16 +428,18 @@ class Command(BaseCommand):
             "unmatched": 0,
             "sites_skipped": 0,
         }
+        failures: list[dict] = []
 
         for site in SharepointSite.objects.all().only("id", "site_id", "name"):
             try:
                 response = asyncio.run(get_site_permissions(token_data, site.site_id))
             except Exception as e:
-                self.stdout.write(
-                    self.style.WARNING(
-                        f"Site members unavailable for {site.name}: {e!s}"
-                    )
+                self._log(
+                    self.style.WARNING,
+                    f"Site members unavailable for {site.name}: {e!s}",
+                    level=logging.WARNING,
                 )
+                failures.append(self._describe_permission_failure(site, e))
                 total["sites_skipped"] += 1
                 continue
 
@@ -357,11 +498,32 @@ class Command(BaseCommand):
             if unmatched:
                 total["unmatched"] += unmatched
 
-        self.stdout.write(
-            self.style.SUCCESS(
-                "Finished processing site members – "
-                f"{total['created']} created, {total['deactivated']} deactivated, "
-                f"{total['unmatched']} remote principals had no local user, "
-                f"{total['sites_skipped']} site(s) skipped (permissions API unavailable)."
-            )
+        self._log(
+            self.style.SUCCESS,
+            "Finished processing site members – "
+            f"{total['created']} created, {total['deactivated']} deactivated, "
+            f"{total['unmatched']} remote principals had no local user, "
+            f"{total['sites_skipped']} site(s) skipped (permissions API unavailable).",
         )
+
+        # Hand-off report for the SharePoint admin: one row per site whose
+        # ``/sites/{id}/permissions`` call failed.
+        if failures:
+            report_path = (
+                Path(failures_file)
+                if failures_file
+                else settings.LOG_DIR
+                / f"site_member_failures_{timezone.now():%Y%m%d_%H%M%S}.csv"
+            )
+            self._write_failures_report(failures, report_path)
+            self._log(
+                self.style.WARNING,
+                f"{len(failures)} site(s) could not be read – report for the "
+                f"SharePoint admin written to {report_path}",
+                level=logging.WARNING,
+            )
+        else:
+            self._log(
+                self.style.SUCCESS,
+                "No site-member permission failures – no report written.",
+            )

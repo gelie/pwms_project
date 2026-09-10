@@ -32,6 +32,13 @@ Run it from the repo root:
 .venv/bin/python manage.py populate_sites
 ```
 
+Sites whose member list cannot be read are written to a CSV hand-off report; the
+path can be chosen explicitly:
+
+```bash
+.venv/bin/python manage.py populate_sites --failures-file reports/member_access_gaps.csv
+```
+
 The command is **safe to re-run**: it upserts, never deletes rows, and skips a
 record when the remote copy is not newer than what is stored.
 
@@ -83,6 +90,7 @@ flowchart TD
     C[upsert SharepointSite<br/>skip personal sites<br/>update only if remote newer] --> D
     D[per stored site: get_site_drives<br/>upsert SharepointDrive] --> E
     E[per stored site: get_site_permissions<br/>best effort, skip on 403] --> F[SharepointSiteMember<br/>create + deactivate removed]
+    E --> G[skipped sites → CSV failure report<br/>for the SharePoint admin]
 ```
 
 ### 1. Sites (`_process_sites`)
@@ -125,6 +133,21 @@ flowchart TD
 > and the command reports each site as skipped —
 > *“Site members unavailable for …”* — while the site/drive sync completes
 > normally.
+
+#### Failure report for the SharePoint admin
+
+Every site whose `/sites/{id}/permissions` call fails is recorded in a CSV
+report, written by default to
+`logs/site_member_failures_<YYYYmmdd_HHMMSS>.csv` and overridable with
+`--failures-file PATH`. The timestamped default means a fresh report is
+produced per run, so an already-sent report is never silently overwritten.
+
+The report has one row per failing site, with the columns **Site Name, Site
+URL, Site ID, HTTP Status, Graph Endpoint, Error, Recommended Action** — the
+*Recommended Action* is derived from the HTTP status (e.g. `403` → grant the
+app `Sites.Manage.All`, `404` → site not visible to the app). It is written as
+UTF-8 with a BOM so Excel opens it cleanly, and no file is produced when every
+site succeeds.
 
 ---
 
@@ -193,7 +216,8 @@ yet driven by a management command.
 | --- | --- |
 | `SHAREPOINT_TOKEN_URL not configured` / empty `CLIENT_ID`/`CLIENT_SECRET` | `.env` missing `CLIENT_ID`, `CLIENT_SECRET` or `TENANT_ID` at the repo root |
 | Token request `HTTP 401/400` | wrong client id/secret or tenant; check Azure AD app registration |
-| `…Site members unavailable for <site>: …403…` | app lacks `Sites.Manage.All`/`Sites.FullControl.All` — see [Granting member access](#granting-member-access-to-enable-the-member-sync) |
+| `…Site members unavailable for <site>: …403…` | app lacks `Sites.Manage.All`/`Sites.FullControl.All` — see [Granting member access](#granting-member-access-to-enable-the-member-sync); the affected sites are listed in the CSV failure report |
+| Need the list of sites whose member sync failed | read `logs/site_member_failures_<timestamp>.csv` from the last run (or pass `--failures-file PATH`) and send it to the SharePoint admin |
 | Sites fetched but a large tenant looks incomplete | should no longer happen — `get_all_sites`/`get_site_drives` follow `@odata.nextLink` |
 | Drives empty for a site | that site may genuinely have no document library |
 | Command fails early | token expired **and** no cached active row → re-run after granting/refreshing consent |
