@@ -1,0 +1,28 @@
+{% extends "admin/base.html" %}
+{% load i18n static %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | {{ site_title|default:_('PWMS Admin') }}{% endblock %}
+
+{% block extrastyle %}
+  <link rel="stylesheet" href="{% static "css/fonts.css" %}">
+  <link rel="stylesheet" href="{% static "css/admin.css" %}">
+{% endblock %}
+
+{% block branding %}
+  <div id="site-name" class="pwms-brand">
+    <a href="{% url 'admin:index' %}" class="pwms-brand__link">
+      <img class="pwms-brand__logo"
+           src="{% static "images/parliament-logo2.png" %}"
+           alt="{% translate 'Parliament of the Republic of South Africa' %}">
+      <span class="pwms-brand__titles">
+        <span class="pwms-brand__title">PWMS</span>
+        <span class="pwms-brand__subtitle">{% translate 'Admin' %}</span>
+      </span>
+    </a>
+  </div>
+  {% if user.is_anonymous %}
+    {% include "admin/color_theme_toggle.html" %}
+  {% endif %}
+{% endblock %}
+
+{% block nav-global %}{% endblock %}

@@ -96,7 +96,10 @@ ROOT_URLCONF = "pwms.root_urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        # App templates dir is also on the *filesystem* loader (checked before
+        # app directories), so admin template overrides in
+        # src/pwms/templates/admin/ win over django.contrib.admin's defaults.
+        "DIRS": [BASE_DIR / "src" / "pwms" / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [

@@ -1,0 +1,381 @@
+/*
+ * PWMS admin skin — branded to match the front-end web app.
+ *
+ * Reuses the parliamentary palette from the app (parl-light-dark.css): greens,
+ * golds and cream. It works with Django's built-in light/dark theme toggle
+ * (theme.js + dark_mode.css), so both `data-theme` modes and the OS "auto"
+ * mode are covered below.
+ */
+
+/* ---------------------------------------------------------------------------
+ * LIGHT
+ * ------------------------------------------------------------------------- */
+html[data-theme="light"],
+:root {
+  --primary: #275937;
+  --secondary: #1f4a2d;
+  --accent: #b3995d;
+  --primary-fg: #ffffff;
+
+  --body-fg: #2c2a26;
+  --body-bg: #fbfaf6;
+  --body-quiet-color: #6b6457;
+  --body-medium-color: #4c463c;
+  --body-loud-color: #1a1815;
+
+  --header-color: #f6f3ec;
+  --header-branding-color: #efbd47;
+  --header-bg: var(--secondary);
+  --header-link-color: #ffffff;
+
+  --breadcrumbs-fg: #f0dca4;
+  --breadcrumbs-link-fg: #ffffff;
+  --breadcrumbs-bg: #16341f;
+
+  --link-fg: #1f5a2f;
+  --link-hover-color: #9e7c0c;
+  --link-selected-fg: #1f4a2d;
+
+  --hairline-color: #e6dfcc;
+  --border-color: #c9bda1;
+
+  --error-fg: #b02a2a;
+
+  --darkened-bg: #f3efe2;
+  --selected-bg: #e9e0c8;
+  --selected-row: #f6eecf;
+
+  --button-fg: #ffffff;
+  --button-bg: #1f4a2d;
+  --button-hover-bg: #275937;
+  --default-button-bg: #b3995d;
+  --default-button-hover-bg: #9e7c0c;
+  --close-button-bg: #6b6457;
+  --close-button-hover-bg: #4c463c;
+  --delete-button-bg: #b02a2a;
+  --delete-button-hover-bg: #8f1f1f;
+
+  --object-tools-fg: #ffffff;
+  --object-tools-bg: #1f4a2d;
+  --object-tools-hover-bg: #275937;
+
+  --font-family-primary: "ff-dax-pro", "Helvetica Neue", Helvetica, Arial,
+    "Segoe UI", sans-serif;
+
+  --pwms-hdr-top: #2d663f;
+  --pwms-hdr-bottom: #1f4a2d;
+  --pwms-gold: #b3995d;
+  --pwms-gold-bright: #efbd47;
+  --pwms-gold-dark: #9e7c0c;
+  --pwms-cream: #f6f3ec;
+  color-scheme: light;
+}
+
+/* ---------------------------------------------------------------------------
+ * DARK (explicit toggle)
+ * ------------------------------------------------------------------------- */
+html[data-theme="dark"] {
+  --primary: #2d663f;
+  --secondary: #1a2e20;
+  --accent: #b3995d;
+  --primary-fg: #f2eee4;
+
+  --body-fg: #e6e0d2;
+  --body-bg: #121212;
+  --body-quiet-color: #c4bdaa;
+  --body-medium-color: #d8d2c2;
+  --body-loud-color: #f6f2e7;
+
+  --header-color: #e9e2d2;
+  --header-branding-color: #efbd47;
+  --header-bg: #142517;
+  --header-link-color: #f2eee4;
+
+  --breadcrumbs-fg: #c8a97e;
+  --breadcrumbs-link-fg: #f2eee4;
+  --breadcrumbs-bg: #0d1a10;
+
+  --link-fg: #86bb92;
+  --link-hover-color: #efbd47;
+  --link-selected-fg: #c8a97e;
+
+  --hairline-color: #2e2a20;
+  --border-color: #3a3226;
+
+  --error-fg: #e35f5f;
+
+  --darkened-bg: #1b1b1b;
+  --selected-bg: #232323;
+  --selected-row: #2b2416;
+
+  --button-fg: #ffffff;
+  --button-bg: #2d663f;
+  --button-hover-bg: #3a7a4e;
+  --default-button-bg: #9e7c0c;
+  --default-button-hover-bg: #b3995d;
+  --close-button-bg: #3a3226;
+  --close-button-hover-bg: #5a4f38;
+  --delete-button-bg: #b02a2a;
+  --delete-button-hover-bg: #d03a3a;
+
+  --object-tools-fg: #ffffff;
+  --object-tools-bg: #2d663f;
+  --object-tools-hover-bg: #3a7a4e;
+
+  --pwms-hdr-top: #1f4a2d;
+  --pwms-hdr-bottom: #142517;
+  color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------------------
+ * DARK (auto — OS is dark)
+ * ------------------------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --primary: #2d663f;
+    --secondary: #1a2e20;
+    --accent: #b3995d;
+    --primary-fg: #f2eee4;
+
+    --body-fg: #e6e0d2;
+    --body-bg: #121212;
+    --body-quiet-color: #c4bdaa;
+    --body-medium-color: #d8d2c2;
+    --body-loud-color: #f6f2e7;
+
+    --header-color: #e9e2d2;
+    --header-branding-color: #efbd47;
+    --header-bg: #142517;
+    --header-link-color: #f2eee4;
+
+    --breadcrumbs-fg: #c8a97e;
+    --breadcrumbs-link-fg: #f2eee4;
+    --breadcrumbs-bg: #0d1a10;
+
+    --link-fg: #86bb92;
+    --link-hover-color: #efbd47;
+    --link-selected-fg: #c8a97e;
+
+    --hairline-color: #2e2a20;
+    --border-color: #3a3226;
+
+    --error-fg: #e35f5f;
+
+    --darkened-bg: #1b1b1b;
+    --selected-bg: #232323;
+    --selected-row: #2b2416;
+
+    --button-fg: #ffffff;
+    --button-bg: #2d663f;
+    --button-hover-bg: #3a7a4e;
+    --default-button-bg: #9e7c0c;
+    --default-button-hover-bg: #b3995d;
+    --close-button-bg: #3a3226;
+    --close-button-hover-bg: #5a4f38;
+    --delete-button-bg: #b02a2a;
+    --delete-button-hover-bg: #d03a3a;
+
+    --object-tools-fg: #ffffff;
+    --object-tools-bg: #2d663f;
+    --object-tools-hover-bg: #3a7a4e;
+
+    --pwms-hdr-top: #1f4a2d;
+    --pwms-hdr-bottom: #142517;
+    color-scheme: dark;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * CHROME (theme-independent — driven by the variables above)
+ * ------------------------------------------------------------------------- */
+
+/* Header: green bar with the app's gold strip on top */
+#header {
+  position: relative;
+  padding: 14px 40px 14px 24px;
+  background: linear-gradient(180deg, var(--pwms-hdr-top), var(--pwms-hdr-bottom));
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+#header::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--pwms-gold),
+    var(--pwms-gold-bright),
+    var(--pwms-gold-dark)
+  );
+}
+
+#header a:link,
+#header a:visited {
+  color: var(--header-link-color);
+}
+
+#branding {
+  display: flex;
+  align-items: center;
+  min-height: 42px;
+}
+
+.pwms-brand__link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none !important;
+}
+
+.pwms-brand__logo {
+  height: 38px;
+  width: auto;
+}
+
+.pwms-brand__titles {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.05;
+}
+
+.pwms-brand__title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--header-link-color);
+}
+
+.pwms-brand__subtitle {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 2.2px;
+  color: var(--header-branding-color);
+}
+
+/* User tools (welcome / links / theme toggle) */
+#user-tools {
+  font-size: 0.78rem;
+  color: var(--header-color);
+}
+
+#user-tools a {
+  color: var(--header-branding-color);
+}
+
+#user-tools a:hover {
+  color: var(--header-link-color);
+}
+
+#user-tools .theme-toggle svg {
+  fill: var(--header-link-color);
+}
+
+/* Body chrome */
+body {
+  font-family: var(--font-family-primary);
+}
+
+#content {
+  padding: 24px 40px 40px;
+}
+
+#content h1 {
+  font-weight: 600;
+}
+
+/* Breadcrumbs */
+div.breadcrumbs {
+  background: var(--breadcrumbs-bg);
+  color: var(--breadcrumbs-fg);
+  border-bottom: 1px solid var(--border-color);
+}
+
+/* Cards / modules — Bootstrap-flavoured rounded panels */
+.module {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  background: var(--body-bg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.07);
+  overflow: hidden;
+}
+
+.module caption,
+.module h2 {
+  background: linear-gradient(90deg, var(--pwms-hdr-bottom), var(--pwms-hdr-top));
+  color: #ffffff;
+  padding: 10px 14px;
+  font-weight: 600;
+}
+
+#changelist {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.07);
+}
+
+#changelist table thead th {
+  background: var(--darkened-bg);
+}
+
+/* Buttons & object tools */
+.button,
+input[type="submit"],
+input[type="button"],
+.submit-row input,
+a.button {
+  border: 0;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.object-tools a {
+  border-radius: 16px;
+}
+
+/* Links */
+a:link,
+a:visited {
+  color: var(--link-fg);
+}
+
+a:hover {
+  color: var(--link-hover-color);
+}
+
+/* Nav sidebar */
+#nav-sidebar .current-model,
+#nav-sidebar .current-app .section {
+  background: var(--selected-bg);
+  border-radius: 6px;
+}
+
+#nav-sidebar .current-model a {
+  color: var(--link-selected-fg);
+}
+
+/* Selected changelist rows */
+#changelist tbody tr.selected {
+  background: var(--selected-row);
+}
+
+/* Login page */
+body.login #content {
+  padding-top: 6vh;
+}
+
+body.login #content-main {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  background: var(--body-bg);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  padding: 28px 32px;
+}
+
+body.login #content-main form {
+  margin: 0;
+}
