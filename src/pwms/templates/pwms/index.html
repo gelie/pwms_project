@@ -1,10 +1,41 @@
 {% extends "base.html" %}
 {% block content %}
-  <div class="container">
-    <h1>Welcome to PWMS</h1>
-    <p>This is the home page of the Parliament Workflow Management System.</p>
-    {% lorem 3 b random %}
-    {% lorem 5 p random %}
-    {% lorem 2 b random %}
+  <div class="contaner-md py-5">
+    <div class="row justify-content-center">
+      <div class="col-12 col-lg-10 col-xl-8">
+        <section class="mb-5">
+          <h1 class="mb-3">Welcome to PWMS</h1>
+          <p class="lh-lg mb-0">This is the home page of the Parliament Workflow Management System.</p>
+        </section>
+        <section class="mb-5">
+          <h2 class="mb-3">About the System</h2>
+          <p class="lh-lg mb-0">
+            The Parliament Workflow Management System (PWMS) is designed to support the
+            day-to-day operations of parliamentary business. It helps staff and members
+            track the lifecycle of motions, bills, and other parliamentary documents as
+            they move through each stage of the legislative process.
+          </p>
+        </section>
+        <section class="mb-5">
+          <h2 class="mb-3">Key Features</h2>
+          <ul class="lh-lg mb-0 ps-3">
+            <li class="mb-2">Create, review, and track motions and bills from drafting to resolution.</li>
+            <li class="mb-2">Manage committee assignments, agendas, and meeting outcomes.</li>
+            <li class="mb-2">Monitor workflow stages and approvals with a clear audit trail.</li>
+            <li class="mb-2">Search and access historical records of parliamentary business.</li>
+            <li class="mb-0">Role-based access to keep sensitive information secure.</li>
+          </ul>
+        </section>
+        <section class="mb-0">
+          <h2 class="mb-3">Getting Started</h2>
+          <p class="lh-lg mb-0">
+            Use the navigation menu to browse motions, committees, and sittings. New
+            users should review their assigned role to confirm which actions they are
+            permitted to perform. For assistance, contact the parliamentary IT support
+            team.
+          </p>
+        </section>
+      </div>
+    </div>
   </div>
 {% endblock content %}
