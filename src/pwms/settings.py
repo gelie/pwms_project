@@ -60,6 +60,10 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # Login-required-by-default for the site. Public routes opt out with the
+    # login_not_required decorator (see the home view); API/admin namespaces
+    # manage their own authentication (see pwms.middleware).
+    "pwms.middleware.SiteLoginRequiredMiddleware",
     "auditlog.middleware.AuditlogMiddleware",  # Add after AuthenticationMiddleware
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",

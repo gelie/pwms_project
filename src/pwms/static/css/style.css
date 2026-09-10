@@ -299,3 +299,34 @@
     text-align: center;
     margin-bottom: 0;
 }
+
+/* Signed-in status + login/logout action on the right of the main navbar.
+   The offcanvas body is a flex row on desktop and #main-horiz-menu grows, so
+   this block sits flush right; margin-left:auto keeps it there if the menu
+   does not grow (e.g. mobile offcanvas). */
+#desktop-nav .auth-menu {
+    display: flex;
+    align-items: stretch;
+    margin-left: auto;
+    white-space: nowrap;
+}
+
+#desktop-nav .auth-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0 0.75rem;
+    color: #fff;
+    font-size: 0.875rem;
+}
+
+#desktop-nav .auth-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+#desktop-nav .auth-action svg,
+#desktop-nav .auth-status svg {
+    flex-shrink: 0;
+}
