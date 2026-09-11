@@ -4,8 +4,9 @@ from auditlog.context import set_actor
 from auditlog.models import LogEntry
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from .models import (
@@ -13,16 +14,32 @@ from .models import (
     DelegationReport,
     EventType,
     Group,
+    GroupMembership,
     InternationalResolution,
+    Role,
     State,
     Transition,
     TransitionCondition,
     TransitionLog,
     WorkflowEvent,
+    WorkflowGroupAccess,
     WorkflowRelationship,
+    WorkflowRolePermission,
     WorkflowType,
 )
 from .models.workflows import OVERDUE_IDENTIFIER
+from .services.permissions import (
+    COMMENT,
+    DELETE,
+    EDIT,
+    MANAGE,
+    RESOURCE_ACTIONS,
+    SHARE,
+    VIEW,
+    permissions_for,
+    require,
+    resolve,
+)
 
 
 class WorkflowAuditingTests(TestCase):
@@ -732,3 +749,394 @@ class DelegationReportUpdateTests(TestCase):
         self.assertEqual(report.atc_page_number, "9")
         self.assertEqual(report.latest_update.atc_page_number, "9")
         self.assertIsNone(report.atc_publication_date)
+
+
+class WorkflowCrudViewTests(TestCase):
+    """The site's workflow CRUD views (list/detail/create/update/delete)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.user = User.objects.create_user(
+            username="crud", email="crud@example.com", password="pw"
+        )
+        # Group-scoped RBAC: creation needs one of a type's create roles, held
+        # in the type's own group.
+        cls.group = Group.objects.create(
+            name="Test Workflow Group", group_type="portfolio_committee"
+        )
+        cls.creator_role = Role.objects.create(name="Test Workflow Creator")
+        cls.other_role = Role.objects.create(name="Test Workflow Bystander")
+        GroupMembership.objects.create(
+            user=cls.user, group=cls.group, role=cls.creator_role
+        )
+        cls.report_type = WorkflowType.objects.get(name="Delegation Report")
+        cls.resolution_type = WorkflowType.objects.get(name="International Resolution")
+        for workflow_type in (cls.report_type, cls.resolution_type):
+            workflow_type.group = cls.group
+            workflow_type.save(update_fields=["group"])
+            workflow_type.create_roles.add(cls.creator_role)
+
+    def setUp(self):
+        self.client.force_login(self.user)
+
+    def _report_payload(self, **overrides):
+        payload = {
+            "workflow_type": self.report_type.pk,
+            "title": "CRUD report",
+            "description": "",
+            "owner": self.user.pk,
+            "assigned_to": "",
+            "deadline": "",
+            "priority": "medium",
+            "engagement_name": "CRUD engagement",
+            "engagement_start_date": "",
+            "engagement_end_date": "",
+            "location_city": "",
+            "location_country": "",
+            "notes": "",
+            "report_document_url": "",
+        }
+        payload.update(overrides)
+        return payload
+
+    def _resolution_payload(self, **overrides):
+        payload = {
+            "workflow_type": self.resolution_type.pk,
+            "title": "CRUD resolution",
+            "description": "",
+            "owner": self.user.pk,
+            "assigned_to": "",
+            "deadline": "",
+            "priority": "medium",
+            "resolution_number": "IR-CRUD-1",
+            "resolution_text": "",
+            "adoption_date": "",
+            "responsible_group": "",
+            "implementation_progress": "",
+        }
+        payload.update(overrides)
+        return payload
+
+    def test_pages_require_login(self):
+        self.client.logout()
+        for name in ("delegation_reports", "international_resolutions"):
+            response = self.client.get(reverse(f"pwms:{name}"))
+            self.assertEqual(response.status_code, 302)
+            self.assertIn("/pwms/login/", response["Location"])
+
+    def test_delegation_report_crud_cycle(self):
+        # Create: the initial state is derived from the chosen workflow type.
+        response = self.client.post(
+            reverse("pwms:delegation_report_create"), self._report_payload()
+        )
+        report = DelegationReport.objects.get(title="CRUD report")
+        self.assertRedirects(
+            response,
+            reverse("pwms:delegation_report_detail", args=[report.public_id]),
+        )
+        self.assertEqual(report.current_state, self.report_type.get_initial_state())
+        self.assertTrue(report.reference_number.startswith("DR-"))
+
+        # Detail page renders the report.
+        response = self.client.get(
+            reverse("pwms:delegation_report_detail", args=[report.public_id])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, report.reference_number)
+
+        # Update: workflow_type is fixed, current_state is editable instead.
+        edit = self.client.get(
+            reverse("pwms:delegation_report_update", args=[report.public_id])
+        )
+        self.assertContains(edit, "current_state")
+        self.assertNotContains(edit, 'name="workflow_type"')
+        response = self.client.post(
+            reverse("pwms:delegation_report_update", args=[report.public_id]),
+            {
+                "title": "CRUD report (edited)",
+                "description": "",
+                "current_state": report.current_state.pk,
+                "owner": self.user.pk,
+                "assigned_to": "",
+                "deadline": "",
+                "priority": "high",
+                "engagement_name": "",
+                "engagement_start_date": "",
+                "engagement_end_date": "",
+                "location_city": "",
+                "location_country": "",
+                "notes": "",
+                "report_document_url": "",
+            },
+        )
+        self.assertRedirects(
+            response,
+            reverse("pwms:delegation_report_detail", args=[report.public_id]),
+        )
+        report.refresh_from_db()
+        self.assertEqual(report.title, "CRUD report (edited)")
+        self.assertEqual(report.priority, "high")
+
+        # Delete: POST removes the row, GET only confirms.
+        confirm = self.client.get(
+            reverse("pwms:delegation_report_delete", args=[report.public_id])
+        )
+        self.assertEqual(confirm.status_code, 200)
+        response = self.client.post(
+            reverse("pwms:delegation_report_delete", args=[report.public_id])
+        )
+        self.assertRedirects(response, reverse("pwms:delegation_reports"))
+        self.assertFalse(DelegationReport.objects.filter(pk=report.pk).exists())
+
+    def test_international_resolution_crud_cycle(self):
+        response = self.client.post(
+            reverse("pwms:international_resolution_create"),
+            self._resolution_payload(),
+        )
+        resolution = InternationalResolution.objects.get(resolution_number="IR-CRUD-1")
+        self.assertRedirects(
+            response,
+            reverse(
+                "pwms:international_resolution_detail", args=[resolution.public_id]
+            ),
+        )
+        self.assertEqual(
+            resolution.current_state, self.resolution_type.get_initial_state()
+        )
+
+        response = self.client.get(
+            reverse("pwms:international_resolution_detail", args=[resolution.public_id])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "IR-CRUD-1")
+
+        response = self.client.post(
+            reverse("pwms:international_resolution_delete", args=[resolution.public_id])
+        )
+        self.assertRedirects(response, reverse("pwms:international_resolutions"))
+        self.assertFalse(
+            InternationalResolution.objects.filter(pk=resolution.pk).exists()
+        )
+
+    def test_create_requires_a_type_with_states(self):
+        empty_type = WorkflowType.objects.create(
+            name="Test Empty Workflow Type", group=self.group
+        )
+        empty_type.create_roles.add(self.creator_role)
+        response = self.client.post(
+            reverse("pwms:delegation_report_create"),
+            self._report_payload(workflow_type=empty_type.pk),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(DelegationReport.objects.exists())
+
+    def test_search_filters_the_list(self):
+        self.client.post(
+            reverse("pwms:delegation_report_create"),
+            self._report_payload(title="Geneva delegation"),
+        )
+        self.client.post(
+            reverse("pwms:delegation_report_create"),
+            self._report_payload(title="New York delegation"),
+        )
+
+        response = self.client.get(reverse("pwms:delegation_reports"), {"q": "Geneva"})
+        self.assertContains(response, "Geneva delegation")
+        self.assertNotContains(response, "New York delegation")
+
+    def test_navbar_links_to_workflow_views(self):
+        response = self.client.get(reverse("pwms:home"))
+        for name in ("workflows", "delegation_reports", "international_resolutions"):
+            self.assertContains(response, reverse(f"pwms:{name}"))
+
+    def test_create_requires_a_role_from_the_type_group(self):
+        """No create role in the type's group -> no creation (403 on POST)."""
+        User = get_user_model()
+        outsider = User.objects.create_user(username="outsider", password="pw")
+        self.client.force_login(outsider)
+
+        response = self.client.get(reverse("pwms:delegation_report_create"))
+        self.assertRedirects(response, reverse("pwms:delegation_reports"))
+
+        response = self.client.post(
+            reverse("pwms:delegation_report_create"), self._report_payload()
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(DelegationReport.objects.exists())
+
+    def test_can_create_needs_the_role_in_the_types_own_group(self):
+        User = get_user_model()
+        other_group = Group.objects.create(
+            name="Test Other Group", group_type="portfolio_committee"
+        )
+
+        # Right role, wrong group.
+        wrong_group = User.objects.create_user(username="wrong_group", password="pw")
+        GroupMembership.objects.create(
+            user=wrong_group, group=other_group, role=self.creator_role
+        )
+        self.assertFalse(self.report_type.can_create(wrong_group))
+
+        # Right group, role that is not a declared create role.
+        wrong_role = User.objects.create_user(username="wrong_role", password="pw")
+        GroupMembership.objects.create(
+            user=wrong_role, group=self.group, role=self.other_role
+        )
+        self.assertFalse(self.report_type.can_create(wrong_role))
+
+        self.assertTrue(self.report_type.can_create(self.user))
+        self.assertFalse(self.report_type.can_create(None))
+
+    def test_group_roles_come_from_the_types_group(self):
+        User = get_user_model()
+        colleague = User.objects.create_user(username="colleague", password="pw")
+        GroupMembership.objects.create(
+            user=colleague, group=self.group, role=self.other_role
+        )
+
+        self.assertEqual(
+            set(self.report_type.group_roles()),
+            {self.creator_role, self.other_role},
+        )
+        # other_role is held in the group but is not a declared create role.
+        self.assertFalse(self.report_type.can_create(colleague))
+
+    def test_superuser_can_create_any_enabled_type(self):
+        User = get_user_model()
+        root = User.objects.create_superuser(username="root", password="pw")
+
+        self.assertTrue(self.report_type.can_create(root))
+        self.assertIn(self.report_type, WorkflowType.creatable_by(root))
+
+    def test_create_form_only_offers_creatable_types(self):
+        ungrouped = WorkflowType.objects.create(name="Test Ungrouped Type")
+
+        response = self.client.get(reverse("pwms:delegation_report_create"))
+        self.assertEqual(response.status_code, 200)
+        offered = response.context["form"].fields["workflow_type"].queryset
+        self.assertIn(self.report_type, offered)
+        self.assertNotIn(ungrouped, offered)
+
+    def test_update_and_delete_require_edit_and_delete_permission(self):
+        """A non-owner without instance access gets 403 on edit/delete."""
+        self.client.post(
+            reverse("pwms:delegation_report_create"), self._report_payload()
+        )
+        report = DelegationReport.objects.get(title="CRUD report")
+
+        User = get_user_model()
+        stranger = User.objects.create_user(username="stranger", password="pw")
+        self.client.force_login(stranger)
+
+        edit_url = reverse("pwms:delegation_report_update", args=[report.public_id])
+        delete_url = reverse("pwms:delegation_report_delete", args=[report.public_id])
+
+        self.assertEqual(self.client.get(edit_url).status_code, 403)
+        self.assertEqual(
+            self.client.post(edit_url, {"title": "Hijacked"}).status_code, 403
+        )
+        self.assertEqual(self.client.get(delete_url).status_code, 403)
+        self.assertEqual(self.client.post(delete_url).status_code, 403)
+        self.assertTrue(DelegationReport.objects.filter(pk=report.pk).exists())
+
+
+class PermissionResolverTests(TestCase):
+    """The unified permission resolver service (view/edit/delete/share/comment/manage)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.user = User.objects.create_user(username="resolver", password="pw")
+        cls.group = Group.objects.create(
+            name="Resolver Committee", group_type="portfolio_committee"
+        )
+        cls.role = Role.objects.create(name="Resolver Member")
+        GroupMembership.objects.create(user=cls.user, group=cls.group, role=cls.role)
+
+        cls.wt = WorkflowType.objects.create(name="Resolver Test Type")
+        cls.state = State.objects.create(
+            workflow_type=cls.wt, name="Open", is_initial=True
+        )
+        cls.resolution = InternationalResolution.objects.create(
+            workflow_type=cls.wt,
+            current_state=cls.state,
+            resolution_number="IR-RESOLVER-1",
+            title="Resolver resolution",
+            owner=cls.user,
+        )
+        cls.access = WorkflowGroupAccess.objects.create(
+            content_type=ContentType.objects.get_for_model(InternationalResolution),
+            object_id=cls.resolution.pk,
+            group=cls.group,
+            can_view=True,
+            can_edit=True,
+            can_comment=True,
+        )
+
+    def test_permissions_for_returns_the_six_capabilities(self):
+        result = permissions_for(self.user, self.resolution)
+        self.assertEqual(set(result), set(RESOURCE_ACTIONS))
+        self.assertTrue(result[VIEW])
+        self.assertTrue(result[EDIT])
+        self.assertTrue(result[COMMENT])
+        # The owner may always view/edit/delete their own workflow.
+        self.assertTrue(result[DELETE])
+        self.assertFalse(result[SHARE])
+        self.assertFalse(result[MANAGE])
+
+    def test_resolve_reads_group_defaults(self):
+        self.assertTrue(resolve(self.user, self.resolution, VIEW))
+        self.assertTrue(resolve(self.user, self.resolution, EDIT))
+        self.assertTrue(resolve(self.user, self.resolution, COMMENT))
+        # Owner grant, not the group defaults, authorises delete here.
+        self.assertTrue(resolve(self.user, self.resolution, DELETE))
+        self.assertFalse(resolve(self.user, self.resolution, SHARE))
+        self.assertFalse(resolve(self.user, self.resolution, MANAGE))
+
+    def test_superuser_is_granted_everything(self):
+        User = get_user_model()
+        root = User.objects.create_superuser(username="resolver_root", password="pw")
+        for action in RESOURCE_ACTIONS:
+            self.assertTrue(resolve(root, self.resolution, action), action)
+
+    def test_anonymous_is_denied_everything(self):
+        for action in RESOURCE_ACTIONS:
+            self.assertFalse(resolve(None, self.resolution, action), action)
+
+    def test_manage_via_global_role_flag(self):
+        self.role.can_manage_permissions = True
+        self.role.save(update_fields=["can_manage_permissions"])
+        self.assertTrue(resolve(self.user, self.resolution, MANAGE))
+        # The global flag does not implicitly grant the other mutations.
+        self.assertFalse(resolve(self.user, self.resolution, SHARE))
+
+    def test_manage_via_instance_flag(self):
+        self.access.can_manage = True
+        self.access.save(update_fields=["can_manage"])
+        self.assertTrue(resolve(self.user, self.resolution, MANAGE))
+
+    def test_role_override_wins_for_a_new_action(self):
+        WorkflowRolePermission.objects.create(
+            group_access=self.access,
+            role=self.role,
+            can_share=True,
+        )
+        self.assertTrue(resolve(self.user, self.resolution, SHARE))
+
+    def test_unknown_action_raises(self):
+        with self.assertRaises(ValueError):
+            resolve(self.user, self.resolution, "explode")
+
+    def test_require_raises_permission_denied(self):
+        with self.assertRaises(PermissionDenied):
+            require(self.user, self.resolution, SHARE)
+        require(self.user, self.resolution, VIEW)  # should not raise
+
+    def test_default_resolver_for_unregistered_resource(self):
+        # A Group has no registered resolver: view/comment are open, mutations
+        # are gated on the global manage capability.
+        self.assertTrue(resolve(self.user, self.group, VIEW))
+        self.assertTrue(resolve(self.user, self.group, COMMENT))
+        self.assertFalse(resolve(self.user, self.group, EDIT))
+        self.assertFalse(resolve(self.user, self.group, MANAGE))

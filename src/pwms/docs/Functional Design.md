@@ -49,10 +49,18 @@ Two state machines are seeded from the BRS (migration `0005`):
 - **International Resolution** — `Captured → Assigned → In Progress →
   Implemented → Closed`, nested under the Delegation Report type.
 
+Each type is **owned by a Group** (`WorkflowType.group`) that scopes its RBAC:
+creation is limited to the type's `create_roles`, and those roles must be roles
+held by members of that group. Both seeded types belong to group 98
+(*IRP: MR: Man And Gen*, the Multilateral Relations unit). Creation roles are
+configured per environment; while `create_roles` is empty only superusers may
+create instances of that type.
+
 Definitions are customisable in the admin, including:
 
 - which states are initial/terminal;
 - which transitions are allowed (from → to);
+- which roles from the type's group may **create** instances (`create_roles`);
 - which roles may perform each transition (`allowed_roles`);
 - which roles should be notified when it happens (`notify_roles`);
 - whether a comment is mandatory.
@@ -73,6 +81,11 @@ the latter nested inside a report) is created with:
 
 The instance always knows its `workflow_type` and `current_state`, and offers
 only the **available transitions** for that state.
+
+Creation is **group-scoped**: only a user holding one of the type's
+`create_roles` in the type's own group (or a superuser) may create an instance.
+The web create pages list only the types the signed-in user may create in and
+refuse a hand-crafted POST that names another type with HTTP 403.
 
 ### 3.3 Transitioning
 
@@ -130,6 +143,25 @@ Access decisions use the three RBAC layers (see
 
 `instance.can(user, "transition")` encodes exactly this resolution chain.
 
+Creation is gated at the **type** level instead of per instance: a
+`WorkflowType` belongs to a `Group` and lists the `create_roles` (roles held in
+that group) allowed to create instances — `WorkflowType.can_create(user)` and
+`creatable_by(user)`. The instance `can()` chain above continues to govern
+view / edit / delete / share / comment / manage / transition on existing rows.
+
+All of this is exposed through one **`PermissionResolver` service**
+(`pwms/services/permissions.py`), the single source of truth the web UI and the
+API share: `resolve(user, resource, action)`, `permissions_for(user, resource)`
+(the six capabilities) and `require(user, resource, action)`. It adds the
+superuser bypass, grants `manage` to users holding the global
+`Role.can_manage_permissions` capability, and lets a workflow instance's
+**owner** always view/edit/delete their own record.
+
+The service is wired in: the workflow CRUD views enforce `edit`/`delete` with
+`require()` (both GET and POST) and hide the Edit/Delete buttons when they are
+not permitted, and the DRF audit-history endpoint enforces `view` through
+`WorkflowViewPermission` (`pwms/api/permissions.py`).
+
 ---
 
 ## 5. Auditing & history
@@ -151,8 +183,12 @@ Consumers:
 
 ## 6. Web UI & API
 
-- **Server-rendered pages** (Bootstrap 5 + HTMX, lucide icons, flatpickr dates):
-  home/about, login/logout. (Template surface is expanding.)
+- **Server-rendered pages** (Bootstrap 5 + lucide icons): home/about,
+  login/logout, groups (all/mine/detail), and full CRUD for the concrete workflow
+  instances — Delegation Reports and International Resolutions — reached from the
+  navbar *Workflows* dropdown. List pages carry a free-text filter; detail pages
+  show the workflow metadata, participants, resolutions, BR03 updates, referrals
+  and the audit trail.
 - **Django Admin** for administration (users, groups, roles, memberships,
   workflow definitions).
 - **REST API (DRF)** exposing audit history; browsable, plus Swagger/ReDoc docs.

@@ -1,0 +1,16 @@
+{% comment %}
+Reusable Bootstrap field renderer. Pass the bound field and the grid wrapper:
+
+  {% include "pwms/_form_field.html" with field=form.title wrapper_class="col-12" %}
+
+`wrapper_class` defaults to a full-width column when omitted.
+{% endcomment %}
+<div class="{{ wrapper_class|default:'col-12' }}">
+  <label class="form-label" for="{{ field.id_for_label }}">
+    {{ field.label }}
+    {% if field.field.required %}<span class="text-danger" aria-hidden="true">*</span>{% endif %}
+  </label>
+  {{ field }}
+  {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+  {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+</div>

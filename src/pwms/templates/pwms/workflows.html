@@ -1,33 +1,104 @@
 {% extends "base.html" %}
-{% block title %}About{% endblock title %}
+{% block title %}Workflows{% endblock title %}
 {% block content %}
-  <h1>About Us</h1>
-  <p>
-    PWMS is a lightweight property and warehouse management system built to keep
-    your records accurate, your teams aligned, and your day-to-day operations simple.
-  </p>
-  <h2>What We Do</h2>
-  <p>
-    We provide a single place to track inventory, manage properties, and monitor
-    the movement of goods. Instead of juggling spreadsheets and paper logs, you get
-    a clear, up-to-date view of everything that matters.
-  </p>
-  <h2>Our Mission</h2>
-  <p>
-    Our mission is to make management software that stays out of your way. It should
-    be fast to set up, easy to learn, and reliable enough to trust with your most
-    important data.
-  </p>
-  <h2>What You Can Expect</h2>
-  <ul>
-    <li>Simple, intuitive screens with no unnecessary clutter</li>
-    <li>Accurate, searchable records available whenever you need them</li>
-    <li>Clear reporting so you can make informed decisions</li>
-    <li>Ongoing support and regular improvements</li>
-  </ul>
-  <h2>Get In Touch</h2>
-  <p>
-    Have a question, a suggestion, or need a hand getting started?
-    <a href="{% url 'pwms:contact' %}">Contact us</a> and we will get back to you shortly.
-  </p>
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+    <h1 class="mb-0">Workflows</h1>
+  </div>
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-lg-6">
+      <div class="card h-100">
+        <div class="card-body d-flex flex-column">
+          <div class="small text-uppercase text-muted">Delegation Reports</div>
+          <div class="fs-2 fw-semibold">{{ report_count }}</div>
+          <p class="text-muted">Reports on international engagements and the resolutions concluded there.</p>
+          <div class="mt-auto d-flex flex-wrap gap-2">
+            <a class="btn btn-primary" href="{% url "pwms:delegation_reports" %}">{% lucide "list" size=18 %} View reports</a>
+            <a class="btn btn-outline-secondary"
+               href="{% url "pwms:delegation_report_create" %}">{% lucide "plus" size=18 %} New report</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-lg-6">
+      <div class="card h-100">
+        <div class="card-body d-flex flex-column">
+          <div class="small text-uppercase text-muted">International Resolutions</div>
+          <div class="fs-2 fw-semibold">{{ resolution_count }}</div>
+          <p class="text-muted">Resolutions adopted at international engagements and their implementation.</p>
+          <div class="mt-auto d-flex flex-wrap gap-2">
+            <a class="btn btn-primary"
+               href="{% url "pwms:international_resolutions" %}">{% lucide "list" size=18 %} View resolutions</a>
+            <a class="btn btn-outline-secondary"
+               href="{% url "pwms:international_resolution_create" %}">{% lucide "plus" size=18 %} New resolution</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <h2 class="h4">Recent delegation reports</h2>
+  <div class="table-responsive mb-4">
+    <table class="table table-striped table-hover align-middle">
+      <caption class="visually-hidden">Most recently created delegation reports</caption>
+      <thead>
+        <tr>
+          <th scope="col">Reference</th>
+          <th scope="col">Title</th>
+          <th scope="col">State</th>
+          <th scope="col">Owner</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for report in recent_reports %}
+          <tr>
+            <td>
+              <a href="{% url "pwms:delegation_report_detail" report.public_id %}">
+                {{ report.reference_number|default:"(no reference)" }}
+              </a>
+            </td>
+            <td>{{ report.title }}</td>
+            <td>
+              <span class="badge text-bg-secondary">{{ report.current_state.name }}</span>
+            </td>
+            <td>{{ report.owner.get_full_name|default:report.owner.get_username }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="text-center text-muted py-4">No delegation reports yet.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <h2 class="h4">Recent international resolutions</h2>
+  <div class="table-responsive">
+    <table class="table table-striped table-hover align-middle">
+      <caption class="visually-hidden">Most recently created international resolutions</caption>
+      <thead>
+        <tr>
+          <th scope="col">Number</th>
+          <th scope="col">Title</th>
+          <th scope="col">State</th>
+          <th scope="col">Owner</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for resolution in recent_resolutions %}
+          <tr>
+            <td>
+              <a href="{% url "pwms:international_resolution_detail" resolution.public_id %}">{{ resolution.resolution_number }}</a>
+            </td>
+            <td>{{ resolution.title }}</td>
+            <td>
+              <span class="badge text-bg-secondary">{{ resolution.current_state.name }}</span>
+            </td>
+            <td>{{ resolution.owner.get_full_name|default:resolution.owner.get_username }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="text-center text-muted py-4">No international resolutions yet.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
 {% endblock content %}

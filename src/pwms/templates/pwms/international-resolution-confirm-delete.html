@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Delete {{ resolution.resolution_number }}{% endblock title %}
+{% block content %}
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:workflows" %}">Workflows</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:international_resolutions" %}">International Resolutions</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:international_resolution_detail" resolution.public_id %}">{{ resolution.resolution_number }}</a>
+      </li>
+      <li class="breadcrumb-item active" aria-current="page">Delete</li>
+    </ol>
+  </nav>
+  <h1 class="mb-3">Delete International Resolution</h1>
+  <div class="alert alert-warning" role="alert">
+    This action cannot be undone. Referrals and audit entries attached to this
+    resolution will be removed with it.
+  </div>
+  <p>
+    Are you sure you want to delete
+    <strong>{{ resolution.resolution_number }} – {{ resolution.title }}</strong>?
+  </p>
+  <form method="post">
+    {% csrf_token %}
+    <div class="d-flex flex-wrap gap-2">
+      <button class="btn btn-danger" type="submit">Yes, delete this resolution</button>
+      <a class="btn btn-secondary"
+         href="{% url "pwms:international_resolution_detail" resolution.public_id %}">Cancel</a>
+    </div>
+  </form>
+{% endblock content %}

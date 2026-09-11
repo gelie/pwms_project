@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{% if is_create %}New International Resolution{% else %}Edit {{ resolution.resolution_number }}{% endif %}{% endblock title %}
+{% block content %}
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:workflows" %}">Workflows</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:international_resolutions" %}">International Resolutions</a>
+      </li>
+      <li class="breadcrumb-item active" aria-current="page">
+        {% if is_create %}New resolution{% else %}{{ resolution.resolution_number }}{% endif %}
+      </li>
+    </ol>
+  </nav>
+  <h1 class="mb-3">
+    {% if is_create %}
+      New International Resolution
+    {% else %}
+      Edit International Resolution
+    {% endif %}
+  </h1>
+  <form method="post" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger" role="alert">
+        {% for error in form.non_field_errors %}<p class="mb-0">{{ error }}</p>{% endfor %}
+      </div>
+    {% endif %}
+    <h2 class="h5 mb-3">Workflow</h2>
+    <div class="row g-3 mb-4">
+      {% if is_create %}
+        {% include "pwms/_form_field.html" with field=form.workflow_type wrapper_class="col-12 col-md-6" %}
+      {% else %}
+        <div class="col-12 col-md-6">
+          <label class="form-label">Workflow type</label>
+          <p class="form-control-plaintext">{{ resolution.workflow_type.name }}</p>
+        </div>
+        {% include "pwms/_form_field.html" with field=form.current_state wrapper_class="col-12 col-md-6" %}
+      {% endif %}
+      {% include "pwms/_form_field.html" with field=form.title wrapper_class="col-12" %}
+      {% include "pwms/_form_field.html" with field=form.description wrapper_class="col-12" %}
+      {% include "pwms/_form_field.html" with field=form.owner wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_form_field.html" with field=form.assigned_to wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_form_field.html" with field=form.deadline wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_form_field.html" with field=form.priority wrapper_class="col-12 col-md-6" %}
+    </div>
+    <h2 class="h5 mb-3">Resolution details</h2>
+    <div class="row g-3 mb-4">
+      {% include "pwms/_form_field.html" with field=form.resolution_number wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_form_field.html" with field=form.adoption_date wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_form_field.html" with field=form.responsible_group wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_form_field.html" with field=form.resolution_text wrapper_class="col-12" %}
+      {% include "pwms/_form_field.html" with field=form.implementation_progress wrapper_class="col-12" %}
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <button class="btn btn-primary" type="submit">
+        {% if is_create %}Create resolution{% else %}Save changes{% endif %}
+      </button>
+      {% if is_create %}
+        <a class="btn btn-secondary"
+           href="{% url "pwms:international_resolutions" %}">Cancel</a>
+      {% else %}
+        <a class="btn btn-secondary"
+           href="{% url "pwms:international_resolution_detail" resolution.public_id %}">Cancel</a>
+      {% endif %}
+    </div>
+  </form>
+{% endblock content %}

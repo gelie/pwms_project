@@ -1,7 +1,9 @@
 from typing import ClassVar
 
+from django import forms
 from django.contrib import admin
 from django.contrib.contenttypes.admin import GenericTabularInline
+from django.db.models import Q
 from mptt.admin import MPTTModelAdmin
 
 from .models import (
@@ -198,13 +200,67 @@ class TransitionInline(admin.TabularInline):
     autocomplete_fields = ("from_state", "to_state")
 
 
+class WorkflowTypeAdminForm(forms.ModelForm):
+    """
+    Constrain ``create_roles`` to roles held by members of the type's group.
+
+    When the type already has a group the choices are filtered to that group's
+    roles — keeping any currently-selected role so a stale assignment is
+    reported rather than silently dropped. ``clean()`` then enforces the rule
+    against the group submitted in the same form, which also covers the "add
+    type" flow where the group is only known once the request is bound.
+    """
+
+    class Meta:
+        model = WorkflowType
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        group = self.instance.group if self.instance.pk else None
+        if group is not None:
+            selected = self.instance.create_roles.all()
+            self.fields["create_roles"].queryset = (
+                Role.objects.filter(
+                    Q(groupmembership__group_id=group.pk) | Q(pk__in=selected)
+                )
+                .distinct()
+                .order_by("name")
+            )
+
+    def clean(self):
+        cleaned = super().clean()
+        group = cleaned.get("group")
+        roles = cleaned.get("create_roles")
+        if group is not None and roles:
+            allowed_ids = set(
+                Role.objects.filter(groupmembership__group_id=group.pk).values_list(
+                    "pk", flat=True
+                )
+            )
+            invalid = sorted(role.name for role in roles if role.pk not in allowed_ids)
+            if invalid:
+                raise forms.ValidationError(
+                    {
+                        "create_roles": (
+                            f"These roles do not belong to '{group.name}': "
+                            f"{', '.join(invalid)}."
+                        )
+                    }
+                )
+        return cleaned
+
+
 @admin.register(WorkflowType)
 class WorkflowTypeAdmin(admin.ModelAdmin):
     """Admin for reusable workflow state machines (states + transitions inline)."""
 
-    list_display = ("name", "enabled", "created_at")
+    form = WorkflowTypeAdminForm
+    list_display = ("name", "group", "enabled", "created_at")
     list_filter = ("enabled",)
-    search_fields = ("name",)
+    search_fields = ("name", "group__name")
+    autocomplete_fields = ("group",)
+    filter_horizontal = ("create_roles",)
     ordering = ("name",)
     inlines: ClassVar[list[type[admin.TabularInline]]] = [
         StateInline,
@@ -292,6 +348,9 @@ class WorkflowGroupAccessAdmin(admin.ModelAdmin):
         "can_view",
         "can_edit",
         "can_delete",
+        "can_share",
+        "can_comment",
+        "can_manage",
         "can_transition",
         "is_primary",
         "granted_at",
@@ -318,6 +377,9 @@ class WorkflowRolePermissionAdmin(admin.ModelAdmin):
         "can_view",
         "can_edit",
         "can_delete",
+        "can_share",
+        "can_comment",
+        "can_manage",
         "can_transition",
     )
     list_filter = ("can_view", "can_edit", "can_transition")
@@ -333,6 +395,9 @@ class WorkflowStatePermissionAdmin(admin.ModelAdmin):
     list_display = (
         "group_access",
         "state",
+        "can_share",
+        "can_comment",
+        "can_manage",
         "can_view",
         "can_edit",
         "can_delete",

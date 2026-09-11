@@ -129,3 +129,14 @@ class AuditHistoryApiTests(TestCase):
         redoc = APIClient().get("/api/redoc/")
         self.assertEqual(redoc.status_code, 200)
         self.assertContains(redoc, "redoc")
+
+    def test_non_owner_without_access_is_forbidden(self):
+        """An authenticated non-owner with no instance access gets 403."""
+        User = get_user_model()
+        stranger = User.objects.create_user(username="stranger", password="pw")
+
+        client = APIClient()
+        client.force_authenticate(user=stranger)
+
+        resp = client.get(self.url)
+        self.assertEqual(resp.status_code, 403)

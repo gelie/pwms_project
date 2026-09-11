@@ -116,10 +116,20 @@ Per new model, the checklist is:
 
 ---
 
-## Web UI expansion (🔜)
+## Web UI expansion
 
-- Workflow instance detail pages: timeline (TransitionLog + auditlog), current
-  state, available actions gated by `instance.can(...)`, referrals.
+✅ **Workflow instance CRUD shipped (2026-09-11)** — list/detail/create/update/delete
+for `DelegationReport` and `InternationalResolution` (`pwms/views.py` + `pwms/forms.py`,
+templates in `src/pwms/templates/pwms/`), reached from the navbar *Workflows*
+dropdown. Detail pages show metadata, participants, resolutions, BR03 updates,
+referrals and the audit trail; list pages have a free-text filter.
+
+Remaining (🔜):
+
+- Extend the group-scoped RBAC (`WorkflowType.group` + `create_roles`) to
+  view/edit/delete/transition in the web UI — it currently gates creation only.
+- Timeline view merging `TransitionLog` + auditlog; available actions gated by
+  `instance.can(...)`; performing transitions from the web UI; referral actions.
 - Create/edit forms with date pickers (`django-flatpickr`), HTMX partials.
 - Committee/House dashboards and a search/filter layer (`django-filter` declared).
 - Admin improvements for managing workflow definitions and RBAC.

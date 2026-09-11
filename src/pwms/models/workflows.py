@@ -36,6 +36,29 @@ class WorkflowType(BaseModel):
         help_text="Uncheck to prevent creating new workflow instances of this type.",
     )
 
+    # RBAC scope. A workflow type belongs to one Group, and creation is limited
+    # to the roles listed in ``create_roles`` — which must themselves come from
+    # that group (enforced by ``WorkflowTypeAdminForm``). ``null=True`` keeps the
+    # column tolerant of rows seeded before their group exists; ``blank=False``
+    # makes the field required in the admin.
+    group = models.ForeignKey(
+        "Group",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=False,
+        related_name="workflow_types",
+        help_text="Group whose members and roles govern this workflow type.",
+    )
+    create_roles = models.ManyToManyField(
+        Role,
+        blank=True,
+        related_name="creatable_workflow_types",
+        help_text=(
+            "Roles from this type's group that may create workflow instances. "
+            "Leave empty to let only superusers create instances."
+        ),
+    )
+
     # Type-level hierarchy: lets the registry declare container relationships,
     # e.g. "International Resolution" nests under "Delegation Report".
     parent_type = models.ForeignKey(
@@ -58,6 +81,53 @@ class WorkflowType(BaseModel):
 
     def get_initial_state(self):
         return self.states.filter(is_initial=True).first()
+
+    # -- group-scoped RBAC --------------------------------------------------
+    def group_roles(self):
+        """Roles held by members of this type's group (``create_roles`` choices)."""
+        if self.group_id is None:
+            return Role.objects.none()
+        return (
+            Role.objects.filter(groupmembership__group_id=self.group_id)
+            .distinct()
+            .order_by("name")
+        )
+
+    def can_create(self, user):
+        """
+        True when ``user`` may create instances of this workflow type.
+
+        Creation is granted by holding one of the type's ``create_roles`` in its
+        ``group``. Superusers bypass the check; types with no group are closed to
+        everyone but superusers.
+        """
+        if user is None or not getattr(user, "is_authenticated", False):
+            return False
+        if user.is_superuser:
+            return True
+        if self.group_id is None:
+            return False
+        return user.memberships.filter(
+            is_active=True,
+            group_id=self.group_id,
+            role_id__in=self.create_roles.values_list("pk", flat=True),
+        ).exists()
+
+    @classmethod
+    def creatable_by(cls, user):
+        """Enabled workflow types ``user`` may create instances of."""
+        if user is None or not getattr(user, "is_authenticated", False):
+            return cls.objects.none()
+        if user.is_superuser:
+            return cls.objects.filter(enabled=True)
+        allowed_ids = [
+            workflow_type.pk
+            for workflow_type in cls.objects.filter(enabled=True).prefetch_related(
+                "create_roles"
+            )
+            if workflow_type.can_create(user)
+        ]
+        return cls.objects.filter(enabled=True, pk__in=allowed_ids)
 
     # -- type hierarchy helpers --------------------------------------------
     @property
@@ -522,6 +592,9 @@ class AbstractLegislativeWorkflow(BaseModel):
         "view": "can_view",
         "edit": "can_edit",
         "delete": "can_delete",
+        "share": "can_share",
+        "comment": "can_comment",
+        "manage": "can_manage",
         "transition": "can_transition",
     }
 
@@ -530,8 +603,9 @@ class AbstractLegislativeWorkflow(BaseModel):
         Resolve effective permission for ``user`` across every group holding
         access on this instance.
 
-        ``action`` is one of ``view`` / ``edit`` / ``delete`` / ``transition``.
-        For each group the user actively belongs to, the most specific grant wins:
+        ``action`` is one of ``view`` / ``edit`` / ``delete`` / ``share`` /
+        ``comment`` / ``manage`` / ``transition``. For each group the user
+        actively belongs to, the most specific grant wins:
 
         1. :class:`WorkflowRolePermission` for the user's role in that group
            (authoritative for the role; if it lists ``allowed_states`` the
@@ -628,6 +702,9 @@ class WorkflowGroupAccess(BaseModel):
     can_view = models.BooleanField(default=True)
     can_edit = models.BooleanField(default=False)
     can_delete = models.BooleanField(default=False)
+    can_share = models.BooleanField(default=False)
+    can_comment = models.BooleanField(default=False)
+    can_manage = models.BooleanField(default=False)
     can_transition = models.BooleanField(default=False)
 
     is_primary = models.BooleanField(default=False)
@@ -676,6 +753,9 @@ class WorkflowRolePermission(BaseModel):
     can_view = models.BooleanField(default=True)
     can_edit = models.BooleanField(default=False)
     can_delete = models.BooleanField(default=False)
+    can_share = models.BooleanField(default=False)
+    can_comment = models.BooleanField(default=False)
+    can_manage = models.BooleanField(default=False)
     can_transition = models.BooleanField(default=False)
 
     # State-specific permissions (optional, overrides state permissions)
@@ -734,6 +814,9 @@ class WorkflowStatePermission(BaseModel):
     can_view = models.BooleanField(default=True)
     can_edit = models.BooleanField(default=False)
     can_delete = models.BooleanField(default=False)
+    can_share = models.BooleanField(default=False)
+    can_comment = models.BooleanField(default=False)
+    can_manage = models.BooleanField(default=False)
     can_transition = models.BooleanField(default=False)
 
     class Meta:

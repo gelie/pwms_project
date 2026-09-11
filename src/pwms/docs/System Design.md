@@ -73,7 +73,7 @@ pwms_project/                     # repo root (git) — run manage.py from here
     ├── static/                   # CSS / JS / images
     ├── admin.py                  # admin registrations
     ├── apps.py                   # PwmsConfig; ready() registers auditlog
-    ├── urls.py / views.py        # app pages under /pwms/ (home, login, logout)
+    ├── urls.py / views.py        # app pages under /pwms/ (home, auth, groups, workflow CRUD)
     ├── decorators.py             # shared decorators
     ├── models/
     │   ├── base.py               # BaseModel (uuid7 public_id, timestamps)
@@ -87,6 +87,8 @@ pwms_project/                     # repo root (git) — run manage.py from here
     │   └── ninja.py              # django-ninja evaluation spike
     ├── membership/
     │   └── sync_service.py       # MembershipSyncService (Oracle/legacy sync)
+    ├── services/
+    │   └── permissions.py        # unified permission resolver (UI + API)
     ├── management/commands/      # sync, jobs, diagrams (see Management Commands)
     ├── utils/                    # audit_helpers.py, sharepoint.py
     ├── migrations/
@@ -135,9 +137,10 @@ flowchart LR
     WT --> R2
 ```
 
-- **`WorkflowType`** — a registry entry (name, slug, enabled). Owns its `State`s
-  and `Transition`s. States/transitions are **shared** by every instance of that
-  type — they are not duplicated per record.
+- **`WorkflowType`** — a registry entry (name, slug, enabled) **owned by a
+  `Group`** (`group`, the RBAC scope) with a `create_roles` M2M drawn from that
+  group's roles. Owns its `State`s and `Transition`s. States/transitions are
+  **shared** by every instance of that type — they are not duplicated per record.
 - **`State`** — name/slug, flags (`is_initial`, `is_terminal`,
   `allows_referrals`), ordering and colour; unique per workflow type.
 - **`Transition`** — an allowed `from_state → to_state`, with role-based
@@ -154,9 +157,11 @@ flowchart LR
 - referrals are typed `WorkflowReferral` rows (GFK) — see §5
 
 Because the base is abstract, every concrete subclass gets its own table. Today
-there is one concrete subclass:
+that is:
 
-- **`InternationalResolution`** — adds `resolution_number`, `adoption_date`.
+- **`DelegationReport`** — BRS report fields (engagement, location, ATC links).
+- **`InternationalResolution`** — `resolution_number`, `adoption_date`,
+  `responsible_group`, `implementation_progress`.
 
 Helpers on the base provide lifecycle navigation:
 
@@ -176,8 +181,14 @@ Helpers on the base provide lifecycle navigation:
 
 ## 4. ContentType-based RBAC
 
-Permissions are granted **per workflow instance** and are keyed to the instance
-via a generic foreign key (`ContentType` + internal PK). There are three layers:
+**Creation** is scoped at the **type** level: a `WorkflowType` belongs to a
+`Group` and lists the `create_roles` (roles held by members of that group) that
+may create instances — `WorkflowType.can_create(user)` / `creatable_by(user)`.
+Superusers bypass the check; an empty `create_roles` means superusers only.
+
+**View / edit / delete / share / comment / manage / transition** on existing
+rows are granted **per workflow instance** and are keyed to the instance via a
+generic foreign key (`ContentType` + internal PK). There are three layers:
 
 ```mermaid
 erDiagram
@@ -191,10 +202,10 @@ erDiagram
 ```
 
 1. **`WorkflowGroupAccess`** — "which House/Committee may access this instance",
-   plus group-level defaults `can_view/edit/delete/transition`, `is_primary`,
-   grantor and grant time.
+   plus group-level defaults `can_view/edit/delete/share/comment/manage/transition`,
+   `is_primary`, grantor and grant time.
 2. **`WorkflowRolePermission`** — per `(group_access × Role)` overrides of the
-   four capabilities. If a row exists it is *authoritative* for that role; an
+   seven capabilities. If a row exists it is *authoritative* for that role; an
    optional `allowed_states` M2M scopes the override to specific states.
 3. **`WorkflowStatePermission`** — per `(group_access × State)` rows describing
    what the group may do *while the workflow is in that state* (e.g. view/edit in
@@ -211,7 +222,17 @@ holds a `WorkflowGroupAccess` on the instance:
    `(group_access, current_state)`.
 3. **Group default** — else the base flags on `WorkflowGroupAccess`.
 
-Actions are `view | edit | delete | transition`.
+Actions are `view | edit | delete | share | comment | manage | transition`.
+
+The **`PermissionResolver` service** (`pwms/services/permissions.py`) is the
+single entry point the UI and API both call: `resolve(user, resource, action)`,
+`permissions_for(user, resource)` (the six capabilities) and `require(...)`.
+It dispatches by resource type — workflow instances go through `can(...)` above,
+other models fall back to a conservative default or a registered resolver —
+adds the superuser bypass, lets a workflow instance's **owner** always
+view/edit/delete it, and grants `manage` to anyone holding the global
+`Role.can_manage_permissions` capability. The DRF audit endpoint consumes it via
+`WorkflowViewPermission` (`pwms/api/permissions.py`).
 
 ---
 

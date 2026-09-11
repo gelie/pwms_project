@@ -1,0 +1,372 @@
+{% extends "base.html" %}
+{% block title %}{{ report.reference_number }}{% endblock title %}
+{% block content %}
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:workflows" %}">Workflows</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:delegation_reports" %}">Delegation Reports</a>
+      </li>
+      <li class="breadcrumb-item active" aria-current="page">{{ report.reference_number }}</li>
+    </ol>
+  </nav>
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+      <h1 class="mb-1">{{ report.title }}</h1>
+      <p class="text-muted mb-0">
+        {{ report.reference_number }}
+        {% if report.engagement_name %}· {{ report.engagement_name }}{% endif %}
+      </p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <span class="badge text-bg-secondary">{{ report.current_state.name }}</span>
+      <span class="badge text-bg-secondary">{{ report.get_priority_display }} priority</span>
+      {% if report.is_overdue %}
+        <span class="badge text-bg-danger">{{ report.overdue_identifier }}</span>
+      {% endif %}
+      {% if perms.edit %}
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{% url "pwms:delegation_report_update" report.public_id %}">{% lucide "pencil" size=16 %} Edit</a>
+      {% endif %}
+      {% if perms.delete %}
+        <a class="btn btn-sm btn-outline-danger"
+           href="{% url "pwms:delegation_report_delete" report.public_id %}">{% lucide "trash-2" size=16 %} Delete</a>
+      {% endif %}
+    </div>
+  </div>
+  <h2 class="h4">Details</h2>
+  <div class="table-responsive mb-4">
+    <table class="table align-middle">
+      <caption class="visually-hidden">Delegation report details</caption>
+      <tbody>
+        <tr>
+          <th scope="row">Workflow type</th>
+          <td>{{ report.workflow_type.name }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Current state</th>
+          <td>{{ report.current_state.name }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Owner</th>
+          <td>{{ report.owner.get_full_name|default:report.owner.get_username }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Assigned to</th>
+          <td>
+            {% if report.assigned_to %}
+              {{ report.assigned_to.get_full_name|default:report.assigned_to.get_username }}
+              {% if report.assigned_to_email %}<span class="text-muted">({{ report.assigned_to_email }})</span>{% endif %}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Deadline</th>
+          <td>{{ report.deadline|date:"Y-m-d H:i"|default:"—" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Engagement dates</th>
+          <td>
+            {{ report.engagement_start_date|date:"Y-m-d"|default:"—" }}
+            {% if report.engagement_end_date %}to {{ report.engagement_end_date|date:"Y-m-d" }}{% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Location</th>
+          <td>
+            {% if report.location_city or report.location_country %}
+              {{ report.location_city }}{% if report.location_city and report.location_country %}, {% endif %}{{ report.location_country }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Report document</th>
+          <td>
+            {% if report.report_document_url %}
+              <a href="{{ report.report_document_url }}"
+                 rel="noopener"
+                 target="_blank">Open in SharePoint {% lucide "external-link" size=14 %}</a>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">ATC reference</th>
+          <td>
+            {% if report.atc_reference or report.atc_publication_date %}
+              {{ report.atc_reference|default:"—" }}
+              {% if report.atc_page_number %}· p. {{ report.atc_page_number }}{% endif %}
+              {% if report.atc_publication_date %}· published {{ report.atc_publication_date|date:"Y-m-d" }}{% endif %}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Description</th>
+          <td>{{ report.description|linebreaks|default:"—" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Notes</th>
+          <td>{{ report.notes|linebreaks|default:"—" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Created / updated</th>
+          <td>{{ report.created_at|date:"Y-m-d H:i" }} · {{ report.updated_at|date:"Y-m-d H:i" }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <h2 class="h4">Participants ({{ participants|length }})</h2>
+  <div class="table-responsive mb-4">
+    <table class="table table-striped table-hover align-middle">
+      <caption class="visually-hidden">Delegation members and support officials</caption>
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Type</th>
+          <th scope="col">Delegation role</th>
+          <th scope="col">System account</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for participant in participants %}
+          <tr>
+            <td>{{ participant.full_name }}</td>
+            <td>
+              <span class="badge text-bg-secondary">{{ participant.get_participant_type_display }}</span>
+            </td>
+            <td>{{ participant.delegation_role|default:"—" }}</td>
+            <td>
+              {% if participant.user %}
+                {{ participant.user.get_full_name|default:participant.user.get_username }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="text-center text-muted py-4">No participants recorded.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <h2 class="h4">Resolutions ({{ resolutions|length }})</h2>
+  <div class="table-responsive mb-4">
+    <table class="table table-striped table-hover align-middle">
+      <caption class="visually-hidden">International resolutions attached to this report</caption>
+      <thead>
+        <tr>
+          <th scope="col">Number</th>
+          <th scope="col">Title</th>
+          <th scope="col">State</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in resolutions %}
+          <tr>
+            <td>
+              {% if row.url %}
+                <a href="{{ row.url }}">{{ row.object.resolution_number }}</a>
+              {% else %}
+                {{ row.object.resolution_number }}
+              {% endif %}
+            </td>
+            <td>{{ row.object.title }}</td>
+            <td>
+              <span class="badge text-bg-secondary">{{ row.object.current_state.name }}</span>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="3" class="text-center text-muted py-4">This report has no resolutions attached.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <h2 class="h4">BR03 updates ({{ updates|length }})</h2>
+  <div class="table-responsive mb-4">
+    <table class="table table-striped table-hover align-middle">
+      <caption class="visually-hidden">Report update history</caption>
+      <thead>
+        <tr>
+          <th scope="col">Date</th>
+          <th scope="col">Resulting state</th>
+          <th scope="col">ATC details</th>
+          <th scope="col">Recorded by</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for update in updates %}
+          <tr>
+            <td>{{ update.update_date|date:"Y-m-d" }}</td>
+            <td>
+              {% if update.resulting_state %}
+                <span class="badge text-bg-secondary">{{ update.resulting_state.name }}</span>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>
+              {% if update.has_atc_details %}
+                {{ update.atc_reference|default:"—" }}
+                {% if update.atc_page_number %}· p. {{ update.atc_page_number }}{% endif %}
+                {% if update.atc_document_url %}
+                  · <a href="{{ update.atc_document_url }}" rel="noopener" target="_blank">document</a>
+                {% endif %}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>
+              {% if update.recorded_by %}
+                {{ update.recorded_by.get_full_name|default:update.recorded_by.get_username }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="text-center text-muted py-4">No updates recorded.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <h2 class="h4">Referrals ({{ referrals|length }})</h2>
+  <div class="table-responsive mb-4">
+    <table class="table table-striped table-hover align-middle">
+      <caption class="visually-hidden">Groups this report was referred to</caption>
+      <thead>
+        <tr>
+          <th scope="col">Referred to</th>
+          <th scope="col">Referred by</th>
+          <th scope="col">Due date</th>
+          <th scope="col">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for referral in referrals %}
+          <tr>
+            <td>
+              <a href="{% url "pwms:group_detail" referral.referred_to.pk %}">{{ referral.referred_to.name }}</a>
+            </td>
+            <td>
+              {% if referral.referred_by %}
+                {{ referral.referred_by.get_full_name|default:referral.referred_by.get_username }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>
+              {{ referral.due_date|date:"Y-m-d H:i"|default:"—" }}
+              {% if referral.is_overdue %}<span class="badge text-bg-danger">Overdue</span>{% endif %}
+            </td>
+            <td>
+              {% if referral.status == "open" %}
+                <span class="badge text-bg-warning">{{ referral.get_status_display }}</span>
+              {% elif referral.status == "responded" %}
+                <span class="badge text-bg-success">{{ referral.get_status_display }}</span>
+              {% elif referral.status == "expired" %}
+                <span class="badge text-bg-danger">{{ referral.get_status_display }}</span>
+              {% else %}
+                <span class="badge text-bg-secondary">{{ referral.get_status_display }}</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="text-center text-muted py-4">This report has not been referred.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <h2 class="h4">Available transitions ({{ transitions|length }})</h2>
+  <div class="table-responsive mb-4">
+    <table class="table table-striped align-middle">
+      <caption class="visually-hidden">Transitions available from the current state</caption>
+      <thead>
+        <tr>
+          <th scope="col">Transition</th>
+          <th scope="col">To state</th>
+          <th scope="col">Comment required</th>
+          <th scope="col">Conditions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for transition in transitions %}
+          <tr>
+            <td>{{ transition.name }}</td>
+            <td>{{ transition.to_state.name }}</td>
+            <td>{{ transition.requires_comment|yesno:"Yes,No" }}</td>
+            <td>
+              {% for condition in transition.conditions.all %}
+                <span class="badge text-bg-secondary">{{ condition.get_condition_type_display }}</span>
+              {% empty %}
+                —
+              {% endfor %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="text-center text-muted py-4">
+              No transitions are defined from “{{ report.current_state.name }}”.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <h2 class="h4">Audit trail ({{ transition_logs|length }})</h2>
+  <div class="table-responsive">
+    <table class="table table-striped align-middle">
+      <caption class="visually-hidden">Workflow audit trail</caption>
+      <thead>
+        <tr>
+          <th scope="col">When</th>
+          <th scope="col">Action</th>
+          <th scope="col">From → to</th>
+          <th scope="col">Actor</th>
+          <th scope="col">Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in transition_logs %}
+          <tr>
+            <td>{{ entry.timestamp|date:"Y-m-d H:i" }}</td>
+            <td>{{ entry.action }}</td>
+            <td>
+              {{ entry.from_state.name|default:"—" }}
+              {% lucide "arrow-right" size=14 %}
+              {{ entry.to_state.name|default:"—" }}
+            </td>
+            <td>
+              {% if entry.actor %}
+                {{ entry.actor.get_full_name|default:entry.actor.get_username }}
+              {% else %}
+                System
+              {% endif %}
+            </td>
+            <td>{{ entry.notes|default:"—" }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="5" class="text-center text-muted py-4">No audit entries yet.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock content %}

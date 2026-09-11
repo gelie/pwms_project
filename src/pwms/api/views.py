@@ -11,6 +11,7 @@ from rest_framework.views import APIView
 
 from ..models import InternationalResolution
 from ..utils.audit_helpers import get_audit_trail_by_public_id
+from .permissions import WorkflowViewPermission
 from .serializers import AuditLogEntrySerializer
 
 
@@ -77,7 +78,7 @@ class WorkflowAuditHistoryView(APIView):
     shared helper, which filters on the internal integer PK via ContentType.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, WorkflowViewPermission]
     serializer_class = AuditLogEntrySerializer
 
     #: Concrete workflow model to audit (set on subclasses).

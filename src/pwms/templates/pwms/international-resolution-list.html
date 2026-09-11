@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}International Resolutions{% endblock title %}
+{% block content %}
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:workflows" %}">Workflows</a>
+      </li>
+      <li class="breadcrumb-item active" aria-current="page">International Resolutions</li>
+    </ol>
+  </nav>
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="mb-0">International Resolutions</h1>
+    <a class="btn btn-primary"
+       href="{% url "pwms:international_resolution_create" %}">{% lucide "plus" size=18 %} New Resolution</a>
+  </div>
+  <form class="row g-2 align-items-end mb-3" method="get" role="search">
+    <div class="col-12 col-sm-6 col-lg-4">
+      <label class="form-label" for="resolution-search">Search</label>
+      <input class="form-control"
+             id="resolution-search"
+             type="search"
+             name="q"
+             value="{{ query }}"
+             placeholder="Number, title or resolution text">
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-outline-secondary" type="submit">Search</button>
+      {% if query %}
+        <a class="btn btn-link"
+           href="{% url "pwms:international_resolutions" %}">Clear</a>
+      {% endif %}
+    </div>
+  </form>
+  <div class="d-flex justify-content-between align-items-center mb-2">
+    <span class="text-muted">{{ resolutions|length }} resolution{{ resolutions|length|pluralize }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-striped table-hover align-middle">
+      <caption class="visually-hidden">International resolutions</caption>
+      <thead>
+        <tr>
+          <th scope="col">Number</th>
+          <th scope="col">Title</th>
+          <th scope="col">State</th>
+          <th scope="col">Responsible group</th>
+          <th scope="col">Owner</th>
+          <th scope="col">Adopted</th>
+          <th scope="col" class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for resolution in resolutions %}
+          <tr>
+            <td>
+              <a href="{% url "pwms:international_resolution_detail" resolution.public_id %}">{{ resolution.resolution_number }}</a>
+            </td>
+            <td>{{ resolution.title }}</td>
+            <td>
+              <span class="badge text-bg-secondary">{{ resolution.current_state.name }}</span>
+            </td>
+            <td>{{ resolution.responsible_group.name|default:"—" }}</td>
+            <td>{{ resolution.owner.get_full_name|default:resolution.owner.get_username }}</td>
+            <td>{{ resolution.adoption_date|date:"Y-m-d"|default:"—" }}</td>
+            <td class="text-end">
+              {% if resolution.pk in editable_pks %}
+                <a class="btn btn-sm btn-outline-secondary"
+                   href="{% url "pwms:international_resolution_update" resolution.public_id %}">Edit</a>
+              {% endif %}
+              {% if resolution.pk in deletable_pks %}
+                <a class="btn btn-sm btn-outline-danger"
+                   href="{% url "pwms:international_resolution_delete" resolution.public_id %}">Delete</a>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="7" class="text-center text-muted py-4">
+              {% if query %}
+                No resolutions match “{{ query }}”.
+              {% else %}
+                No international resolutions yet.
+                <a href="{% url "pwms:international_resolution_create" %}">Create the first one</a>.
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock content %}

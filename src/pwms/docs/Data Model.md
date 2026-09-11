@@ -19,6 +19,8 @@ erDiagram
     WorkflowType ||--o{ State : states
     WorkflowType ||--o{ Transition : transitions
     WorkflowType ||--o{ WorkflowType : "parent_type / child_types"
+    WorkflowType }o--|| Group : "group (RBAC scope)"
+    WorkflowType }o--o{ Role : create_roles
     State ||--o{ Transition : "from_state"
     State ||--o{ Transition : "to_state"
     Transition }o--o{ Role : allowed_roles
@@ -131,12 +133,22 @@ Unique on `(user, group, role, start_date)`; `clean()` validates dates.
 | Field | Notes |
 | --- | --- |
 | `name` (unique), `slug`, `description`, `enabled` | registry entry |
+| `group` (FK, related `workflow_types`) | RBAC scope: the group whose members/roles govern this type |
+| `create_roles` (M2M to `Role`, related `creatable_workflow_types`) | roles **from that group** allowed to create instances; empty means superusers only |
 | `parent_type` (self-FK, related `child_types`) | optional type hierarchy; declaring child types opts the parent into type-restricted instance links |
 
 Reverse relations: `states`, `transitions`, `child_types`, `%(class)s_instances`.
 
 Type-level hierarchy helpers: `is_root_type`, `get_ancestor_types()`,
 `get_descendant_types()`, `allowed_child_types()` (empty means "unrestricted").
+
+Group-scoped creation helpers: `group_roles()` (roles held by members of
+`group`, i.e. the valid `create_roles` choices), `can_create(user)` (superuser
+bypass; otherwise requires one of `create_roles` held in that exact group) and
+the classmethod `creatable_by(user)` returning the enabled types a user may
+create in. `group` is nullable in the database because the seeded types exist
+before their group does, but it is **required in the admin**; the role/group
+pairing is enforced by `WorkflowTypeAdminForm`.
 
 ### `State`
 
@@ -272,6 +284,14 @@ natural key) the two BRS machines:
 Each step has a single onward transition; roles are **not** attached to these
 transitions (assign `allowed_roles` / `notify_roles` per environment).
 
+Migration `0012_assign_workflow_type_rbac_group` points both seeded types at
+group 98 — *IRP: MR: Man And Gen*, the Multilateral Relations unit that handles
+international engagements. That migration is a no-op where the group does not
+yet exist (a fresh or test database), because the types are seeded by `0005`
+while group 98 only arrives with the Oracle organisational sync. `create_roles`
+is intentionally left empty: assign the creating roles per environment in the
+WorkflowType admin (only roles held by members of the type's group are offered).
+
 Migration `0007_seed_event_types` adds the standard event types
 (`report-document-attached`, `atc-update-published`, `implementation-reported`,
 `referral-created`, `referral-responded`) and wires the first guard: *Delegation
@@ -346,7 +366,7 @@ seeded close guard requires.
 | --- | --- |
 | `group` (FK `Group`, related `workflow_accesses`) | House/Committee granted access |
 | `content_type` + `object_id` → `content_object` | **GFK** to the workflow instance |
-| `can_view`, `can_edit`, `can_delete`, `can_transition` | group-level defaults |
+| `can_view`, `can_edit`, `can_delete`, `can_share`, `can_comment`, `can_manage`, `can_transition` | group-level defaults |
 | `is_primary`, `granted_by` (FK `User`), `granted_at` | grant metadata |
 
 Indexed on `(content_type, object_id)`.
@@ -360,7 +380,7 @@ row exists.
 | --- | --- |
 | `group_access` (FK, related `role_permissions`) | parent |
 | `role` (FK `Role`) | which role |
-| `can_view/edit/delete/transition` | overrides |
+| `can_view/edit/delete/share/comment/manage/transition` | overrides |
 | `allowed_states` (M2M `State`) | if set, override applies only in these states |
 
 Unique `(group_access, role)`.
@@ -373,7 +393,7 @@ What the granted group may do **in a particular state**.
 | --- | --- |
 | `group_access` (FK, related `state_permissions`) | parent |
 | `state` (FK `State`) | the state |
-| `can_view/edit/delete/transition` | abilities |
+| `can_view/edit/delete/share/comment/manage/transition` | abilities |
 
 Unique `(group_access, state)`.
 
