@@ -1,0 +1,30 @@
+{% if debug %}
+  <div class="px-3 py-2 small text-body-secondary opacity-75">DEBUG: found {{ groups_count }} groups for user="{{ request_user }}" (search="{{ search_query }}")</div>
+{% endif %}
+
+{% if suggestions %}
+  <div class="px-3 py-2 small text-body-secondary">No exact matches for "{{ search_query }}" — showing suggested groups instead.</div>
+{% endif %}
+
+{% if groups %}
+  <div class="list-group list-group-flush">
+    {% for group in groups %}
+      <button type="button"
+              class="list-group-item list-group-item-action text-start w-100 py-2"
+              onmousedown="document.getElementById('selected-event-group-id').value='{{ group.pk }}'; document.getElementById('event-group-search').value='{{ group.name|escapejs }}'; document.getElementById('event-group-results').classList.add('d-none'); event.preventDefault(); return false;">
+        <div class="fw-medium">{{ group.name }}</div>
+        {% if group.parent %}
+          <div class="small text-body-secondary">Parent: {{ group.parent.name }}</div>
+        {% endif %}
+      </button>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="px-3 py-2 small text-body-secondary">
+    {% if search_query %}
+      No groups found matching "{{ search_query }}"
+    {% else %}
+      Start typing to search groups.
+    {% endif %}
+  </div>
+{% endif %}

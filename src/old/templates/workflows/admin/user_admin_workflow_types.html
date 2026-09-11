@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Workflow Templates {% endblock %}
+
+{% partialdef content %}
+<div class="container-xxl py-2">
+  <!-- Breadcrumb -->
+  <nav aria-label="breadcrumb" class="mb-3">
+    <ol class="breadcrumb small">
+      <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Workflow Templates</li>
+    </ol>
+  </nav>
+
+  <!-- Header -->
+  <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+      <h1 class="d-flex align-items-center gap-2">
+        {% lucide "settings" class="w-8 h-8" %}
+        Workflow Templates
+      </h1>
+      <p class="page-subtitle">Manage workflow templates and configurations</p>
+    </div>
+    <a href="{% url 'admin_workflow_type_create' %}" class="btn btn-primary d-inline-flex align-items-center gap-2">
+      {% lucide "plus" class="w-5 h-5" %}
+      Create Template
+    </a>
+  </div>
+
+  <!-- Template Statistics & Quick Help -->
+  <div class="row row-cols-1 row-cols-lg-3 g-4 my-2">
+    <!-- Statistics -->
+    <div class="col-lg-4">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h3 class="card-title h5 d-flex align-items-center gap-2">
+            {% lucide "chart-bar" class="w-5 h-5" %}
+            Template Statistics
+          </h3>
+          <div class="d-flex flex-column gap-3 mt-4">
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="text-body-secondary">Total Templates</span>
+              <span class="h3 fw-bold text-primary mb-0">{{ workflow_types|length }}</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-center">
+              <span class="text-body-secondary">Active Templates</span>
+              <span class="h3 fw-bold text-success mb-0">{{ active_workflow_types|length }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Help -->
+    <div class="col-lg-8">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <h3 class="card-title h5 d-flex align-items-center gap-2">
+            {% lucide "circle-help" class="w-5 h-5" %}
+            Quick Help
+          </h3>
+          <div class="fs-6 d-flex flex-column gap-3 mt-4">
+            <p class="mb-0"><strong>Workflow Templates</strong> define the structure and configuration for different types of parliamentary processes.</p>
+            <hr class="my-2">
+            <div>
+              <p class="fw-semibold mb-2">Template Types:</p>
+              <ul class="d-flex flex-column gap-1 ms-4 mb-0">
+                <li class="d-flex align-items-start gap-2">
+                  <span class="text-primary">•</span>
+                  <span>Petitions - Citizen requests and complaints</span>
+                </li>
+                <li class="d-flex align-items-start gap-2">
+                  <span class="text-primary">•</span>
+                  <span>Resolutions - Parliamentary decisions</span>
+                </li>
+                <li class="d-flex align-items-start gap-2">
+                  <span class="text-primary">•</span>
+                  <span>Reports - Committee and audit reports</span>
+                </li>
+                <li class="d-flex align-items-start gap-2">
+                  <span class="text-primary">•</span>
+                  <span>Events - Meetings and hearings</span>
+                </li>
+              </ul>
+            </div>
+            <hr class="my-2">
+            <p class="small text-body-secondary mb-0">Each template can be customized with duration limits, notification settings, and group permissions.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Search -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-body py-3">
+      <div class="input-group">
+        <span class="input-group-text">
+          {% lucide "search" class="w-5 h-5" %}
+        </span>
+        <input id="workflow-search" type="text" class="form-control"
+               placeholder="Search workflow templates by name or description..." autocomplete="off" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Template Directory -->
+  <h2 class="h5 fw-semibold mb-3">Template Directory</h2>
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-striped align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Group</th>
+              <th>Description</th>
+              <th>Max Duration</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for workflow_type in workflow_types %}
+            <tr style="cursor:pointer" data-url="{% url 'admin_workflow_type_edit' workflow_type.pk %}"
+              data-search="{{ workflow_type.name|lower }} {{ workflow_type.slug|lower }} {{ workflow_type.description|lower }} {{ workflow_type.group.name|lower }}"
+              onclick="window.location.href=this.getAttribute('data-url')">
+              <td>
+                <div class="fw-semibold">{{ workflow_type.name }}</div>
+                <div class="small text-body-secondary">{{ workflow_type.slug }}</div>
+              </td>
+              <td class="small">{{ workflow_type.group.name }}</td>
+              <td style="max-width: 280px">
+                <p class="small text-truncate mb-0">{{ workflow_type.description|default:"No description" }}</p>
+              </td>
+              <td class="small">No limit</td>
+              <td>
+                {% if workflow_type.enabled %}
+                <span class="badge bg-success">Enabled</span>
+                {% else %}
+                <span class="badge bg-body-tertiary text-body">Disabled</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="5" class="text-center py-4 text-body-secondary">
+                No workflow templates found.
+              </td>
+            </tr>
+            {% endfor %}
+            <tr id="no-results-row" class="d-none">
+              <td colspan="5" class="text-center py-4 text-body-secondary">No workflow templates match your search.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+<script>
+  (function () {
+    const input = document.getElementById('workflow-search');
+    const noResults = document.getElementById('no-results-row');
+
+    input.addEventListener('input', function () {
+      const query = this.value.trim().toLowerCase();
+      const rows = document.querySelectorAll('tr[data-search]');
+      let visible = 0;
+
+      rows.forEach(function (row) {
+        const match = !query || row.dataset.search.includes(query);
+        row.classList.toggle('d-none', !match);
+        if (match) visible++;
+      });
+
+      noResults.classList.toggle('d-none', visible > 0 || rows.length === 0);
+    });
+  })();
+</script>
+</div>
+{% endpartialdef %}
+
+{% block content %}
+{% partial content %}
+{% endblock %}

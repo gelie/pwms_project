@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+
+{% block title %}Edit Event - {{ event.title }} {% endblock %}
+
+{% partialdef content %}
+<div class="mx-auto d-flex flex-column gap-3" style="max-width: 48rem;">
+    <!-- Page Header -->
+    <div>
+        <h1 class="fw-bold">Edit Event</h1>
+        <p class="page-subtitle">Update event details</p>
+    </div>
+
+    <!-- Form -->
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <form method="post" class="d-flex flex-column gap-3" data-event-datetime-form="1">
+                {% csrf_token %}
+
+                <!-- Title -->
+                <div>
+                    <label class="form-label fw-medium">Title *</label>
+                    {{ form.title }}
+                    {% if form.title.errors %}
+                    <div class="invalid-feedback d-block">{{ form.title.errors.0 }}</div>
+                    {% endif %}
+                </div>
+
+                <!-- Event Type -->
+                <div>
+                    <label class="form-label fw-medium">Event Type *</label>
+                    {{ form.event_type }}
+                    {% if form.event_type.errors %}
+                    <div class="invalid-feedback d-block">{{ form.event_type.errors.0 }}</div>
+                    {% endif %}
+                </div>
+
+                <!-- Description -->
+                <div>
+                    <label class="form-label fw-medium">Description</label>
+                    {{ form.description }}
+                    {% if form.description.errors %}
+                    <div class="invalid-feedback d-block">{{ form.description.errors.0 }}</div>
+                    {% endif %}
+                </div>
+
+                <!-- Group and Venue Row -->
+                <div class="row row-cols-1 row-cols-md-2 g-3">
+                    <div class="col">
+                        {% include 'workflows/partials/event_group_lookup_field.html' %}
+                    </div>
+
+                    <div class="col">
+                        <label class="form-label fw-medium">Venue</label>
+                        {{ form.venue }}
+                        {% if form.venue.errors %}
+                        <div class="invalid-feedback d-block">{{ form.venue.errors.0 }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% include 'workflows/partials/event_datetime_fields.html' %}
+
+                <!-- Status -->
+                <div>
+                    <label class="form-label fw-medium">Status</label>
+                    {{ form.status }}
+                    {% if form.status.errors %}
+                    <div class="invalid-feedback d-block">{{ form.status.errors.0 }}</div>
+                    {% endif %}
+                </div>
+
+                <!-- Form Errors -->
+                {% if form.non_field_errors %}
+                <div class="alert alert-danger shadow-sm d-flex align-items-center gap-2" role="alert">
+                    <span>{{ form.non_field_errors.0 }}</span>
+                </div>
+                {% endif %}
+
+                <!-- Actions -->
+                <div class="d-flex justify-content-end gap-2 pt-3">
+                    <a href="{% url 'event_detail' event.pk %}" class="btn btn-outline-secondary">
+                        Cancel
+                    </a>
+                    <button type="submit" class="btn btn-primary d-inline-flex align-items-center gap-2">
+                        {% lucide "save" class="w-5 h-5" %}
+                        Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endpartialdef %}
+
+{% block content %}
+{% partial content %}
+{% endblock %}

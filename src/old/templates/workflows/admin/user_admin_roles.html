@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Role Management {% endblock %}
+
+{% partialdef content %}
+<div class="container-xxl py-2">
+  <!-- Breadcrumb -->
+  <nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb small">
+      <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'admin_users' %}">Users</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Roles</li>
+    </ol>
+  </nav>
+
+  <!-- Header -->
+  <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+      <h1 class="d-flex align-items-center gap-2">
+        {% lucide "shield" class="w-8 h-8" %}
+        Roles
+      </h1>
+      <p class="page-subtitle">Manage user roles and permissions</p>
+    </div>
+    <button class="btn btn-primary d-inline-flex align-items-center gap-2">
+      {% lucide "plus" class="w-5 h-5" %}
+      Create Role
+    </button>
+  </div>
+
+  <!-- Roles Grid -->
+  <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+    {% for role in roles %}
+    <div class="col">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex align-items-start justify-content-between">
+            <div class="d-flex align-items-center gap-3">
+              <span class="bg-primary text-white d-inline-flex align-items-center justify-content-center rounded-3"
+                style="width:48px;height:48px;flex-shrink:0">
+                {% lucide "shield" class="w-6 h-6" %}
+              </span>
+              <div>
+                <h3 class="card-title h5">{{ role.name }}</h3>
+                <p class="small text-body-secondary mb-0">{{ role.slug }}</p>
+              </div>
+            </div>
+            <div class="dropdown">
+              <button class="btn btn-sm btn-outline-secondary btn-icon" type="button"
+                      data-bs-toggle="dropdown" aria-expanded="false" title="Actions">
+                {% lucide "more-vertical" class="w-4 h-4" %}
+              </button>
+              <ul class="dropdown-menu dropdown-menu-end shadow">
+                <li><a class="dropdown-item d-flex align-items-center gap-2" href="#">{% lucide "pencil" class="w-4 h-4" %} Edit</a></li>
+                <li><a class="dropdown-item d-flex align-items-center gap-2" href="#">{% lucide "copy" class="w-4 h-4" %} Duplicate</a></li>
+                <li><a class="dropdown-item d-flex align-items-center gap-2 text-danger" href="#">{% lucide "trash-2" class="w-4 h-4" %} Delete</a></li>
+              </ul>
+            </div>
+          </div>
+
+          {% if role.description %}
+          <p class="small text-body-secondary mt-2">{{ role.description|truncatewords:20 }}</p>
+          {% endif %}
+
+          <hr class="my-3">
+
+          <div class="d-flex flex-column gap-2">
+            <h4 class="fw-semibold small mb-0">Permissions</h4>
+            <div class="d-flex flex-wrap gap-2">
+              {% if role.can_create_workflows %}
+              <span class="badge bg-success d-inline-flex align-items-center gap-1">
+                {% lucide "check" class="w-3 h-3" %}
+                Create Workflows
+              </span>
+              {% endif %}
+              {% if role.can_edit_workflows %}
+              <span class="badge bg-success d-inline-flex align-items-center gap-1">
+                {% lucide "check" class="w-3 h-3" %}
+                Edit Workflows
+              </span>
+              {% endif %}
+              {% if role.can_delete_workflows %}
+              <span class="badge bg-success d-inline-flex align-items-center gap-1">
+                {% lucide "check" class="w-3 h-3" %}
+                Delete Workflows
+              </span>
+              {% endif %}
+              {% if role.can_view_all_workflows %}
+              <span class="badge bg-success d-inline-flex align-items-center gap-1">
+                {% lucide "check" class="w-3 h-3" %}
+                View All
+              </span>
+              {% endif %}
+              {% if role.can_manage_members %}
+              <span class="badge bg-success d-inline-flex align-items-center gap-1">
+                {% lucide "check" class="w-3 h-3" %}
+                Manage Members
+              </span>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-end mt-4">
+            <button class="btn btn-sm btn-outline-secondary">View Details</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% empty %}
+    <div class="col-12 text-center py-5">
+      <div class="text-body-secondary">
+        {% lucide "shield-off" class="w-16 h-16 d-block mx-auto mb-4" %}
+        <p class="fs-5">No roles found</p>
+        <p class="small">Create your first role to get started</p>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <!-- Stats -->
+  <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-4 mt-5">
+    <div class="col">
+      <div class="stat-card">
+        <div class="stat-icon text-primary">
+          {% lucide "shield" class="w-8 h-8" %}
+        </div>
+        <div>
+          <p class="stat-title">Total Roles</p>
+          <div class="stat-value text-primary">{{ roles|length }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="stat-card">
+        <div class="stat-icon text-success">
+          {% lucide "check-circle" class="w-8 h-8" %}
+        </div>
+        <div>
+          <p class="stat-title">Can Create Workflows</p>
+          <div class="stat-value text-success">{{ roles|length }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="stat-card">
+        <div class="stat-icon text-info">
+          {% lucide "users" class="w-8 h-8" %}
+        </div>
+        <div>
+          <p class="stat-title">Can Manage Members</p>
+          <div class="stat-value text-info">{{ roles|length }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="stat-card">
+        <div class="stat-icon text-warning">
+          {% lucide "eye" class="w-8 h-8" %}
+        </div>
+        <div>
+          <p class="stat-title">Can View All</p>
+          <div class="stat-value text-warning">{{ roles|length }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endpartialdef %}
+
+{% block content %}
+{% partial content %}
+{% endblock %}

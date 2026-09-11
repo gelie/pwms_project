@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+
+{% block title %}Transition Workflow {% endblock %}
+
+{% partialdef content %}
+<div class="container-xxl d-flex flex-column gap-3 mx-auto" style="max-width: 42rem;">
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb small mb-0">
+            <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'workflow_list' %}">Workflows</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'workflow_detail' workflow.pk %}">{{ workflow.title|truncatewords:5 }}</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Transition</li>
+        </ol>
+    </nav>
+
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h1 class="fs-2 fw-bold">Confirm Transition</h1>
+
+            <div class="alert alert-info shadow-sm d-flex align-items-start gap-2 mt-4" role="alert">
+                {% lucide "info" class="w-5 h-5 flex-shrink-0 mt-1" %}
+                <div>
+                    <div class="fw-semibold">{{ transition.name }}</div>
+                    <div class="small">
+                        This will move the workflow from
+                        <span class="badge" style="background-color: {{ workflow.current_state.color }}; color: white;">
+                            {{ workflow.current_state.name }}
+                        </span>
+                        to
+                        <span class="badge" style="background-color: {{ transition.to_state.color }}; color: white;">
+                            {{ transition.to_state.name }}
+                        </span>
+                    </div>
+                </div>
+            </div>
+
+            <form method="post" class="d-flex flex-column gap-3 mt-4">
+                {% csrf_token %}
+
+                <div>
+                    <label class="form-label fw-medium" for="comment">
+                        Comment
+                        {% if transition.requires_comment %}
+                        <span class="text-danger">*</span>
+                        {% endif %}
+                    </label>
+                    <textarea id="comment" name="comment" class="form-control" rows="3" style="min-height: 6rem"
+                        placeholder="Add a comment about this transition..."
+                        {% if transition.requires_comment %}required{% endif %}></textarea>
+                </div>
+
+                <div class="d-flex gap-2 justify-content-end pt-4 border-top">
+                    <a href="{% url 'workflow_detail' workflow.pk %}" class="btn btn-outline-secondary">Cancel</a>
+                    <button type="submit" class="btn btn-primary">
+                        Confirm Transition
+                        {% lucide "arrow-right" class="w-4 h-4 ms-2" %}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endpartialdef %}
+
+{% block content %}
+{% partial content %}
+{% endblock %}

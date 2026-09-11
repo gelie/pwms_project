@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+
+{% block title %}Edit Delegation {% endblock %}
+
+{% block extra_head %}
+{{ form.media }}
+{% endblock %}
+
+{% partialdef content %}
+<div class="mx-auto d-flex flex-column gap-3" style="max-width: 56rem;">
+  <!-- Breadcrumb -->
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb small mb-0">
+      <li class="breadcrumb-item"><a hx-get="{% url 'dashboard' %}" class="text-primary" hx-target="#content-area"
+          hx-push-url="true">Dashboard</a></li>
+      <li class="breadcrumb-item"><a hx-get="{% url 'delegation_list' %}" hx-target="#content-area" hx-push-url="true"
+          class="text-primary">Delegations</a></li>
+      <li class="breadcrumb-item"><a hx-get="{% url 'delegation_detail' delegation.pk %}" hx-target="#content-area" hx-push-url="true"
+          class="text-primary">Details</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Edit</li>
+    </ol>
+  </nav>
+
+  <!-- Header -->
+  <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+      <h1 class="fw-bold d-flex align-items-center gap-2">
+        {% lucide "pencil" class="w-8 h-8" %}
+        Edit Delegation
+      </h1>
+      <p class="page-subtitle">Modify delegation settings and permissions</p>
+    </div>
+    <div class="d-flex gap-2">
+      <a hx-get="{% url 'delegation_detail' delegation.pk %}" hx-target="#content-area" hx-push-url="true"
+        class="btn btn-outline-secondary d-inline-flex align-items-center gap-2">
+        {% lucide "arrow-left" class="w-4 h-4" %}
+        Back to Details
+      </a>
+    </div>
+  </div>
+
+  <!-- Current Delegation Info -->
+  <div class="alert alert-info shadow-sm d-flex align-items-start gap-2 mb-0" role="alert">
+    {% lucide "info" class="w-5 h-5 flex-shrink-0 mt-1" %}
+    <div class="flex-grow-1">
+      <h3 class="fs-6 fw-bold mb-1">Current Delegation</h3>
+      <div class="small mt-1">
+        <span class="fw-medium">From:</span>
+        {{ delegation.delegator.get_full_name|default:delegation.delegator.username }}
+        <span class="mx-2">→</span>
+        <span class="fw-medium">To:</span>
+        {{ delegation.delegatee.get_full_name|default:delegation.delegatee.username }}
+      </div>
+    </div>
+  </div>
+
+  <!-- Form -->
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <form method="post" id="delegation-edit-form" class="d-flex flex-column gap-4">
+        {% csrf_token %}
+
+        <!-- Time Period Section -->
+        <div class="d-flex flex-column gap-3">
+          <div class="d-flex align-items-center gap-2 pb-2 border-bottom">
+            {% lucide "calendar" class="w-5 h-5 text-primary" %}
+            <h2 class="fs-5 fw-semibold mb-0">Time Period</h2>
+          </div>
+
+          <div class="row g-4">
+            <div class="col-md-6">
+              <label class="form-label fw-medium">Start Date <span class="text-danger">*</span></label>
+              {{ form.start_date }}
+              {% if form.start_date.errors %}
+              <div class="invalid-feedback d-block">{{ form.start_date.errors.0 }}</div>
+              {% endif %}
+              <div class="form-text">When the delegation becomes effective</div>
+            </div>
+
+            <div class="col-md-6">
+              <label class="form-label fw-medium">End Date <span class="text-body-secondary">(Optional)</span></label>
+              {{ form.end_date }}
+              {% if form.end_date.errors %}
+              <div class="invalid-feedback d-block">{{ form.end_date.errors.0 }}</div>
+              {% endif %}
+              <div class="form-text">Leave blank for indefinite delegation</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Scope Section -->
+        <div class="d-flex flex-column gap-3">
+          <div class="d-flex align-items-center gap-2 pb-2 border-bottom">
+            {% lucide "target" class="w-5 h-5 text-primary" %}
+            <h2 class="fs-5 fw-semibold mb-0">Delegation Scope</h2>
+          </div>
+
+          <div class="bg-body-tertiary rounded-2 p-3 border">
+            <p class="small text-body-secondary mb-3">
+              {% lucide "info" class="w-4 h-4 me-1" %}
+              Leave both sections empty to apply to all workflows and groups you have access to
+            </p>
+
+            <div class="row g-4">
+              <div class="col-lg-6">
+                <label class="form-label fw-medium">Specific Workflows <span class="text-body-secondary">(Optional)</span></label>
+                <div class="rounded-2 border p-3 overflow-auto bg-white" style="max-height: 16rem;">
+                  {{ form.workflows }}
+                </div>
+                <div class="form-text">Select specific workflows to limit delegation scope</div>
+              </div>
+
+              <div class="col-lg-6">
+                <label class="form-label fw-medium">Specific Groups <span class="text-body-secondary">(Optional)</span></label>
+                <div class="rounded-2 border p-3 overflow-auto bg-white" style="max-height: 16rem;">
+                  {{ form.groups }}
+                </div>
+                <div class="form-text">Select specific groups to limit delegation scope</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Permissions & Reason Section -->
+        <div class="row g-4">
+          <div class="col-lg-6 d-flex flex-column gap-3">
+            <div class="d-flex align-items-center gap-2 pb-2 border-bottom">
+              {% lucide "shield" class="w-5 h-5 text-primary" %}
+              <h2 class="fs-5 fw-semibold mb-0">Permissions to Delegate</h2>
+            </div>
+            <div class="rounded-2 border">
+              <div class="d-flex align-items-center gap-2 p-3 border-bottom">
+                {{ form.can_view_workflows }}
+                <label class="fw-medium mb-0 d-flex align-items-center gap-1" for="id_can_view_workflows">
+                  View Workflows&nbsp;
+                  <span title="Delegatee can view your workflows">
+                    {% lucide "info" class="w-4 h-4 text-body-secondary" %}
+                  </span>
+                </label>
+              </div>
+
+              <div class="d-flex align-items-center gap-2 p-3 border-bottom">
+                {{ form.can_edit_workflows }}
+                <label class="fw-medium mb-0 d-flex align-items-center gap-1" for="id_can_edit_workflows">
+                  Edit Workflows&nbsp;
+                  <span title="Delegatee can edit your workflows">
+                    {% lucide "info" class="w-4 h-4 text-body-secondary" %}
+                  </span>
+                </label>
+              </div>
+
+              <div class="d-flex align-items-center gap-2 p-3 border-bottom">
+                {{ form.can_transition_workflows }}
+                <label class="fw-medium mb-0 d-flex align-items-center gap-1" for="id_can_transition_workflows">
+                  Perform Transitions&nbsp;
+                  <span title="Delegatee can perform workflow transitions">
+                    {% lucide "info" class="w-4 h-4 text-body-secondary" %}
+                  </span>
+                </label>
+              </div>
+
+              <div class="d-flex align-items-center gap-2 p-3 border-bottom">
+                {{ form.can_receive_assignments }}
+                <label class="fw-medium mb-0 d-flex align-items-center gap-1" for="id_can_receive_assignments">
+                  Receive Assignments&nbsp;
+                  <span title="New assignments go to delegatee">
+                    {% lucide "info" class="w-4 h-4 text-body-secondary" %}
+                  </span>
+                </label>
+              </div>
+
+              <div class="d-flex align-items-center gap-2 p-3">
+                {{ form.can_receive_notifications }}
+                <label class="fw-medium mb-0 d-flex align-items-center gap-1" for="id_can_receive_notifications">
+                  Receive Notifications&nbsp;
+                  <span title="Delegatee receives your notifications">
+                    {% lucide "info" class="w-4 h-4 text-body-secondary" %}
+                  </span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Reason Section -->
+          <div class="col-lg-6 d-flex flex-column gap-3">
+            <div class="d-flex align-items-center gap-2 pb-2 border-bottom">
+              {% lucide "message-square" class="w-5 h-5 text-primary" %}
+              <h2 class="fs-5 fw-semibold mb-0">Reason for Changes</h2>
+            </div>
+
+            <div>
+              {% comment %} <label class="form-label fw-medium">Reason <span class="text-body-secondary">(Optional)</span></label> {% endcomment %}
+              {{ form.reason }}
+              {% if form.reason.errors %}
+              <div class="invalid-feedback d-block">{{ form.reason.errors.0 }}</div>
+              {% endif %}
+              <div class="form-text">Provide a reason for modifying this delegation</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Form Errors -->
+        {% if form.non_field_errors %}
+        <div class="alert alert-danger shadow-sm d-flex align-items-start gap-2" role="alert">
+          {% lucide "circle-alert" class="w-5 h-5 flex-shrink-0 mt-1" %}
+          <div>
+            <h3 class="fs-6 fw-bold mb-1">Please correct the following errors:</h3>
+            <div class="mt-2">
+              {% for error in form.non_field_errors %}
+              <p class="small mb-0">{{ error }}</p>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+        {% endif %}
+      </form>
+
+      <!-- Actions (sibling of the edit form so the revoke form is not nested) -->
+      <div class="d-flex justify-content-between align-items-center pt-4 border-top">
+          <div class="d-flex gap-2">
+            {% if delegation.status != "revoked" %}
+            <form method="post" action="{% url 'delegation_revoke' delegation.pk %}"
+              onsubmit="return confirm('Are you sure you want to revoke this delegation? This action cannot be undone.');">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-danger d-inline-flex align-items-center gap-2">
+                {% lucide "x" class="w-4 h-4" %}
+                Revoke Delegation
+              </button>
+            </form>
+            {% endif %}
+          </div>
+          <div class="d-flex gap-2">
+            <a hx-get="{% url 'delegation_detail' delegation.pk %}" hx-target="#content-area" hx-push-url="true"
+              class="btn btn-outline-secondary d-inline-flex align-items-center gap-2">
+              {% lucide "x" class="w-4 h-4" %}
+              Cancel
+            </a>
+            <button type="submit" form="delegation-edit-form" class="btn btn-primary d-inline-flex align-items-center gap-2 px-4">
+              {% lucide "save" class="w-4 h-4" %}
+              Save Changes
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Enhanced flatpickr functionality for delegation form
+  document.addEventListener('DOMContentLoaded', function () {
+    const startDateInput = document.getElementById('id_start_date');
+    const endDateInput = document.getElementById('id_end_date');
+
+    if (startDateInput && endDateInput) {
+      // Wait for flatpickr to initialize
+      setTimeout(() => {
+        const startFlatpickr = startDateInput._flatpickr;
+        const endFlatpickr = endDateInput._flatpickr;
+
+        if (startFlatpickr && endFlatpickr) {
+          // Set minimum end date when start date changes
+          startFlatpickr.config.onChange.push(function (selectedDates) {
+            if (selectedDates.length > 0) {
+              const minEndDate = selectedDates[0];
+              endFlatpickr.set('minDate', minEndDate);
+
+              // If end date is before start date, update it
+              const currentEndDate = endFlatpickr.selectedDates[0];
+              if (currentEndDate && currentEndDate < minEndDate) {
+                endFlatpickr.setDate(minEndDate);
+              }
+            }
+          });
+
+          // Validate end date
+          endFlatpickr.config.onChange.push(function (selectedDates) {
+            const startDate = startFlatpickr.selectedDates[0];
+            if (startDate && selectedDates.length > 0 && selectedDates[0] < startDate) {
+              endFlatpickr.setDate(startDate);
+            }
+          });
+
+          // Set initial minimum dates
+          const now = new Date();
+          startFlatpickr.set('minDate', now);
+          endFlatpickr.set('minDate', now);
+        }
+      }, 100);
+    }
+  });
+</script>
+{% endpartialdef %}
+
+
+{% block content %}{% partial content %}{% endblock content %}

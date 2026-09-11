@@ -1,0 +1,72 @@
+<div class="mb-3">
+    <label class="form-label fw-medium">Group *</label>
+
+    <div class="position-relative">
+        <input type="text"
+               id="event-group-search"
+               name="search"
+               class="form-control"
+               placeholder="Type to search groups..."
+               autocomplete="off"
+               value="{{ group_search }}"
+               oninput="document.getElementById('selected-event-group-id').value='';"
+               onblur="setTimeout(function(){document.getElementById('event-group-results').classList.add('d-none');}, 300);"
+               hx-get="{% url 'event_group_lookup' %}"
+               hx-trigger="keyup changed delay:300ms, focus"
+               hx-target="#event-group-results"
+               hx-swap="innerHTML" />
+
+        <input type="hidden"
+               id="selected-event-group-id"
+               name="group"
+               value="{% if selected_group %}{{ selected_group.pk }}{% else %}{{ form.group.value|default:'' }}{% endif %}" />
+
+        <div id="event-group-results"
+             class="position-absolute top-100 start-0 end-0 mt-1 bg-white border border-secondary-subtle rounded-3 shadow-sm overflow-auto d-none"
+             style="max-height: 14rem; z-index: 50;"></div>
+    </div>
+
+    {% if selected_group %}
+    <div class="small text-body-secondary mt-1">Selected: {{ selected_group.name }}</div>
+    {% endif %}
+
+    {% if form.group.errors %}
+    <div class="small text-danger mt-1">{{ form.group.errors.0 }}</div>
+    {% endif %}
+</div>
+
+<script>
+(function () {
+    const groupInput = document.getElementById('event-group-search');
+    const groupIdInput = document.getElementById('selected-event-group-id');
+    const resultsBox = document.getElementById('event-group-results');
+
+    if (!groupInput || !groupIdInput || !resultsBox) {
+        return;
+    }
+
+    window.selectEventGroup = function (groupId, groupName) {
+        groupIdInput.value = groupId;
+        groupInput.value = groupName;
+        resultsBox.classList.add('d-none');
+    };
+
+    groupInput.addEventListener('input', function () {
+        if (groupIdInput.value) {
+            groupIdInput.value = '';
+        }
+    });
+
+    document.body.addEventListener('htmx:afterSwap', function (event) {
+        if (event.target && event.target.id === 'event-group-results') {
+            resultsBox.classList.remove('d-none');
+        }
+    });
+
+    document.addEventListener('click', function (event) {
+        if (!resultsBox.contains(event.target) && event.target !== groupInput) {
+            resultsBox.classList.add('d-none');
+        }
+    });
+})();
+</script>

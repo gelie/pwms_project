@@ -1,0 +1,386 @@
+{% extends "base.html" %}
+
+{% block title %}Attachments - {{ workflow.title }}{% endblock %}
+
+{% block content %}
+<div class="container-xxl d-flex flex-column gap-3">
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+                <h2 class="fs-2 fw-bold mb-0">Attachments</h2>
+                <button type="button" onclick="showUploadModal()" class="btn btn-primary d-inline-flex align-items-center gap-2">
+                    {% lucide "upload" class="w-4 h-4" %}
+                    Upload File
+                </button>
+            </div>
+
+            <!-- Existing Attachments -->
+            <div id="attachments-list" class="d-flex flex-column gap-3">
+                {% if workflow.attachments.all %}
+                    {% for attachment in workflow.attachments.all %}
+                    <div class="border rounded-3 p-4">
+                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+                            <div class="d-flex align-items-center gap-4">
+                                <div class="text-primary">
+                                    {% if attachment.mimetype %}
+                                        {% if 'pdf' in attachment.mimetype %}
+                                            {% lucide "file-text" class="w-8 h-8" %}
+                                        {% elif 'word' in attachment.mimetype or 'document' in attachment.mimetype %}
+                                            {% lucide "file-text" class="w-8 h-8" %}
+                                        {% elif 'excel' in attachment.mimetype or 'spreadsheet' in attachment.mimetype %}
+                                            {% lucide "file-spreadsheet" class="w-8 h-8" %}
+                                        {% elif 'image' in attachment.mimetype %}
+                                            {% lucide "image" class="w-8 h-8" %}
+                                        {% else %}
+                                            {% lucide "file" class="w-8 h-8" %}
+                                        {% endif %}
+                                    {% else %}
+                                        {% lucide "file" class="w-8 h-8" %}
+                                    {% endif %}
+                                </div>
+                                <div>
+                                    <h3 class="fw-semibold text-body">{{ attachment.name }}</h3>
+                                    <p class="small text-body-secondary mb-0">
+                                        {% if attachment.size %}{{ attachment.size|filesizeformat }} • {% endif %}
+                                        {{ attachment.type|title }} •
+                                        Uploaded {{ attachment.created_at|date:"M d, Y H:i" }}
+                                        {% if attachment.uploaded_by %}by {{ attachment.uploaded_by.get_full_name|default:attachment.uploaded_by.username }}{% endif %}
+                                    </p>
+                                    {% if attachment.sharepoint_folder_path %}
+                                    <p class="small text-body-secondary opacity-75 mb-0">📁 {{ attachment.sharepoint_folder_path }}</p>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="d-flex align-items-center gap-2">
+                                <a href="{{ attachment.get_sharepoint_url }}" target="_blank"
+                                   class="btn btn-sm btn-outline-secondary btn-icon" title="Open">
+                                    {% lucide "external-link" class="w-4 h-4" %}
+                                </a>
+                                <button type="button" onclick="deleteAttachment('{{ attachment.id }}')"
+                                        class="btn btn-sm btn-outline-danger btn-icon" title="Delete attachment">
+                                    {% lucide "trash-2" class="w-4 h-4" %}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="text-center py-5 text-body-secondary">
+                        {% lucide "paperclip" class="w-12 h-12 mx-auto mb-4 opacity-25" %}
+                        <p>No attachments yet</p>
+                        <p class="small">Click "Upload File" to add your first attachment</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Upload Modal -->
+<div id="upload-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title fs-5">Upload File to SharePoint</h3>
+                <button type="button" onclick="hideUploadModal()" class="btn-close" aria-label="Close"></button>
+            </div>
+            <form id="upload-form" enctype="multipart/form-data" class="d-flex flex-column gap-3" novalidate>
+                <div class="modal-body d-flex flex-column gap-3">
+                    <!-- Site Selection -->
+                    <div>
+                        <label class="form-label fw-medium">SharePoint Site</label>
+                        <select id="site-select" name="site_id" required class="form-select">
+                            <option value="">Select a site...</option>
+                        </select>
+                    </div>
+
+                    <!-- Drive Selection -->
+                    <div>
+                        <label class="form-label fw-medium">Document Library</label>
+                        <select id="drive-select" name="drive_id" required class="form-select" disabled>
+                            <option value="">Select a library...</option>
+                        </select>
+                    </div>
+
+                    <!-- Folder Selection -->
+                    <div>
+                        <label class="form-label fw-medium">Folder (Optional)</label>
+                        <select id="folder-select" name="folder_id" class="form-select" disabled>
+                            <option value="">Root Folder</option>
+                        </select>
+                        <div class="form-text">Leave empty to upload to the root directory</div>
+                    </div>
+
+                    <!-- File Upload -->
+                    <div>
+                        <label class="form-label fw-medium">File</label>
+                        <input type="file" name="file" required class="form-control">
+                    </div>
+
+                    <!-- Attachment Type -->
+                    <div>
+                        <label class="form-label fw-medium">Type</label>
+                        <select name="type" class="form-select">
+                            <option value="document">Document</option>
+                            <option value="response">Response</option>
+                            <option value="petition">Petition</option>
+                        </select>
+                    </div>
+
+                    <!-- Progress Bar -->
+                    <div id="upload-progress" class="d-none">
+                        <div class="bg-body-tertiary rounded-pill" style="height: 8px;">
+                            <div id="progress-bar" class="bg-primary rounded-pill h-100" style="width: 0%"></div>
+                        </div>
+                        <p class="small mt-1">Uploading... <span id="progress-text">0%</span></p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" onclick="hideUploadModal()" class="btn btn-outline-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+let sites = [];
+let drives = [];
+let folders = [];
+
+// Load SharePoint sites on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadSites();
+});
+
+function loadSites() {
+    fetch('/api/sharepoint/sites/')
+        .then(response => response.json())
+        .then(data => {
+            sites = data.sites;
+            const siteSelect = document.getElementById('site-select');
+            siteSelect.innerHTML = '<option value="">Select a site...</option>';
+
+            sites.forEach(site => {
+                if (!site.is_personal_site) {
+                    const option = document.createElement('option');
+                    option.value = site.id;
+                    option.textContent = site.name;
+                    siteSelect.appendChild(option);
+                }
+            });
+        })
+        .catch(error => {
+            console.error('Error loading sites:', error);
+            showError('Failed to load SharePoint sites');
+        });
+}
+
+document.getElementById('site-select').addEventListener('change', function() {
+    const siteId = this.value;
+    const driveSelect = document.getElementById('drive-select');
+    const folderSelect = document.getElementById('folder-select');
+
+    if (siteId) {
+        loadDrives(siteId);
+        folderSelect.disabled = true;
+        folderSelect.innerHTML = '<option value="">Root Folder</option>';
+    } else {
+        driveSelect.disabled = true;
+        driveSelect.innerHTML = '<option value="">Select a library...</option>';
+        folderSelect.disabled = true;
+        folderSelect.innerHTML = '<option value="">Root Folder</option>';
+    }
+});
+
+function loadDrives(siteId) {
+    fetch(`/api/sharepoint/sites/${siteId}/drives/`)
+        .then(response => response.json())
+        .then(data => {
+            drives = data.drives;
+            const driveSelect = document.getElementById('drive-select');
+            driveSelect.innerHTML = '<option value="">Select a library...</option>';
+
+            drives.forEach(drive => {
+                const option = document.createElement('option');
+                option.value = drive.id;
+                option.textContent = drive.name;
+                driveSelect.appendChild(option);
+            });
+
+            driveSelect.disabled = false;
+        })
+        .catch(error => {
+            console.error('Error loading drives:', error);
+            showError('Failed to load document libraries');
+        });
+}
+
+document.getElementById('drive-select').addEventListener('change', function() {
+    const driveId = this.value;
+    const folderSelect = document.getElementById('folder-select');
+
+    if (driveId) {
+        loadFolders(driveId);
+    } else {
+        folderSelect.disabled = true;
+        folderSelect.innerHTML = '<option value="">Root Folder</option>';
+    }
+});
+
+function loadFolders(driveId) {
+    fetch(`/api/sharepoint/drives/${driveId}/folders/`)
+        .then(response => response.json())
+        .then(data => {
+            folders = data.folders;
+            const folderSelect = document.getElementById('folder-select');
+            folderSelect.innerHTML = '<option value="">Root Folder</option>';
+
+            if (folders.length === 0) {
+                // No folders available, keep only root option
+                folderSelect.disabled = false;
+                if (data.message) {
+                    console.log(data.message); // Log message for debugging
+                }
+            } else {
+                // Add folders to the dropdown
+                folders.forEach(folder => {
+                    const option = document.createElement('option');
+                    option.value = folder.id;
+                    option.textContent = folder.name;
+                    folderSelect.appendChild(option);
+                });
+                folderSelect.disabled = false;
+            }
+        })
+        .catch(error => {
+            console.error('Error loading folders:', error);
+            showError('Failed to load folders');
+            // Still enable the select with root option on error
+            const folderSelect = document.getElementById('folder-select');
+            folderSelect.disabled = false;
+        });
+}
+
+function showUploadModal() {
+    const modalEl = document.getElementById('upload-modal');
+    if (modalEl && typeof bootstrap !== 'undefined') {
+        bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    }
+}
+
+function hideUploadModal() {
+    const modalEl = document.getElementById('upload-modal');
+    if (modalEl && typeof bootstrap !== 'undefined') {
+        bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+    }
+    document.getElementById('upload-form').reset();
+    document.getElementById('upload-progress').classList.add('d-none');
+
+    // Reset folder select to show Root Folder option
+    const folderSelect = document.getElementById('folder-select');
+    folderSelect.innerHTML = '<option value="">Root Folder</option>';
+    folderSelect.disabled = true;
+}
+
+document.getElementById('upload-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    // Custom validation
+    const siteSelect = document.getElementById('site-select');
+    const driveSelect = document.getElementById('drive-select');
+    const fileInput = document.querySelector('input[name="file"]');
+
+    if (!siteSelect.value) {
+        showError('Please select a SharePoint site');
+        return;
+    }
+
+    if (!driveSelect.value) {
+        showError('Please select a document library');
+        return;
+    }
+
+    if (!fileInput.files || fileInput.files.length === 0) {
+        showError('Please select a file to upload');
+        return;
+    }
+
+    // Folder is optional - no validation needed
+
+    const formData = new FormData(this);
+    const progressBar = document.getElementById('progress-bar');
+    const progressText = document.getElementById('progress-text');
+    const progressContainer = document.getElementById('upload-progress');
+
+    progressContainer.classList.remove('d-none');
+
+    fetch('/api/attachments/upload/', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            hideUploadModal();
+            location.reload(); // Refresh to show new attachment
+        } else {
+            showError(data.error || 'Upload failed');
+        }
+    })
+    .catch(error => {
+        console.error('Upload error:', error);
+        showError('Upload failed. Please try again.');
+    })
+    .finally(() => {
+        progressContainer.classList.add('d-none');
+    });
+});
+
+function deleteAttachment(attachmentId) {
+    if (confirm('Are you sure you want to delete this attachment?')) {
+        fetch(`/api/attachments/${attachmentId}/`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload(); // Refresh to remove attachment
+            } else {
+                showError(data.error || 'Delete failed');
+            }
+        })
+        .catch(error => {
+            console.error('Delete error:', error);
+            showError('Delete failed. Please try again.');
+        });
+    }
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function showError(message) {
+    alert(message); // Simple error display - could be enhanced with a toast notification
+}
+</script>
+{% endblock %}

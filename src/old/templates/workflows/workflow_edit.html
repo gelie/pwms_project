@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}
+  Edit Workflow
+{% endblock title %}
+{% partialdef content %}
+<div class="container-xxl d-flex flex-column gap-3 mx-auto" style="max-width: 56rem;">
+  <!-- Header -->
+  <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+      <h1 class="d-flex align-items-center gap-2">
+        {% lucide "pencil" class="w-8 h-8" %}
+        Edit Workflow
+      </h1>
+      <p class="page-subtitle">Modify workflow details and settings</p>
+    </div>
+    <a href="{% url 'workflow_detail' workflow.pk %}" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2">
+      {% lucide "arrow-left" class="w-4 h-4" %} Back to Workflow
+    </a>
+  </div>
+  <!-- Form -->
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <form method="post" class="d-flex flex-column gap-4">
+        {% csrf_token %}
+        <!-- Basic Information Section -->
+        <div class="d-flex flex-column gap-3">
+          <h2 class="h5 border-bottom pb-2 mb-3">Basic Information</h2>
+          <!-- Title -->
+          <div>
+            <label class="form-label">
+              <span class="fw-semibold">Title</span>
+              <span class="text-danger">*</span>
+            </label>
+            <input type="text"
+                   name="title"
+                   class="form-control"
+                   placeholder="Enter a short, descriptive title"
+                   value="{{ workflow.title }}"
+                   required
+                   maxlength="500" />
+          </div>
+          <div class="row row-cols-1 row-cols-md-2 g-4">
+            <!-- Workflow Type (Read-only) -->
+            <div class="col">
+              <label class="form-label">
+                <span class="fw-semibold">Workflow Type</span>
+              </label>
+              <input type="hidden"
+                     name="workflow_type"
+                     value="{{ workflow.workflow_type.id }}">
+              <input type="text"
+                     class="form-control bg-body-tertiary"
+                     value="{{ workflow.workflow_type.name }}"
+                     disabled />
+              <div class="form-text">Workflow type cannot be changed after creation</div>
+            </div>
+            <!-- Parent Workflow -->
+            <div class="col">
+              <label class="form-label">
+                <span class="fw-semibold">Parent Workflow</span>
+              </label>
+              <input type="text"
+                     class="form-control bg-body-tertiary"
+                     value="{% if workflow.parent_workflow %}{{ workflow.parent_workflow.title }}{% else %}None (Top-level workflow){% endif %}"
+                     disabled />
+              <div class="form-text">Parent workflow relationship is set at creation</div>
+            </div>
+          </div>
+          <!-- Description -->
+          <div>
+            <label class="form-label">
+              <span class="fw-semibold">Description</span>
+            </label>
+            <textarea name="description"
+                      class="form-control"
+                      style="min-height: 8rem"
+                      placeholder="Optional details about this workflow...">{{ workflow.description|default:'' }}</textarea>
+          </div>
+        </div>
+        <!-- Additional Options Section -->
+        <div class="d-flex flex-column gap-3">
+          <h2 class="h5 border-bottom pb-2 mb-3">Additional Options</h2>
+          <div class="row row-cols-1 row-cols-md-2 g-4">
+            <!-- Priority -->
+            <div class="col">
+              <label class="form-label">
+                <span class="fw-semibold">Priority</span>
+              </label>
+              <select name="priority" class="form-select">
+                <option value="urgent"
+                        {% if workflow.priority == 'urgent' %}selected{% endif %}>Urgent</option>
+                <option value="high" {% if workflow.priority == 'high' %}selected{% endif %}>High</option>
+                <option value="medium"
+                        {% if workflow.priority == 'medium' %}selected{% endif %}>Medium</option>
+                <option value="low" {% if workflow.priority == 'low' %}selected{% endif %}>Low</option>
+              </select>
+            </div>
+            <!-- Deadline -->
+            <div class="col">
+              <label class="form-label">
+                <span class="fw-semibold">Deadline</span>
+                <span class="text-body-secondary fw-normal">(optional)</span>
+              </label>
+              <input type="datetime-local"
+                     name="deadline"
+                     class="form-control"
+                     {% if workflow.deadline %}value="{{ workflow.deadline|date:'Y-m-d\TH:i' }}"{% endif %} />
+            </div>
+          </div>
+          <!-- Event Association -->
+          {% comment %} <div class="mb-3">
+            <label class="form-label">
+              <span class="fw-semibold">Associated Event</span>
+              <span class="text-body-secondary fw-normal">(optional)</span>
+            </label>
+            <select name="event" class="form-select w-100">
+              <option value="">No event association</option>
+              {% for event in available_events %}
+              <option value="{{ event.pk }}" {% if workflow.event and workflow.event.pk == event.pk %}selected{% endif %}>
+                {{ event.title }} - {{ event.start_datetime|date:"M d, Y" }}
+              </option>
+              {% endfor %}
+            </select>
+            <div class="form-text mt-1">Link this workflow to a specific event</div>
+          </div> {% endcomment %}
+        </div>
+        <!-- Type-specific fields (explicit typed profile) -->
+        {% if profile_form %}
+        <div class="d-flex flex-column gap-3">
+          <h2 class="h5 border-bottom pb-2 mb-3 d-flex align-items-center gap-2">
+            {% lucide "settings" class="w-5 h-5" %}
+            Additional Information
+          </h2>
+          <div class="row row-cols-1 row-cols-md-2 g-4">
+            {% for field in profile_form %}
+            <div class="col">
+              <label class="form-label" for="{{ field.id_for_label }}">
+                <span class="fw-semibold">{{ field.label }}{% if field.field.required %} <span class="text-danger">*</span>{% endif %}</span>
+              </label>
+              {{ field }}
+              {% if field.help_text %}
+              <div class="form-text">{{ field.help_text }}</div>
+              {% endif %}
+              {% for error in field.errors %}
+              <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        <div class="d-flex justify-content-between align-items-center gap-3 pt-4 border-top">
+          <a href="{% url 'workflow_detail' workflow.pk %}" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2">
+            {% lucide "x" class="w-4 h-4" %}
+            Cancel
+          </a>
+          <button type="submit" class="btn btn-primary d-inline-flex align-items-center gap-2">
+            {% lucide "save" class="w-5 h-5" %}
+            Save Changes
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <!-- Workflow Info -->
+  <div class="alert alert-info shadow-sm d-flex align-items-start gap-2" role="alert">
+    {% lucide "info" class="w-5 h-5 flex-shrink-0 mt-1" %}
+    <div>
+      <div class="fw-semibold">Current Workflow Status</div>
+      <div class="small text-body-secondary">
+        This workflow is currently in <span class="fw-semibold">{{ workflow.current_state.name }}</span> state.
+        {% if workflow.deadline %}Deadline: {{ workflow.deadline|date:"M d, Y H:i" }}.{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endpartialdef %}
+{% block content %}
+  {% partial content %}
+{% endblock content %}

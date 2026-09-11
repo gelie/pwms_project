@@ -1,0 +1,3211 @@
+{% extends "base.html" %}
+{% block title %}
+{{ workflow.title }}
+{% endblock title %}
+{% block extra_css %}
+<style>
+    .progress-bar-initial {
+        width: 0%;
+    }
+</style>
+{% endblock extra_css %}
+{% partialdef content %}
+<div class="container-xxl d-flex flex-column gap-3">
+    <!-- Breadcrumb with Hierarchy -->
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb small mb-0">
+            <li class="breadcrumb-item">
+                <a href="{% url 'dashboard' %}">Dashboard</a>
+            </li>
+            <li class="breadcrumb-item">
+                <a href="{% url 'workflow_list' %}">Workflows</a>
+            </li>
+            {% if hierarchy_path %}
+            {% for workflow_item in hierarchy_path %}
+            {% if forloop.last %}
+            <li class="breadcrumb-item active" aria-current="page">{{ workflow_item.title|truncatewords:5 }}</li>
+            {% else %}
+            <li class="breadcrumb-item">
+                <a href="{% url 'workflow_detail' workflow_item.pk %}">{{ workflow_item.title|truncatewords:3 }}</a>
+            </li>
+            {% endif %}
+            {% endfor %}
+            {% else %}
+            <li class="breadcrumb-item active" aria-current="page">{{ workflow.title|truncatewords:5 }}</li>
+            {% endif %}
+        </ol>
+    </nav>
+    <!-- Workflow Header (Compact) -->
+    <div class="card shadow-sm overflow-visible">
+        <div class="card-body pb-4 overflow-visible">
+            <div class="d-flex justify-content-between align-items-end gap-4 flex-wrap">
+                <h1 class="fs-2 fw-bold">{{ workflow.title }}</h1>
+                <span class="badge border border-secondary-subtle text-body bg-transparent">{{ workflow.type }}</span>
+            </div>
+            <div class="d-flex justify-content-between align-items-end gap-4 flex-wrap">
+                <div class="flex-grow-1">
+                    {% if workflow.parent_workflow %}
+                    <div class="small text-body-secondary mb-2">
+                        {% lucide "link" class="w-4 h-4 me-1" %}
+                        {{ workflow.relationship_type.relationship_label|default:"Child" }} of
+                        <a href="{% url 'workflow_detail' workflow.parent_workflow.pk %}" class="link-primary text-decoration-none">
+                            {{ workflow.parent_workflow.title|truncatewords:5 }}
+                        </a>
+                    </div>
+                    {% endif %}
+
+                    <!-- Key Status Indicators (Always Visible) -->
+                    <div class="d-flex flex-wrap gap-2 mt-3">
+                        <span class="fw-bold d-inline-flex align-items-center">Status:</span>
+                        {% if available_transitions %}
+                        <div class="dropdown">
+                            <button type="button" class="badge cursor-pointer d-inline-flex align-items-center gap-1 text-white"
+                                data-bs-toggle="dropdown" aria-expanded="false"
+                                style="background-color: {{ workflow.current_state.color }}; border: none;">
+                                {{ workflow.current_state.name }}
+                                {% lucide "chevron-down" class="w-3 h-3 opacity-75" %}
+                            </button>
+                            <ul class="dropdown-menu shadow">
+                                <li><h6 class="dropdown-header small text-body-secondary">Transition to…</h6></li>
+                                {% for transition in available_transitions %}
+                                <li>
+                                    <a href="{% url 'workflow_transition' workflow.pk transition.pk %}"
+                                        class="dropdown-item d-flex justify-content-between align-items-center gap-2">
+                                        {{ transition.name }}
+                                        {% lucide "arrow-right" class="w-4 h-4 ms-auto flex-shrink-0" %}
+                                    </a>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% else %}
+                        <span class="badge" style="background-color: {{ workflow.current_state.color }}; color: white">{{ workflow.current_state.name }}</span>
+                        {% endif %}
+                        <!--<span class="badge border border-secondary-subtle text-body bg-transparent">{{ workflow.workflow_type.name }}</span>-->
+                        {% if workflow.priority == 'urgent' %}
+                        <span class="badge bg-danger">Urgent</span>
+                        {% elif workflow.priority == 'high' %}
+                        <span class="badge bg-warning text-dark">High Priority</span>
+                        {% endif %}
+                        {% if workflow.is_overdue and not workflow.current_state.is_terminal %}
+                        <span class="badge bg-danger">Overdue</span>
+                        {% endif %}
+                        {% if is_referred %}
+                        <span class="badge bg-warning text-dark">
+                            {% lucide "send" class="w-4 h-4 me-1" %}
+                            Referred
+                            {% if active_referrals|length > 1 %}({{ active_referrals|length }}){% endif %}
+                        </span>
+                        {% if referral_deadline %}
+                        <span class="badge border border-secondary-subtle text-body bg-transparent">
+                            {% lucide "clock" class="w-4 h-4 me-1" %}
+                            Deadline: {{ referral_deadline|date:"M d, Y H:i" }}
+                        </span>
+                        {% endif %}
+                        {% endif %}
+                        <!--
+                        {% if workflow.has_sub_workflows %}
+                        <span class="badge bg-info">{{ sub_workflows|length }} Related</span>
+                        {% endif %}
+                    -->
+                    </div>
+                </div>
+                <!-- Quick Actions -->
+                <div class="d-flex gap-2 flex-wrap">
+                    {% if allowed_child_configs %}
+                    <button type="button" class="btn btn-sm btn-dark d-inline-flex align-items-center gap-2"
+                            data-bs-toggle="modal" data-bs-target="#bulk-create-modal">
+                        {% lucide "plus" class="w-4 h-4" %} Related Process
+                    </button>
+                    {% endif %}
+                    {% if can_refer %}
+                    <button type="button" class="btn btn-sm btn-warning d-inline-flex align-items-center gap-2"
+                            data-bs-toggle="modal" data-bs-target="#refer-modal">
+                        {% lucide "send" class="w-4 h-4" %}
+                        {% if active_referrals %}
+                        Add Referral
+                        {% else %}
+                        Refer
+                        {% endif %}
+                    </button>
+                    {% endif %}
+                    {% if active_referrals and can_edit %}
+                    <button id="recall-btn" type="button" class="btn btn-sm btn-outline-danger align-self-center">
+                        {% lucide "circle-x" class="w-4 h-4 me-1" %} Recall Referrals
+                    </button>
+                    {% endif %}
+                    <div class="dropdown">
+                        <button type="button" class="btn btn-sm btn-dark d-inline-flex align-items-center gap-2"
+                                data-bs-toggle="dropdown" aria-expanded="false">
+                            {% lucide "chevron-down" class="w-4 h-4" %}
+                            Actions
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end shadow">
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center gap-2" href="{% url 'workflow_edit' workflow.pk %}">{% lucide "pencil" class="w-4 h-4" %}
+                                    Edit</a>
+                            </li>
+                            {% if can_delete %}
+                            <li>
+                                <form method="post" action="{% url 'workflow_delete' workflow.pk %}"
+                                    onsubmit="return confirm('Are you sure you want to delete this workflow? This action cannot be undone.');">
+                                    {% csrf_token %}
+                                    <button type="submit"
+                                        class="dropdown-item text-danger d-flex align-items-center gap-2">
+                                        {% lucide "trash-2" class="w-4 h-4" %} Delete
+                                    </button>
+                                </form>
+                            </li>
+                            {% endif %}
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center gap-2" href="#" onclick="showShareModal()">{% lucide "share-2" class="w-4 h-4" %} Share</a>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center gap-2" href="{% url 'workflow_report' workflow.pk %}?format=html"
+                                    target="_blank">
+                                    {% lucide "file-text" class="w-4 h-4" %} View Report (HTML)
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item d-flex align-items-center gap-2" href="{% url 'workflow_report' workflow.pk %}?format=pdf">
+                                    {% lucide "file-down" class="w-4 h-4" %} Download PDF
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Tabbed Content -->
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <!-- Tab Navigation -->
+            <nav class="nav nav-tabs" id="detail-tabs">
+                <a id="overview" class="nav-link active" href="#" data-tab="overview">
+                    {% lucide "info" class="w-4 h-4 me-2" %}
+                    Overview
+                </a>
+                <a class="nav-link" href="#" data-tab="related" id="related">
+                    {% lucide "git-branch" class="w-4 h-4 me-2" %}
+                    Related
+                    {% if related_count > 0 %}<span class="badge bg-primary ms-1">{{ related_count }}</span>{% endif %}
+                </a>
+                <a class="nav-link" href="#" data-tab="comments" id="notes">
+                    {% lucide "message-square" class="w-4 h-4 me-2" %}
+                    Notes
+                    {% if comments %}<span class="badge border border-secondary-subtle text-body bg-transparent ms-1">{{ comments|length }}</span>{% endif %}
+                </a>
+                <a class="nav-link" href="#" data-tab="history">
+                    {% lucide "clock" class="w-4 h-4 me-2" %}
+                    History
+                    {% if transition_logs %}<span class="badge border border-secondary-subtle text-body bg-transparent ms-1">{{ transition_logs|length }}</span>{% endif %}
+                </a>
+                <a class="nav-link" href="#" data-tab="attachments" id="attachments">
+                    {% lucide "paperclip" class="w-4 h-4 me-2" %}
+                    Attachments
+                    {% if workflow.attachments.all %}
+                    <span class="badge bg-primary ms-1">{{ workflow.attachments.all|length }}</span>
+                    {% endif %}
+                </a>
+                <a class="nav-link" href="#" data-tab="diagram" id="diagram">
+                    {% lucide "workflow" class="w-4 h-4 me-2" %}
+                    Diagram
+                </a>
+                {% if referral_history or can_refer %}
+                <a class="nav-link" href="#" data-tab="referrals" id="referrals">
+                    {% lucide "send" class="w-4 h-4 me-2" %}
+                    Referrals
+                    {% if active_referrals %}
+                    <span class="badge bg-warning text-dark ms-1">{{ active_referrals|length }} Active</span>
+                    {% endif %}
+                    {% if referral_history %}
+                    <span class="badge border border-secondary-subtle text-body bg-transparent ms-1">{{ referral_history|length }}</span>
+                    {% endif %}
+                </a>
+                {% endif %}
+            </nav>
+            <!-- Tab Content -->
+            <div class="p-4">
+                <!-- Overview Tab -->
+                <div id="tab-overview" class="tab-content">
+                    <div class="row row-cols-1 row-cols-lg-2 g-4">
+                        <!-- Key Information -->
+                        <div class="col d-flex flex-column gap-3">
+                            <h3 class="fs-5 fw-semibold d-flex align-items-center gap-2">
+                                {% lucide "info" class="w-5 h-5" %}
+                                Key Information
+                            </h3>
+                            <div class="bg-body-tertiary rounded-3 p-4 d-flex flex-column gap-3">
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-body-secondary">Type</span>
+                                    <span class="fw-semibold">{{ workflow.workflow_type.name }}</span>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-body-secondary">Priority</span>
+                                    <span class="fw-semibold text-capitalize">{{ workflow.priority }}</span>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-body-secondary">State</span>
+                                    <span class="badge" style="background-color: {{ workflow.current_state.color }}; color: white">{{ workflow.current_state.name }}</span>
+                                </div>
+                                {% if workflow.deadline %}
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-body-secondary">Deadline</span>
+                                    <span
+                                        class="{% if workflow.is_overdue and not workflow.current_state.is_terminal %}text-danger fw-semibold{% endif %}">
+                                        {{ workflow.deadline|date:"M d, Y" }}
+                                    </span>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <!-- Ownership & Assignment -->
+                        <div class="col d-flex flex-column gap-3">
+                            <h3 class="fs-5 fw-semibold d-flex align-items-center gap-2">
+                                {% lucide "users" class="w-5 h-5" %}
+                                Ownership
+                            </h3>
+                            <div class="bg-body-tertiary rounded-3 p-4 d-flex flex-column gap-3">
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-body-secondary">Group</span>
+                                    <span class="fw-semibold">{{ workflow.workflow_type.group.name }}</span>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-body-secondary">Owner</span>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="rounded-circle bg-primary text-white d-inline-flex align-items-center justify-content-center flex-shrink-0" style="width: 32px; height: 32px;">
+                                            <span class="small">{{ workflow.owner.first_name.0|default:workflow.owner.username.0|upper }}</span>
+                                        </span>
+                                        <span>{{ workflow.owner.get_full_name|default:workflow.owner.username }}</span>
+                                    </div>
+                                </div>
+                                {% if workflow.assigned_to %}
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-body-secondary">Assigned To</span>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="rounded-circle bg-secondary text-white d-inline-flex align-items-center justify-content-center flex-shrink-0" style="width: 32px; height: 32px;">
+                                            <span class="small">{{ workflow.assigned_to.first_name.0|default:workflow.assigned_to.username.0|upper }}</span>
+                                        </span>
+                                        <span>{{ workflow.assigned_to.get_full_name|default:workflow.assigned_to.username }}</span>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    {% if workflow.description %}
+                    <div class="mt-4">
+                        <h3 class="fs-5 fw-semibold d-flex align-items-center gap-2 mb-4">
+                            {% lucide "file-text" class="w-5 h-5" %}
+                            Description
+                        </h3>
+                        <div class="bg-body-tertiary rounded-3 p-4">
+                            <div>{{ workflow.description|linebreaks }}</div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    <!-- Type-specific fields (explicit typed profile) -->
+                    {% if typed_fields %}
+                    <div class="mt-4">
+                        <div class="card shadow-sm">
+                            <div class="card-body">
+                                <h3 class="fs-5 fw-semibold d-flex align-items-center gap-2 mb-4">
+                                    {% lucide "settings" class="w-5 h-5" %}
+                                    Additional Information
+                                </h3>
+                                <div class="row row-cols-1 row-cols-md-2 g-4">
+                                    {% for field in typed_fields %}
+                                    <div class="col">
+                                        <label class="form-label fw-semibold">{{ field.label }}</label>
+                                        <div class="bg-body-tertiary rounded-3 p-3">
+                                            <span class="text-body">{{ field.value|default:"—" }}</span>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    <!-- Timeline & System Information (merged from Details tab) -->
+                    <div class="mt-4 row row-cols-1 row-cols-lg-2 g-4">
+                        <div class="col d-flex flex-column gap-3">
+                            <h3 class="fs-5 fw-semibold d-flex align-items-center gap-2">
+                                {% lucide "calendar" class="w-5 h-5" %}
+                                Timeline
+                            </h3>
+                            <div class="bg-body-tertiary rounded-3 p-4 d-flex flex-column gap-3">
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-body-secondary">Created</span>
+                                    <span>{{ workflow.created_at|date:"F d, Y H:i" }}</span>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-body-secondary">Last Updated</span>
+                                    <span>{{ workflow.updated_at|date:"F d, Y H:i" }}</span>
+                                </div>
+                                {% if workflow.deadline %}
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-body-secondary">Deadline</span>
+                                    <span
+                                        class="{% if workflow.is_overdue and not workflow.current_state.is_terminal %}text-danger fw-semibold{% endif %}">
+                                        {{ workflow.deadline|date:"F d, Y H:i" }}
+                                    </span>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col d-flex flex-column gap-3">
+                            <h3 class="fs-5 fw-semibold d-flex align-items-center gap-2">
+                                {% lucide "settings" class="w-5 h-5" %}
+                                System Information
+                            </h3>
+                            <div class="bg-body-tertiary rounded-3 p-4 d-flex flex-column gap-3">
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-body-secondary">Workflow ID</span>
+                                    <span class="font-monospace small">{{ workflow.id }}</span>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <span class="text-body-secondary">Hierarchy Level</span>
+                                    <span>{{ workflow.hierarchy_level }}</span>
+                                </div>
+                                {% if active_referrals %}
+                                <div class="d-flex flex-column gap-2">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="text-body-secondary">Referred To</span>
+                                        <span class="badge bg-warning text-dark">{{ active_referrals|length }}
+                                            Groups</span>
+                                    </div>
+                                    {% for referral in active_referrals %}
+                                    <div class="d-flex justify-content-between align-items-center ps-4">
+                                        <a href="{% url 'group_detail' referral.referred_to.pk %}"
+                                            class="link-primary text-decoration-none small fw-medium">
+                                            {{ referral.referred_to.name|truncatewords:4 }}
+                                        </a>
+                                        <span class="small text-body-secondary opacity-75">{{ referral.referred_at|date:"m/d" }}</span>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                                {% elif workflow.referred_to_groups.exists %}
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="text-body-secondary">Referred Groups</span>
+                                    <span class="badge border border-secondary-subtle text-body bg-transparent">{{ workflow.referred_to_groups.all|length }}</span>
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Related Tab -->
+                <div id="tab-related" class="tab-content">
+                    <div class="d-flex flex-column gap-4">
+                        <!-- Parent Workflow -->
+                        {% if workflow.parent_workflow %}
+                        <div>
+                            <h3 class="fs-5 fw-semibold d-flex align-items-center gap-2 mb-4">
+                                {% lucide "arrow-up" class="w-5 h-5" %}
+                                Parent {{ workflow.parent_workflow.workflow_type.name }}
+                            </h3>
+                            <a href="{% url 'workflow_detail' workflow.parent_workflow.pk %}"
+                                class="d-block p-4 rounded-3 border border-secondary-subtle text-body text-decoration-none">
+                                <div class="d-flex align-items-start gap-3">
+                                    <div class="flex-shrink-0 mt-1">
+                                        <span class="fs-2">📁</span>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <div class="fw-semibold fs-5">{{ workflow.parent_workflow.title }}</div>
+                                        <div class="small text-body-secondary mt-1">
+                                            {{ workflow.parent_workflow.workflow_type.name }}
+                                            {% if workflow.relationship_type %}• This is a {{ workflow.relationship_type.relationship_label|lower }}{% endif %}
+                                        </div>
+                                        <div class="d-flex align-items-center gap-2 mt-2">
+                                            <span class="badge" style="background-color: {{ workflow.parent_workflow.current_state.color }}; color: white">
+                                                {{ workflow.parent_workflow.current_state.name }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </a>
+                        </div>
+                        {% endif %}
+                        <!-- Sub-workflows -->
+                        {% if sub_workflows %}
+                        <div>
+                            <h3 class="fs-5 fw-semibold d-flex align-items-center justify-content-between mb-4">
+                                <span class="d-flex align-items-center gap-2">
+                                    {% lucide "folder-tree" class="w-5 h-5" %}
+                                    Related {{ workflow.workflow_type.name }}s
+                                </span>
+                                <span class="badge bg-primary">{{ sub_workflows|length }}</span>
+                            </h3>
+                            <div class="row row-cols-1 row-cols-lg-2 g-4">
+                                {% for sub_workflow in sub_workflows %}
+                                <a href="{% url 'workflow_detail' sub_workflow.pk %}"
+                                    class="col d-block p-4 rounded-3 border border-secondary-subtle text-body text-decoration-none">
+                                    <div class="d-flex align-items-start gap-2">
+                                        <div class="flex-shrink-0 mt-1">
+                                            <span class="text-body-secondary opacity-75">└─</span>
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <div class="fw-semibold">{{ sub_workflow.title }}</div>
+                                            <div class="small text-body-secondary mt-1">
+                                                {{ sub_workflow.workflow_type.name }}
+                                                {% if sub_workflow.relationship_type %}• {{ sub_workflow.relationship_type.relationship_label }}{% endif %}
+                                            </div>
+                                            <div class="d-flex align-items-center gap-2 mt-2">
+                                                <span class="badge" style="background-color: {{ sub_workflow.current_state.color }}; color: white">
+                                                    {{ sub_workflow.current_state.name }}
+                                                </span>
+                                                {% if sub_workflow.priority == 'urgent' %}
+                                                <span class="badge bg-danger">Urgent</span>
+                                                {% elif sub_workflow.priority == 'high' %}
+                                                <span class="badge bg-warning text-dark">High</span>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        <!-- Sibling workflows -->
+                        {% if sibling_workflows %}
+                        <div>
+                            <h3 class="fs-5 fw-semibold d-flex align-items-center justify-content-between mb-4">
+                                <span class="d-flex align-items-center gap-2">
+                                    {% lucide "git-branch" class="w-5 h-5" %}
+                                    Related Items
+                                </span>
+                                <span class="badge border border-secondary-subtle text-body bg-transparent">{{ sibling_workflows|length }}</span>
+                            </h3>
+                            <div class="d-flex flex-column gap-2">
+                                {% for sibling in sibling_workflows %}
+                                <a href="{% url 'workflow_detail' sibling.pk %}"
+                                    class="d-block p-3 rounded-3 border border-secondary-subtle text-body text-decoration-none">
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="text-body-secondary opacity-75 small">└─</span>
+                                        <div class="flex-grow-1">
+                                            <div class="fw-medium text-truncate">{{ sibling.title }}</div>
+                                            <div class="small text-body-secondary">
+                                                {% if sibling.relationship_type %}{{ sibling.relationship_type.relationship_label }}{% endif %}
+                                            </div>
+                                        </div>
+                                        <span class="badge" style="background-color: {{ sibling.current_state.color }}; color: white">{{ sibling.current_state.name }}</span>
+                                    </div>
+                                </a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% if not workflow.parent_workflow and not sub_workflows and not sibling_workflows %}
+                        <div class="text-center py-5">
+                            <div class="text-body-secondary">
+                                {% lucide "git-branch" class="w-16 h-16 mx-auto mb-4 opacity-25" %}
+                                <p class="fs-5">No related workflows</p>
+                                <p class="small mt-2">This workflow has no parent or child relationships</p>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <!-- Comments Tab -->
+                <div id="tab-comments" class="tab-content">
+                    <div class="d-flex flex-column gap-4">
+                        <!-- Comments List -->
+                        <div class="d-flex flex-column gap-3">
+                            {% for comment in comments %}
+                            <div class="d-flex gap-3 p-4 bg-body-tertiary rounded-3">
+                                <span class="rounded-circle bg-dark text-white d-inline-flex align-items-center justify-content-center flex-shrink-0" style="width: 40px; height: 40px;">
+                                    <span class="small">{{ comment.user.first_name.0|default:comment.user.username.0|upper }}</span>
+                                </span>
+                                <div class="flex-grow-1">
+                                    <div class="d-flex align-items-center justify-content-between mb-1">
+                                        <div class="fw-semibold small">
+                                            {{ comment.user.get_full_name|default:comment.user.username }}
+                                            <span class="small text-body-secondary fw-normal ms-2">{{ comment.created_at|timesince }} ago</span>
+                                        </div>
+                                        {% if comment.user == request.user %}
+                                        <form method="post" action="{% url 'comment_delete' workflow.pk comment.pk %}">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-sm btn-outline-danger btn-icon"
+                                                title="Delete comment">
+                                                {% lucide "trash-2" class="w-4 h-4" %}
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                    </div>
+                                    <div class="d-flex align-items-start gap-3">
+                                        <div class="flex-grow-1">
+                                            <div class="small">{{ comment.text }}</div>
+                                            <!-- Debug: Check if attachments exist -->
+                                            <!-- {{ comment.attachments.all|length }} attachments found -->
+                                            <!-- Comment Attachments - Inline -->
+                                            {% if comment.attachments.all %}
+                                            <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+                                                {% for attachment in comment.attachments.all %}
+                                                <a href="{{ attachment.get_sharepoint_url }}" target="_blank"
+                                                    class="d-inline-flex align-items-center gap-1 px-2 py-1 bg-white border border-secondary-subtle rounded text-decoration-none link-primary small">
+                                                    {% if attachment.mimetype %}
+                                                    {% if 'pdf' in attachment.mimetype %}
+                                                    {% lucide "file-text" class="w-3 h-3" %}
+                                                    {% elif 'word' in attachment.mimetype or 'document' in attachment.mimetype %}
+                                                    {% lucide "file-text" class="w-3 h-3" %}
+                                                    {% elif 'excel' in attachment.mimetype or 'spreadsheet' in attachment.mimetype %}
+                                                    {% lucide "file-spreadsheet" class="w-3 h-3" %}
+                                                    {% elif 'image' in attachment.mimetype %}
+                                                    {% lucide "image" class="w-3 h-3" %}
+                                                    {% else %}
+                                                    {% lucide "file" class="w-3 h-3" %}
+                                                    {% endif %}
+                                                    {% else %}
+                                                    {% lucide "file" class="w-3 h-3" %}
+                                                    {% endif %}
+                                                    <span class="text-truncate" style="max-width: 150px">{{ attachment.name }}</span>
+                                                    {% if attachment.size %}<span class="text-body-secondary">({{ attachment.size|filesizeformat }})</span>{% endif %}
+                                                </a>
+                                                {% endfor %}
+                                            </div>
+                                            {% else %}
+                                            <!-- No attachments for this comment -->
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            {% empty %}
+                            <div class="text-center py-5">
+                                <div class="text-body-secondary">
+                                    {% lucide "message-square" class="w-16 h-16 mx-auto mb-4 opacity-25" %}
+                                    <p class="fs-5">No notes yet</p>
+                                    <p class="small mt-2">Add a note for internal reference.</p>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <!-- Add Comment Form -->
+                        <div class="border-top pt-4 pb-5">
+                            <form method="post" action="{% url 'workflow_detail' workflow.pk %}" class="d-flex flex-column gap-3 pb-4">
+                                {% csrf_token %}
+                                <div class="d-flex flex-column flex-md-row gap-3">
+                                    <div class="d-flex gap-3 flex-grow-1">
+                                        <span class="rounded-circle bg-primary text-white d-inline-flex align-items-center justify-content-center flex-shrink-0" style="width: 40px; height: 40px;">
+                                            <span class="small">{{ request.user.first_name.0|default:request.user.username.0|upper }}</span>
+                                        </span>
+                                        <div class="flex-grow-1">
+                                            <textarea name="comment" placeholder="Add a note..."
+                                                class="form-control w-100" rows="3" cols="80"
+                                                required></textarea>
+                                            <!-- Comment Attachments Section -->
+                                            <div id="comment-attachments" class="mt-3 d-none">
+                                                <div class="d-flex align-items-center justify-content-between mb-2">
+                                                    <span class="small fw-medium">Attachments</span>
+                                                    <button type="button" onclick="clearCommentAttachments()"
+                                                        class="btn btn-sm btn-link text-danger text-decoration-none">
+                                                        {% lucide "x" class="w-3 h-3" %}
+                                                        Clear All
+                                                    </button>
+                                                </div>
+                                                <div id="comment-attachments-list" class="d-flex flex-column gap-2"></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <!-- Attachment Buttons -->
+                                    <div class="d-flex flex-column flex-md-row gap-3">
+                                        <button type="button" onclick="showCommentSharepointModal()"
+                                            class="btn btn-outline-secondary d-inline-flex align-items-center gap-2">
+                                            {% lucide "paperclip" class="w-3 h-3" %}
+                                            Attach from SharePoint
+                                        </button>
+                                        <button type="button" onclick="showCommentUploadModal()"
+                                            class="btn btn-outline-secondary d-inline-flex align-items-center gap-2">
+                                            {% lucide "upload" class="w-3 h-3" %}
+                                            Upload File
+                                        </button>
+                                        <button type="submit" class="btn btn-primary d-inline-flex align-items-center gap-2">
+                                            {% lucide "send" class="w-4 h-4" %}
+                                            Send
+                                        </button>
+                                    </div>
+                                </div>
+                                <!-- Hidden input for comment attachment IDs -->
+                                <input type="hidden" id="comment-attachment-ids" name="attachment_ids" value="">
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                <!-- Diagram Tab -->
+                <div id="tab-diagram" class="tab-content">
+                    <div class="d-flex flex-column gap-3">
+                        <!-- Diagram Image -->
+                        <div class="card shadow-sm">
+                            <div class="card-header">
+                                <button class="btn btn-link text-decoration-none p-0 fw-semibold d-flex align-items-center gap-2 w-100" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#collapse-diagram" aria-expanded="true" aria-controls="collapse-diagram">
+                                    {% lucide "workflow" class="w-5 h-5" %}
+                                    {{ workflow.workflow_type.name }} Workflow Diagram
+                                </button>
+                            </div>
+                            <div id="collapse-diagram" class="collapse show">
+                                <div class="card-body">
+                                    {% if diagram_url %}
+                                    <div class="bg-body-tertiary rounded-3 p-4 d-flex justify-content-center overflow-auto">
+                                        <a href="{{ diagram_url }}" target="_blank" class="d-flex justify-content-center">
+                                            <img src="{{ diagram_url }}" alt="Workflow Diagram" class="workflow-diagram">
+                                        </a>
+                                    </div>
+                                    {% else %}
+                                    <div class="alert alert-warning shadow-sm d-flex align-items-center gap-2" role="alert">
+                                        {% lucide "triangle-alert" class="w-4 h-4" %}
+                                        <span>No diagram available for this workflow type. Run <code
+                                                class="font-monospace">manage.py generate_workflow_diagrams</code> to generate
+                                            one.</span>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        <!-- States & Permissions Table -->
+                        <div class="card shadow-sm">
+                            <div class="card-header">
+                                <button class="btn btn-link text-decoration-none p-0 fw-semibold d-flex align-items-center gap-2 w-100" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#collapse-states" aria-expanded="true" aria-controls="collapse-states">
+                                    {% lucide "shield" class="w-5 h-5" %}
+                                    States &amp; Permissions
+                                </button>
+                            </div>
+                            <div id="collapse-states" class="collapse show">
+                                <div class="card-body">
+                                    <div class="table-responsive border border-secondary-subtle rounded-3">
+                                        <table class="table table-striped align-middle w-100 mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>State</th>
+                                                    <th>Type</th>
+                                                    <th>Role</th>
+                                                    <th class="text-center">View</th>
+                                                    <th class="text-center">Edit</th>
+                                                    <th class="text-center">Delete</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for state in diagram_states %}
+                                                {% if state.permissions.all %}
+                                                {% for perm in state.permissions.all %}
+                                                <tr>
+                                                    {% if forloop.first %}
+                                                    <td rowspan="{{ state.permissions.all|length }}"
+                                                        class="fw-medium align-top">
+                                                        <span class="badge" style="background-color: {{ state.color }}; color: white">{{ state.name }}</span>
+                                                    </td>
+                                                    <td rowspan="{{ state.permissions.all|length }}"
+                                                        class="align-top small text-body-secondary">
+                                                        {% if state.is_initial %}
+                                                        Initial
+                                                        {% elif state.is_terminal %}
+                                                        Terminal
+                                                        {% else %}
+                                                        Regular
+                                                        {% endif %}
+                                                    </td>
+                                                    {% endif %}
+                                                    <td class="small">
+                                                        {% for role in perm.roles.all %}<span class="badge border border-secondary-subtle text-body bg-transparent me-1">{{ role.name }}</span>{% endfor %}
+                                                    </td>
+                                                    <td class="text-center">
+                                                        {% if perm.can_view %}
+                                                        {% lucide "check" class="w-4 h-4 text-success mx-auto" %}
+                                                        {% else %}
+                                                        <span class="text-body-secondary opacity-50">—</span>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td class="text-center">
+                                                        {% if perm.can_edit %}
+                                                        {% lucide "check" class="w-4 h-4 text-success mx-auto" %}
+                                                        {% else %}
+                                                        <span class="text-body-secondary opacity-50">—</span>
+                                                        {% endif %}
+                                                    </td>
+                                                    <td class="text-center">
+                                                        {% if perm.can_delete %}
+                                                        {% lucide "check" class="w-4 h-4 text-success mx-auto" %}
+                                                        {% else %}
+                                                        <span class="text-body-secondary opacity-50">—</span>
+                                                        {% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                                {% else %}
+                                                <tr>
+                                                    <td class="fw-medium">
+                                                        <span class="badge" style="background-color: {{ state.color }};
+                                                                             color: white">{{ state.name }}</span>
+                                                    </td>
+                                                    <td class="small text-body-secondary">
+                                                        {% if state.is_initial %}
+                                                        Initial
+                                                        {% elif state.is_terminal %}
+                                                        Terminal
+                                                        {% else %}
+                                                        Regular
+                                                        {% endif %}
+                                                    </td>
+                                                    <td colspan="4" class="small text-body-secondary opacity-75 fst-italic">
+                                                        No
+                                                        permissions defined — visible to all group members
+                                                    </td>
+                                                </tr>
+                                                {% endif %}
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <!-- Transitions Table -->
+                        <div class="card shadow-sm">
+                            <div class="card-header">
+                                <button class="btn btn-link text-decoration-none p-0 fw-semibold d-flex align-items-center gap-2 w-100" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#collapse-transitions" aria-expanded="true" aria-controls="collapse-transitions">
+                                    {% lucide "arrow-right-left" class="w-5 h-5" %}
+                                    Transitions &amp; Allowed Roles
+                                </button>
+                            </div>
+                            <div id="collapse-transitions" class="collapse show">
+                                <div class="card-body">
+                                    <div class="table-responsive border border-secondary-subtle rounded-3">
+                                        <table class="table table-striped align-middle w-100 mb-0">
+                                            <thead>
+                                                <tr>
+                                                    <th>Transition</th>
+                                                    <th>From</th>
+                                                    <th>To</th>
+                                                    <th>Allowed Roles</th>
+                                                    <th class="text-center">Requires Comment</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% for t in diagram_transitions %}
+                                                <tr>
+                                                    <td class="fw-medium">{{ t.name }}</td>
+                                                    <td>
+                                                        <span class="badge border border-secondary-subtle text-body bg-transparent">{{ t.from_state.name }}</span>
+                                                    </td>
+                                                    <td>
+                                                        <span class="badge" style="background-color: {{ t.to_state.color }}; color: white">{{ t.to_state.name }}</span>
+                                                    </td>
+                                                    <td class="small">
+                                                        {% for role in t.allowed_roles.all %}
+                                                        <span class="badge bg-body-tertiary text-body me-1">{{ role.name }}</span>
+                                                        {% empty %}
+                                                        <span class="text-body-secondary opacity-75 fst-italic">None</span>
+                                                        {% endfor %}
+                                                    </td>
+                                                    <td class="text-center">
+                                                        {% if t.requires_comment %}
+                                                        {% lucide "check" class="w-4 h-4 text-warning mx-auto" %}
+                                                        {% else %}
+                                                        <span class="text-body-secondary opacity-50">—</span>
+                                                        {% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- History Tab -->
+                <div id="tab-history" class="tab-content">
+                    <div class="d-flex flex-column gap-3">
+                        {% for log in transition_logs %}
+                        <div class="d-flex gap-4 p-4 bg-body-tertiary rounded-3">
+                            <div class="flex-shrink-0">
+                                <span class="rounded-circle bg-primary d-inline-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                                    {% lucide "zap" class="w-5 h-5 text-white" %}
+                                </span>
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="d-flex align-items-center gap-2 mb-1">
+                                    <span class="fw-semibold">{{ log.transition.name }}</span>
+                                    <span class="small text-body-secondary">{{ log.timestamp|timesince }} ago</span>
+                                </div>
+                                <div class="small text-body-secondary mb-2">{{ log.from_state.name }} → {{ log.to_state.name }}</div>
+                                <div class="small mb-2">by {{ log.user.get_full_name|default:log.user.username }}
+                                </div>
+                                {% if log.comment %}<div class="bg-secondary-subtle rounded p-2 small">{{ log.comment }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% empty %}
+                        <div class="text-center py-5">
+                            <div class="text-body-secondary">
+                                {% lucide "clock" class="w-16 h-16 mx-auto mb-4 opacity-25" %}
+                                <p class="fs-5">No history yet</p>
+                                <p class="small mt-2">Workflow transitions will appear here</p>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <!-- Attachments Tab -->
+                <div id="tab-attachments" class="tab-content">
+                    <div class="d-flex flex-column gap-3">
+                        <!-- Upload Button -->
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <h3 class="fs-5 fw-semibold mb-0">Files &amp; Documents</h3>
+                            <div class="d-flex gap-2">
+                                <button type="button" onclick="showSharepointModal()" class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2">
+                                    {% lucide "folder-open" class="w-4 h-4" %}
+                                    Select from SharePoint
+                                </button>
+                                <button type="button" onclick="showUploadModal()" class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2">
+                                    {% lucide "upload" class="w-4 h-4" %}
+                                    Upload File
+                                </button>
+                            </div>
+                        </div>
+                        <!-- Attachments List -->
+                        {% if workflow.attachments.all %}
+                        {% for attachment in workflow.attachments.all %}
+                        <div class="border rounded-3 p-4">
+                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+                                <div class="d-flex align-items-center gap-4">
+                                    <div class="text-primary">
+                                        {% if attachment.mimetype %}
+                                        {% if 'pdf' in attachment.mimetype %}
+                                        {% lucide "file-text" class="w-8 h-8" %}
+                                        {% elif 'word' in attachment.mimetype or 'document' in attachment.mimetype %}
+                                        {% lucide "file-text" class="w-8 h-8" %}
+                                        {% elif 'excel' in attachment.mimetype or 'spreadsheet' in attachment.mimetype %}
+                                        {% lucide "file-spreadsheet" class="w-8 h-8" %}
+                                        {% elif 'image' in attachment.mimetype %}
+                                        {% lucide "image" class="w-8 h-8" %}
+                                        {% else %}
+                                        {% lucide "file" class="w-8 h-8" %}
+                                        {% endif %}
+                                        {% else %}
+                                        {% lucide "file" class="w-8 h-8" %}
+                                        {% endif %}
+                                    </div>
+                                    <div>
+                                        <h4 class="fw-semibold">{{ attachment.name }}</h4>
+                                        <p class="small text-body-secondary mb-0">
+                                            {% if attachment.size %}{{ attachment.size|filesizeformat }} •{% endif %}
+                                            {{ attachment.type|title }} •
+                                            {{ attachment.created_at|date:"M d, Y H:i" }}
+                                            {% if attachment.uploaded_by %}
+                                            by {{ attachment.uploaded_by.get_full_name|default:attachment.uploaded_by.username }}
+                                            {% endif %}
+                                        </p>
+                                        {% if attachment.sharepoint_folder_path %}
+                                        <p class="small text-body-secondary opacity-75 mb-0">
+                                            📁
+                                            {{ attachment.sharepoint_folder_path }}
+                                        </p>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <a href="{{ attachment.get_sharepoint_url }}" target="_blank"
+                                        class="btn btn-sm btn-outline-secondary btn-icon" title="Open attachment">
+                                        {% lucide "external-link" class="w-4 h-4" %}
+                                    </a>
+                                    <button type="button" onclick="deleteAttachment('{{ attachment.id }}')"
+                                        class="btn btn-sm btn-outline-danger btn-icon" title="Delete attachment">
+                                        {% lucide "trash-2" class="w-4 h-4" %}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                        {% else %}
+                        <div class="text-center py-5 text-body-secondary">
+                            {% lucide "paperclip" class="w-16 h-16 mx-auto mb-4 opacity-25" %}
+                            <p class="fs-5">No attachments yet</p>
+                            <p class="small">Click "Upload File" to add your first attachment</p>
+                        </div>
+                        {% endif %}
+                        <!-- Comment Attachments Section -->
+                        {% if comments %}
+                        {% regroup comments by user as comment_groups %}
+                        <div class="mt-4 pt-4 border-top border-secondary-subtle">
+                            <h3 class="fs-5 fw-semibold mb-4 d-flex align-items-center gap-2">
+                                {% lucide "message-square" class="w-5 h-5" %}
+                                Comment Attachments
+                            </h3>
+                            {% for group in comment_groups %}
+                            {% for comment in group.list %}
+                            {% if comment.attachments.all %}
+                            <div class="mb-4">
+                                <div class="d-flex align-items-center gap-2 mb-3 small text-body-secondary">
+                                    <span class="rounded-circle bg-dark text-white d-inline-flex align-items-center justify-content-center flex-shrink-0" style="width: 24px; height: 24px;">
+                                        <span class="small">{{ comment.user.first_name.0|default:comment.user.username.0|upper }}</span>
+                                    </span>
+                                    <span class="fw-medium">{{ comment.user.get_full_name|default:comment.user.username }}</span>
+                                    <span>•</span>
+                                    <span>{{ comment.created_at|timesince }} ago</span>
+                                </div>
+                                <div class="bg-body-tertiary rounded-3 p-3 mb-2">
+                                    <p class="small mb-0">{{ comment.text|truncatewords:20 }}</p>
+                                </div>
+                                <div class="d-flex flex-column gap-2">
+                                    {% for attachment in comment.attachments.all %}
+                                    <div class="border rounded-3 p-3">
+                                        <div class="d-flex align-items-center justify-content-between flex-wrap gap-3">
+                                            <div class="d-flex align-items-center gap-3">
+                                                <div class="text-primary">
+                                                    {% if attachment.mimetype %}
+                                                    {% if 'pdf' in attachment.mimetype %}
+                                                    {% lucide "file-text" class="w-6 h-6" %}
+                                                    {% elif 'word' in attachment.mimetype or 'document' in attachment.mimetype %}
+                                                    {% lucide "file-text" class="w-6 h-6" %}
+                                                    {% elif 'excel' in attachment.mimetype or 'spreadsheet' in attachment.mimetype %}
+                                                    {% lucide "file-spreadsheet" class="w-6 h-6" %}
+                                                    {% elif 'image' in attachment.mimetype %}
+                                                    {% lucide "image" class="w-6 h-6" %}
+                                                    {% else %}
+                                                    {% lucide "file" class="w-6 h-6" %}
+                                                    {% endif %}
+                                                    {% else %}
+                                                    {% lucide "file" class="w-6 h-6" %}
+                                                    {% endif %}
+                                                </div>
+                                                <div>
+                                                    <h4 class="fw-medium small">{{ attachment.name }}</h4>
+                                                    <p class="small text-body-secondary mb-0">
+                                                        {% if attachment.size %}{{ attachment.size|filesizeformat }} •{% endif %}
+                                                        {{ attachment.type|title }} •
+                                                        {{ attachment.created_at|date:"M d, Y H:i" }}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                            <div class="d-flex align-items-center gap-2">
+                                                <a href="{{ attachment.get_sharepoint_url }}" target="_blank"
+                                                    class="btn btn-sm btn-outline-secondary btn-icon" title="Open attachment">
+                                                    {% lucide "external-link" class="w-3 h-3" %}
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                            {% endif %}
+                            {% endfor %}
+                            {% endfor %}
+                            {% if not comments %}
+                            {% for comment in comments %}
+                            {% if comment.attachments.all %}
+                            {% comment %} This should never happen due to the regroup logic {% endcomment %}
+                            {% endif %}
+                            {% endfor %}
+                            <div class="text-center py-5 text-body-secondary">
+                                <p class="small">No attachments in comments yet</p>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                <!-- Referrals Tab -->
+                <div id="tab-referrals" class="tab-content">
+                    <div class="d-flex flex-column gap-4">
+                        {% if active_referrals %}
+                        <div class="d-flex flex-column gap-3">
+                            <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                <h3 class="fs-5 fw-semibold d-flex align-items-center gap-2 mb-0">
+                                    {% lucide "send" class="w-5 h-5" %}
+                                    Active Referrals ({{ active_referrals|length }})
+                                </h3>
+                                {% if user == workflow.owner %}
+                                <button id="recall-all-header-btn" type="button" class="btn btn-danger btn-sm">
+                                    {% lucide "circle-x" class="w-4 h-4 me-1" %} Recall All
+                                </button>
+                                {% endif %}
+                            </div>
+                            {% for referral in active_referrals %}
+                            <div class="alert alert-warning shadow-sm d-flex justify-content-between align-items-start gap-3">
+                                <div class="d-flex align-items-start gap-3 flex-grow-1">
+                                    {% lucide "send" class="w-5 h-5 flex-shrink-0 mt-1" %}
+                                    <div class="flex-grow-1">
+                                        <div class="fw-semibold">Referred to {{ referral.referred_to.name }}</div>
+                                        <div class="small mt-1">
+                                            By {{ referral.referred_by.get_full_name|default:referral.referred_by.username }}
+                                            on {{ referral.referred_at|date:"Y-m-d H:i" }}
+                                        </div>
+                                        {% if referral.reason %}<div class="small mt-1 fst-italic">"{{ referral.reason }}"
+                                        </div>{% endif %}
+                                        {% if referral.deadline %}
+                                        <div class="small mt-1">
+                                            <span class="badge border border-secondary-subtle text-body bg-transparent">
+                                                {% lucide "clock" class="w-3 h-3 me-1" %}
+                                                Deadline: {{ referral.deadline|date:"M d, Y H:i" }}
+                                            </span>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {% if user == workflow.owner or can_edit %}
+                                <button type="button" class="btn btn-danger btn-sm flex-shrink-0 recall-single-btn"
+                                    data-group-id="{{ referral.referred_to.pk }}"
+                                    data-group-name="{{ referral.referred_to.name }}">
+                                    {% lucide "circle-x" class="w-4 h-4 me-1" %}
+                                    {% if user == workflow.owner %}Recall{% else %}Send Back{% endif %}
+                                </button>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="alert alert-info shadow-sm d-flex align-items-center gap-2" role="alert">
+                            {% lucide "info" class="w-5 h-5" %}
+                            <span>This workflow is not currently referred to any group.</span>
+                            {% if can_refer %}
+                            <button type="button" class="btn btn-warning btn-sm ms-auto"
+                                    data-bs-toggle="modal" data-bs-target="#refer-modal">
+                                {% lucide "send" class="w-4 h-4 me-1" %} Refer Now
+                            </button>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        <!-- Referral History -->
+                        {% if referral_history %}
+                    <div>
+                        <h3 class="fs-5 fw-semibold d-flex align-items-center gap-2 mb-3">
+                            {% lucide "clock" class="w-5 h-5" %}
+                            Referral History
+                        </h3>
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle w-100 mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Group</th>
+                                        <th>Label</th>
+                                        <th>Reason</th>
+                                        <th>Referred By</th>
+                                        <th>Referred At</th>
+                                        <th>Status</th>
+                                        <th>Recalled At</th>
+                                        <th>Recalled By</th>
+                                        <th>Recall Reason</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for ref in referral_history %}
+                                    <tr class="{% if ref.is_active %}table-warning{% endif %}">
+                                        <td class="small">{{ ref.referred_to.name }}</td>
+                                        <td class="small text-body-secondary">{{ ref.config.label|default:"—" }}</td>
+                                        <td class="small text-truncate" style="max-width: 12rem" title="{{ ref.reason }}">{{ ref.reason|default:"—" }}</td>
+                                        <td class="small">{{ ref.referred_by.get_full_name|default:ref.referred_by.username }}</td>
+                                        <td class="small">{{ ref.referred_at|date:"Y-m-d H:i" }}</td>
+                                        <td>
+                                            {% if ref.is_active %}
+                                            <span class="badge bg-warning text-dark">Active</span>
+                                            {% else %}
+                                            <span class="badge bg-body-tertiary text-body">Recalled</span>
+                                            {% endif %}
+                                        </td>
+                                        <td class="small">{{ ref.recalled_at|date:"Y-m-d H:i"|default:"—" }}</td>
+                                        <td class="small">
+                                            {% if ref.recalled_by %}
+                                            {{ ref.recalled_by.get_full_name|default:ref.recalled_by.username }}
+                                            {% else %}
+                                            System
+                                            {% endif %}
+                                        </td>
+                                        <td class="small text-truncate" style="max-width: 12rem" title="{{ ref.recall_reason }}">{{ ref.recall_reason|default:"—" }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    {% endif %}
+                    <!-- Allowed Referral Targets -->
+                    {% if referral_configs %}
+                    <div>
+                        <h3 class="fs-5 fw-semibold d-flex align-items-center gap-2 mb-3">
+                            {% lucide "users" class="w-5 h-5" %}
+                            Configured Referral Targets
+                        </h3>
+                        <div class="row row-cols-1 row-cols-sm-2 row-cols-lg-3 g-3">
+                            {% for cfg in referral_configs %}
+                            <div class="col">
+                                <div class="card bg-body-tertiary shadow-sm h-100">
+                                    <div class="card-body p-4">
+                                        <div class="fw-medium small">{{ cfg.target_group.name }}</div>
+                                        {% if cfg.label %}<div class="small text-body-secondary mt-1">{{ cfg.label }}
+                                        </div>{% endif %}
+                                        <div class="d-flex flex-wrap gap-1 mt-2">
+                                            {% for role in cfg.referred_transition_roles.all %}
+                                            <span class="badge bg-primary">{{ role.name }}</span>
+                                            {% empty %}
+                                            <span class="small text-body-secondary opacity-75">No transition roles</span>
+                                            {% endfor %}
+                                        </div>
+                                        {% if can_refer %}
+                                        <button type="button" class="btn btn-warning btn-sm mt-2 refer-quick-btn"
+                                            data-group-id="{{ cfg.target_group.pk }}"
+                                            data-group-name="{{ cfg.target_group.name }}" data-label="{{ cfg.label }}">
+                                            {% lucide "send" class="w-3 h-3 me-1" %} Refer to this group
+                                        </button>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<style>
+    /* Tab content animation */
+    .tab-content {
+        animation: fadeIn 0.2s ease-in-out;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(0.5rem);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
+<noscript>
+    <style>
+        /* Show all tab content when JavaScript is disabled */
+        .tab-content {
+            display: block !important;
+            border-top: 1px solid var(--bs-border-color);
+            margin-top: 1rem;
+            padding-top: 1rem;
+        }
+
+        .tab-content:not(:first-child) {
+            margin-top: 2rem;
+        }
+
+        #detail-tabs {
+            display: none;
+        }
+    </style>
+</noscript>
+<script>
+    // Tab switching functionality
+    document.addEventListener('DOMContentLoaded', function () {
+        const tabNav = document.getElementById('detail-tabs');
+        const tabs = tabNav ? tabNav.querySelectorAll('.nav-link') : [];
+        const tabContents = document.querySelectorAll('.tab-content');
+
+
+
+        // Hide all tab contents first
+        tabContents.forEach(content => {
+            content.style.display = 'none';
+        });
+
+        // Show overview tab by default
+        const overviewTab = document.getElementById('tab-overview');
+        if (overviewTab) {
+            overviewTab.style.display = 'block';
+        }
+
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function (e) {
+                e.preventDefault();
+
+                const targetTab = this.getAttribute('data-tab');
+
+                // Remove active class from all tabs
+                tabs.forEach(t => t.classList.remove('active'));
+
+                // Hide all tab contents
+                tabContents.forEach(content => {
+                    content.style.display = 'none';
+                });
+
+                // Add active class to clicked tab
+                this.classList.add('active');
+
+                // Show corresponding content
+                const targetContent = document.getElementById('tab-' + targetTab);
+                if (targetContent) {
+                    targetContent.style.display = 'block';
+                }
+            });
+        });
+    });
+
+    // SharePoint Upload Functionality
+    let sites = [];
+    let drives = [];
+    let folders = [];
+
+    // Load SharePoint sites when page loads
+    document.addEventListener('DOMContentLoaded', function () {
+        loadSites();
+
+        // Add event listeners with null checks
+        const siteSelect = document.getElementById('site-select');
+        if (siteSelect) {
+            siteSelect.addEventListener('change', function () {
+                const siteId = this.value;
+                const driveSelect = document.getElementById('drive-select');
+
+                if (siteId) {
+                    loadDrives(siteId);
+                } else {
+                    driveSelect.disabled = true;
+                    driveSelect.innerHTML = '<option value="">Select a library...</option>';
+                    document.getElementById('folder-select').disabled = true;
+                    document.getElementById('folder-select').innerHTML =
+                        '<option value="">Root Folder</option>';
+                }
+            });
+        }
+
+        const driveSelect = document.getElementById('drive-select');
+        if (driveSelect) {
+            driveSelect.addEventListener('change', function () {
+                const driveId = this.value;
+                const folderSelect = document.getElementById('folder-select');
+
+                if (driveId) {
+                    loadFolders(driveId);
+                } else {
+                    folderSelect.disabled = true;
+                    folderSelect.innerHTML = '<option value="">Root Folder</option>';
+                }
+            });
+        }
+
+        const uploadForm = document.getElementById('upload-form');
+        if (uploadForm) {
+            uploadForm.addEventListener('submit', function (e) {
+                e.preventDefault();
+
+                // Custom validation
+                const siteSelect = document.getElementById('site-select');
+                const driveSelect = document.getElementById('drive-select');
+                const fileInput = document.querySelector('input[name="file"]');
+
+                if (!siteSelect.value) {
+                    showError('Please select a SharePoint site');
+                    return;
+                }
+
+                if (!driveSelect.value) {
+                    showError('Please select a document library');
+                    return;
+                }
+
+                if (!fileInput.files || fileInput.files.length === 0) {
+                    showError('Please select a file to upload');
+                    return;
+                }
+
+                // Folder is optional - no validation needed
+
+                const formData = new FormData(this);
+                const progressBar = document.getElementById('progress-bar');
+                const progressText = document.getElementById('progress-text');
+                const progressContainer = document.getElementById('upload-progress');
+
+                progressContainer.classList.remove('d-none');
+
+                fetch('/api/attachments/upload/', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        'X-CSRFToken': getCookie('csrftoken')
+                    }
+                })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            hideUploadModal();
+                            location.reload(); // Refresh to show new attachment
+                        } else {
+                            showError(data.error || 'Upload failed');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Upload error:', error);
+                        showError('Upload failed. Please try again.');
+                    })
+                    .finally(() => {
+                        progressContainer.classList.add('d-none');
+                    });
+            });
+        }
+    });
+
+    function loadSites() {
+        console.log('Starting to load sites...');
+
+        // First test the configuration
+        fetch('/api/sharepoint/test/')
+            .then(response => response.json())
+            .then(debugInfo => {
+                console.log('Debug info:', debugInfo);
+
+                if (debugInfo.error) {
+                    throw new Error('Configuration error: ' + debugInfo.error);
+                }
+
+                if (debugInfo.token_test && debugInfo.token_test.startsWith('FAILED')) {
+                    throw new Error('Token error: ' + debugInfo.token_test);
+                }
+
+                // Now try to load sites
+                return fetch('/api/sites/{{user.username}}');
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Sites data received:', data);
+
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                sites = data.items || [];
+                const siteSelect = document.getElementById('site-select');
+                siteSelect.innerHTML = '<option value="">Select a site...</option>';
+
+                if (sites.length === 0) {
+                    const option = document.createElement('option');
+                    option.value = "";
+                    option.textContent = "No sites available";
+                    option.disabled = true;
+                    siteSelect.appendChild(option);
+                    return;
+                }
+
+                sites.forEach(site => {
+                    if (!site.is_personal_site) {
+                        const option = document.createElement('option');
+                        option.value = site.site_id;
+                        option.textContent = site.name;
+                        siteSelect.appendChild(option);
+                    }
+                });
+            })
+            .catch(error => {
+                console.error('Error loading sites:', error);
+                showError('Failed to load SharePoint sites: ' + error.message);
+
+                // Show error in select
+                const siteSelect = document.getElementById('site-select');
+                siteSelect.innerHTML = '<option value="">Error loading sites</option>';
+                siteSelect.disabled = true;
+            });
+    }
+
+    function loadDrives(siteId) {
+        const driveSelect = document.getElementById('drive-select');
+        driveSelect.disabled = true;
+        driveSelect.innerHTML = '<option value="">Loading libraries...</option>';
+
+        fetch(`/api/sites/${siteId}/drives`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                drives = data.items;
+                driveSelect.innerHTML = '<option value="">Select a library...</option>';
+
+                drives.forEach(drive => {
+                    const option = document.createElement('option');
+                    option.value = drive.drive_id;
+                    option.textContent = drive.name;
+                    driveSelect.appendChild(option);
+                });
+
+                driveSelect.disabled = false;
+            })
+            .catch(error => {
+                console.error('Error loading drives:', error);
+                showError('Failed to load document libraries');
+            });
+    }
+
+    function loadFolders(driveId) {
+        const folderSelect = document.getElementById('folder-select');
+        folderSelect.disabled = true;
+        folderSelect.innerHTML = '<option value="">Loading folders...</option>';
+
+        fetch(`/api/sharepoint/drives/${driveId}/folders/`)
+            .then(response => response.json())
+            .then(data => {
+                console.log(data);
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                folders = data.folders;
+                folderSelect.innerHTML = '<option value="">Root Folder</option>';
+
+                if (folders.length === 0) {
+                    // No folders available, keep only root option
+                    folderSelect.disabled = false;
+                    if (data.message) {
+                        console.log(data.message);
+                    }
+                } else {
+                    // Add folders to the dropdown
+                    folders.forEach(folder => {
+                        const option = document.createElement('option');
+                        option.value = folder.id;
+                        option.textContent = folder.name;
+                        folderSelect.appendChild(option);
+                    });
+                    folderSelect.disabled = false;
+                }
+            })
+            .catch(error => {
+                console.error('Error loading folders:', error);
+                folderSelect.innerHTML = '<option value="">Root Folder</option>';
+                folderSelect.disabled = false;
+            });
+    }
+
+    function showUploadModal() {
+        const modalEl = document.getElementById('upload-modal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+    }
+
+    function hideUploadModal() {
+        const modalEl = document.getElementById('upload-modal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        }
+        const uploadForm = document.getElementById('upload-form');
+        if (uploadForm) {
+            uploadForm.reset();
+        }
+
+        // Reset folder select to show Root Folder option
+        const folderSelect = document.getElementById('folder-select');
+        if (folderSelect) {
+            folderSelect.innerHTML = '<option value="">Root Folder</option>';
+            folderSelect.disabled = true;
+        }
+
+        const uploadProgress = document.getElementById('upload-progress');
+        if (uploadProgress) {
+            uploadProgress.classList.add('d-none');
+        }
+    }
+
+    function deleteAttachment(attachmentId) {
+        if (confirm('Are you sure you want to delete this attachment?')) {
+            fetch(`/api/attachments/${attachmentId}/`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        location.reload(); // Refresh to remove attachment
+                    } else {
+                        showError(data.error || 'Delete failed');
+                    }
+                })
+                .catch(error => {
+                    console.error('Delete error:', error);
+                    showError('Delete failed. Please try again.');
+                });
+        }
+    }
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    function showError(message) {
+        alert(message); // Simple error display - could be enhanced with a toast notification
+    }
+
+    // SharePoint File Selection Functionality
+    let sharepointFiles = [];
+    let selectedSharepointFile = null;
+
+    function showSharepointModal() {
+        const modalEl = document.getElementById('sharepoint-modal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+        loadSharepointSites();
+    }
+
+    function hideSharepointModal() {
+        const modalEl = document.getElementById('sharepoint-modal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        }
+        // Reset form
+        document.getElementById('sharepoint-site-select').value = '';
+        document.getElementById('sharepoint-drive-select').value = '';
+        document.getElementById('sharepoint-drive-select').disabled = true;
+        document.getElementById('sharepoint-folder-select').value = '';
+        document.getElementById('sharepoint-folder-select').disabled = true;
+        document.getElementById('sharepoint-folder-select').innerHTML = '<option value="">Root Folder</option>';
+        document.getElementById('sharepoint-files-list').innerHTML = `
+            <p class="text-center text-body-secondary py-4">
+                📁 Select a folder or leave empty to view root files
+            </p>
+        `;
+        document.getElementById('sharepoint-select-btn').disabled = true;
+        selectedSharepointFile = null;
+    }
+
+    function loadSharepointSites() {
+        const siteSelect = document.getElementById('sharepoint-site-select');
+        siteSelect.innerHTML = '<option value="">Loading sites...</option>';
+
+        fetch('/api/sites/{{ user.username }}')
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                siteSelect.innerHTML = '<option value="">Select a site...</option>';
+
+                data.items.forEach(site => {
+                    if (!site.is_personal_site) {
+                        const option = document.createElement('option');
+                        option.value = site.site_id;
+                        option.textContent = site.name;
+                        siteSelect.appendChild(option);
+                    }
+                });
+            })
+            .catch(error => {
+                console.error('Error loading sites:', error);
+                siteSelect.innerHTML = '<option value="">Error loading sites</option>';
+            });
+    }
+
+    function loadSharepointDrives() {
+        const siteId = document.getElementById('sharepoint-site-select').value;
+        const driveSelect = document.getElementById('sharepoint-drive-select');
+
+        if (!siteId) {
+            driveSelect.disabled = true;
+            driveSelect.innerHTML = '<option value="">Select a library...</option>';
+            // Reset folder select
+            const folderSelect = document.getElementById('sharepoint-folder-select');
+            folderSelect.disabled = true;
+            folderSelect.innerHTML = '<option value="">Root Folder</option>';
+            return;
+        }
+
+        driveSelect.disabled = true;
+        driveSelect.innerHTML = '<option value="">Loading libraries...</option>';
+
+        fetch(`/api/sites/${siteId}/drives`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                driveSelect.innerHTML = '<option value="">Select a library...</option>';
+
+                data.items.forEach(drive => {
+                    const option = document.createElement('option');
+                    option.value = drive.drive_id;
+                    option.textContent = drive.name;
+                    driveSelect.appendChild(option);
+                });
+
+                driveSelect.disabled = false;
+            })
+            .catch(error => {
+                console.error('Error loading drives:', error);
+                driveSelect.innerHTML = '<option value="">Error loading libraries</option>';
+            });
+    }
+
+    function loadSharepointFolders() {
+        const driveId = document.getElementById('sharepoint-drive-select').value;
+        const folderSelect = document.getElementById('sharepoint-folder-select');
+
+        if (!driveId) {
+            folderSelect.disabled = true;
+            folderSelect.innerHTML = '<option value="">Root Folder</option>';
+            return;
+        }
+
+        folderSelect.disabled = true;
+        folderSelect.innerHTML = '<option value="">Loading folders...</option>';
+
+        fetch(`/api/sharepoint/drives/${driveId}/folders/`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                folderSelect.innerHTML = '<option value="">Root Folder</option>';
+
+                if (data.folders.length === 0) {
+                    // No folders available, keep only root option
+                    folderSelect.disabled = false;
+                    if (data.message) {
+                        console.log(data.message);
+                    }
+                } else {
+                    // Add folders to the dropdown
+                    data.folders.forEach(folder => {
+                        const option = document.createElement('option');
+                        option.value = folder.id;
+                        option.textContent = folder.name;
+                        folderSelect.appendChild(option);
+                    });
+                    folderSelect.disabled = false;
+                }
+
+                // Automatically load files for root folder
+                loadSharepointFiles();
+            })
+            .catch(error => {
+                console.error('Error loading folders:', error);
+                folderSelect.innerHTML = '<option value="">Root Folder</option>';
+                folderSelect.disabled = false;
+            });
+    }
+
+    function loadSharepointFiles() {
+        const folderId = document.getElementById('sharepoint-folder-select').value;
+        const driveId = document.getElementById('sharepoint-drive-select').value;
+        const filesList = document.getElementById('sharepoint-files-list');
+
+        if (!driveId) {
+            filesList.innerHTML = `
+                <p class="text-center text-body-secondary py-4">
+                    📁 Select a document library to view files
+                </p>
+            `;
+            return;
+        }
+
+        filesList.innerHTML = `
+            <p class="text-center text-body-secondary py-4">
+                ⏳ Loading files...
+            </p>
+        `;
+
+        // Use 'root' as folderId when no folder is selected
+        const targetFolderId = folderId || 'root';
+        fetch(`/api/sharepoint/folders/${targetFolderId}/items/?drive_id=${driveId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    throw new Error(data.error);
+                }
+
+                sharepointFiles = data.files || [];
+
+                if (sharepointFiles.length === 0) {
+                    const folderName = folderId ? 'this folder' : 'the root directory';
+                    filesList.innerHTML = `
+                        <p class="text-center text-body-secondary py-4">
+                            📄 No files in ${folderName}
+                        </p>
+                    `;
+                    return;
+                }
+
+                filesList.innerHTML = '';
+                sharepointFiles.forEach(file => {
+                    const fileItem = document.createElement('div');
+                    fileItem.className =
+                        'd-flex align-items-center gap-3 p-3 rounded-3 border cursor-pointer';
+                    fileItem.onclick = () => selectSharepointFile(file);
+
+                    const fileIcon = getFileIcon(file.mimetype);
+                    const fileSize = file.size ? formatFileSize(file.size) : '';
+
+                    fileItem.innerHTML = `
+                        <div class="text-primary">${fileIcon}</div>
+                        <div class="flex-grow-1">
+                            <div class="fw-medium">${file.name}</div>
+                            <div class="small text-body-secondary">${fileSize}</div>
+                        </div>
+                        <div class="d-flex align-items-center justify-content-center">
+                            <input type="radio" class="form-check-input" name="sharepoint-file" value="${file.id}" />
+                        </div>
+                    `;
+
+                    filesList.appendChild(fileItem);
+                });
+            })
+            .catch(error => {
+                console.error('Error loading files:', error);
+                filesList.innerHTML = `
+                    <p class="text-center text-danger py-4">
+                        ⚠️ Error loading files: ${error.message}
+                    </p>
+                `;
+            });
+    }
+
+    function selectSharepointFile(file) {
+        selectedSharepointFile = file;
+
+        // Update radio buttons
+        document.querySelectorAll('input[name="sharepoint-file"]').forEach(radio => {
+            radio.checked = radio.value === file.id;
+        });
+
+        // Enable select button
+        document.getElementById('sharepoint-select-btn').disabled = false;
+    }
+
+    function linkSharepointFile() {
+        if (!selectedSharepointFile) {
+            showError('Please select a file');
+            return;
+        }
+
+        const siteId = document.getElementById('sharepoint-site-select').value;
+        const driveId = document.getElementById('sharepoint-drive-select').value;
+        const folderId = document.getElementById('sharepoint-folder-select').value;
+        const attachmentType = document.getElementById('sharepoint-type-select').value;
+        const workflowId = document.getElementById('sharepoint-workflow-id').value;
+
+        const data = {
+            file_id: selectedSharepointFile.id,
+            site_id: siteId,
+            drive_id: driveId,
+            folder_id: folderId,
+            type: attachmentType,
+            workflow_id: workflowId
+        };
+
+        fetch('/api/attachments/link-sharepoint/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify(data)
+        })
+            .then(response => response.json())
+            .then(result => {
+                if (result.success) {
+                    hideSharepointModal();
+                    location.reload(); // Refresh to show new attachment
+                } else {
+                    showError(result.error || 'Failed to link file');
+                }
+            })
+            .catch(error => {
+                console.error('Error linking file:', error);
+                showError('Failed to link file. Please try again.');
+            });
+    }
+
+    function getFileIcon(mimetype) {
+        if (!mimetype) return '📄';
+
+        if (mimetype.includes('pdf')) return '📄';
+        if (mimetype.includes('word') || mimetype.includes('document')) return '📄';
+        if (mimetype.includes('excel') || mimetype.includes('spreadsheet')) return '📊';
+        if (mimetype.includes('powerpoint') || mimetype.includes('presentation')) return '📊';
+        if (mimetype.includes('image')) return '🖼️';
+        if (mimetype.includes('video')) return '🎥';
+        if (mimetype.includes('audio')) return '🎵';
+
+        return '📄';
+    }
+
+    function formatFileSize(bytes) {
+        if (!bytes) return '';
+
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(1024));
+        return Math.round(bytes / Math.pow(1024, i) * 100) / 100 + ' ' + sizes[i];
+    }
+</script>
+<!-- Upload Modal -->
+<div id="upload-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title fs-5">Upload File to SharePoint</h3>
+                <button type="button" onclick="hideUploadModal()" class="btn-close" aria-label="Close"></button>
+            </div>
+            <form id="upload-form" enctype="multipart/form-data" novalidate>
+                <div class="modal-body d-flex flex-column gap-3">
+                    <!-- Site Selection -->
+                    <div>
+                        <label class="form-label fw-medium">SharePoint Site</label>
+                        <select id="site-select" name="site_id" required class="form-select">
+                            <option value="">Select a site...</option>
+                        </select>
+                    </div>
+                    <!-- Drive Selection -->
+                    <div>
+                        <label class="form-label fw-medium">Document Library</label>
+                        <select id="drive-select" name="drive_id" required class="form-select" disabled>
+                            <option value="">Select a library...</option>
+                        </select>
+                    </div>
+                    <!-- Folder Selection -->
+                    <div>
+                        <label class="form-label fw-medium">Folder (Optional)</label>
+                        <select id="folder-select" name="folder_id" class="form-select" disabled>
+                            <option value="">Root Folder</option>
+                        </select>
+                        <div class="form-text">Leave empty to upload to the root directory</div>
+                    </div>
+                    <!-- File Upload -->
+                    <div>
+                        <label class="form-label fw-medium">File</label>
+                        <input type="file" name="file" required class="form-control">
+                    </div>
+                    <!-- Attachment Type -->
+                    <div>
+                        <label class="form-label fw-medium">Type</label>
+                        <select name="type" class="form-select">
+                            <option value="document">Document</option>
+                            <option value="response">Response</option>
+                            <option value="petition">Petition</option>
+                        </select>
+                    </div>
+                    <!-- Progress Bar -->
+                    <div id="upload-progress" class="d-none">
+                        <div class="bg-secondary-subtle rounded-pill" style="height: 8px;">
+                            <div id="progress-bar"
+                                class="bg-primary rounded-pill h-100 progress-bar-initial"></div>
+                        </div>
+                        <p class="small mt-1">
+                            Uploading... <span id="progress-text">0%</span>
+                        </p>
+                    </div>
+                    <!-- Hidden field for workflow ID -->
+                    <input type="hidden" name="workflow_id" value="{{ workflow.id }}">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" onclick="hideUploadModal()" class="btn btn-outline-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<!-- SharePoint File Selection Modal -->
+<div id="sharepoint-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content" style="max-height: 85vh;">
+            <div class="modal-header">
+                <h3 class="modal-title fs-5">Select File from SharePoint</h3>
+                <button type="button" onclick="hideSharepointModal()" class="btn-close" aria-label="Close"></button>
+            </div>
+            <div class="modal-body d-flex flex-column gap-3 overflow-auto">
+                <!-- Navigation -->
+                <div class="row row-cols-1 row-cols-md-3 g-4 mb-4">
+                    <!-- Site Selection -->
+                    <div class="col">
+                        <label class="form-label fw-medium">SharePoint Site</label>
+                        <select id="sharepoint-site-select" onchange="loadSharepointDrives()"
+                            class="form-select">
+                            <option value="">Select a site...</option>
+                        </select>
+                    </div>
+                    <!-- Drive Selection -->
+                    <div class="col">
+                        <label class="form-label fw-medium">Document Library</label>
+                        <select id="sharepoint-drive-select" onchange="loadSharepointFolders()"
+                            class="form-select" disabled>
+                            <option value="">Select a library...</option>
+                        </select>
+                    </div>
+                    <!-- Folder Selection -->
+                    <div class="col">
+                        <label class="form-label fw-medium">Folder (Optional)</label>
+                        <select id="sharepoint-folder-select" onchange="loadSharepointFiles()"
+                            class="form-select" disabled>
+                            <option value="">Root Folder</option>
+                        </select>
+                        <div class="form-text">Leave empty to view root files</div>
+                    </div>
+                </div>
+                <!-- Files List -->
+                <div class="border rounded-3 p-4 overflow-auto" style="max-height: 15rem;">
+                    <div id="sharepoint-files-list" class="d-flex flex-column gap-2">
+                        <p class="text-center text-body-secondary py-4 mb-0">📁 Select a folder to view files</p>
+                    </div>
+                </div>
+                <!-- Attachment Type -->
+                <div class="mt-4">
+                    <label class="form-label fw-medium">Type</label>
+                    <select id="sharepoint-type-select" class="form-select">
+                        <option value="document">Document</option>
+                        <option value="response">Response</option>
+                        <option value="petition">Petition</option>
+                    </select>
+                </div>
+                <!-- Hidden field for workflow ID -->
+                <input type="hidden" id="sharepoint-workflow-id" value="{{ workflow.id }}">
+            </div>
+            <div class="modal-footer">
+                <button type="button" onclick="hideSharepointModal()" class="btn btn-outline-secondary">Cancel</button>
+                <button type="button" id="sharepoint-select-btn" disabled onclick="linkSharepointFile()"
+                    class="btn btn-primary">Select File</button>
+            </div>
+        </div>
+    </div>
+</div>
+<!-- Comment Attachment Upload Modal -->
+<div id="comment-upload-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title fs-5">Upload File for Comment</h3>
+                <button type="button" onclick="hideCommentUploadModal()" class="btn-close" aria-label="Close"></button>
+            </div>
+            <form id="comment-upload-form" method="post" enctype="multipart/form-data"
+                action="{% url 'attachment_upload' %}">
+                {% csrf_token %}
+                <div class="modal-body d-flex flex-column gap-3">
+                    <!-- Site Selection -->
+                    <div>
+                        <label class="form-label fw-medium">SharePoint Site</label>
+                        <select id="comment-site-select" name="site_id" required class="form-select" disabled>
+                            <option value="">Loading sites...</option>
+                        </select>
+                    </div>
+                    <!-- Drive Selection -->
+                    <div>
+                        <label class="form-label fw-medium">Document Library</label>
+                        <select id="comment-drive-select" name="drive_id" required class="form-select"
+                            disabled>
+                            <option value="">Select a library...</option>
+                        </select>
+                    </div>
+                    <!-- Folder Selection -->
+                    <div>
+                        <label class="form-label fw-medium">Folder (Optional)</label>
+                        <select id="comment-folder-select" name="folder_id" class="form-select" disabled>
+                            <option value="">Root Folder</option>
+                        </select>
+                        <div class="form-text">Leave empty to upload to the root directory</div>
+                    </div>
+                    <!-- File Upload -->
+                    <div>
+                        <label class="form-label fw-medium">File</label>
+                        <input type="file" name="file" required class="form-control">
+                    </div>
+                    <!-- Attachment Type -->
+                    <div>
+                        <label class="form-label fw-medium">Type</label>
+                        <select name="type" class="form-select">
+                            <option value="document">Document</option>
+                            <option value="response">Response</option>
+                            <option value="petition">Petition</option>
+                        </select>
+                    </div>
+                    <!-- Progress Bar -->
+                    <div id="comment-upload-progress" class="d-none">
+                        <div class="bg-secondary-subtle rounded-pill" style="height: 8px;">
+                            <div id="comment-progress-bar"
+                                class="bg-primary rounded-pill h-100 progress-bar-initial"></div>
+                        </div>
+                        <p class="small mt-1">
+                            Uploading... <span id="comment-progress-text">0%</span>
+                        </p>
+                    </div>
+                    <!-- Hidden field for workflow ID -->
+                    <input type="hidden" name="workflow_id" value="{{ workflow.id }}">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" onclick="hideCommentUploadModal()" class="btn btn-outline-secondary">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Upload</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+<!-- Comment SharePoint File Selection Modal -->
+<div id="comment-sharepoint-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content" style="max-height: 85vh;">
+            <div class="modal-header">
+                <h3 class="modal-title fs-5">Select File from SharePoint for Comment</h3>
+                <button type="button" onclick="hideCommentSharepointModal()" class="btn-close" aria-label="Close"></button>
+            </div>
+            <div class="modal-body d-flex flex-column gap-3 overflow-auto">
+                <!-- Navigation -->
+                <div class="row row-cols-1 row-cols-md-3 g-4 mb-4">
+                    <!-- Site Selection -->
+                    <div class="col">
+                        <label class="form-label fw-medium">SharePoint Site</label>
+                        <select id="comment-sharepoint-site-select" onchange="loadCommentSharepointDrives()"
+                            class="form-select">
+                            <option value="">Select a site...</option>
+                        </select>
+                    </div>
+                    <!-- Drive Selection -->
+                    <div class="col">
+                        <label class="form-label fw-medium">Document Library</label>
+                        <select id="comment-sharepoint-drive-select" onchange="loadCommentSharepointFolders()"
+                            class="form-select" disabled>
+                            <option value="">Select a library...</option>
+                        </select>
+                    </div>
+                    <!-- Folder Selection -->
+                    <div class="col">
+                        <label class="form-label fw-medium">Folder (Optional)</label>
+                        <select id="comment-sharepoint-folder-select" onchange="loadCommentSharepointFiles()"
+                            class="form-select" disabled>
+                            <option value="">Root Folder</option>
+                        </select>
+                        <div class="form-text">Leave empty to view root files</div>
+                    </div>
+                </div>
+                <!-- Files List -->
+                <div class="border rounded-3 p-4 overflow-auto" style="max-height: 15rem;">
+                    <div id="comment-sharepoint-files-list" class="d-flex flex-column gap-2">
+                        <p class="text-center text-body-secondary py-4 mb-0">📁 Select a folder to view files</p>
+                    </div>
+                </div>
+                <!-- Attachment Type -->
+                <div class="mt-4">
+                    <label class="form-label fw-medium">Type</label>
+                    <select id="comment-sharepoint-type-select" class="form-select">
+                        <option value="document">Document</option>
+                        <option value="response">Response</option>
+                        <option value="petition">Petition</option>
+                    </select>
+                </div>
+                <!-- Hidden field for workflow ID -->
+                <input type="hidden" id="comment-sharepoint-workflow-id" value="{{ workflow.id }}">
+            </div>
+            <div class="modal-footer">
+                <button type="button" onclick="hideCommentSharepointModal()" class="btn btn-outline-secondary">Cancel</button>
+                <button type="button" id="comment-sharepoint-select-btn" disabled onclick="linkCommentSharepointFile()"
+                    class="btn btn-primary">Select File</button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    // Comment attachment functionality
+    let commentAttachments = [];
+
+    function showCommentUploadModal() {
+        const modalEl = document.getElementById('comment-upload-modal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+        loadCommentSites();
+    }
+
+    function hideCommentUploadModal() {
+        const modalEl = document.getElementById('comment-upload-modal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        }
+    }
+
+    function showCommentSharepointModal() {
+        const modalEl = document.getElementById('comment-sharepoint-modal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+        loadCommentSharepointSites();
+    }
+
+    function hideCommentSharepointModal() {
+        const modalEl = document.getElementById('comment-sharepoint-modal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        }
+        // Reset form
+        document.getElementById('comment-sharepoint-site-select').value = '';
+        document.getElementById('comment-sharepoint-drive-select').value = '';
+        document.getElementById('comment-sharepoint-drive-select').disabled = true;
+        document.getElementById('comment-sharepoint-folder-select').value = '';
+        document.getElementById('comment-sharepoint-folder-select').disabled = true;
+        document.getElementById('comment-sharepoint-folder-select').innerHTML = '<option value="">Root Folder</option>';
+        document.getElementById('comment-sharepoint-files-list').innerHTML = `
+            <p class="text-center text-body-secondary py-4">
+                📁 Select a folder or leave empty to view root files
+            </p>
+        `;
+        document.getElementById('comment-sharepoint-select-btn').disabled = true;
+        selectedCommentSharepointFile = null;
+    }
+
+    function clearCommentAttachments() {
+        commentAttachments = [];
+        updateCommentAttachmentsDisplay();
+    }
+
+    function updateCommentAttachmentsDisplay() {
+        const container = document.getElementById('comment-attachments');
+        const list = document.getElementById('comment-attachments-list');
+        const hiddenInput = document.getElementById('comment-attachment-ids');
+
+        if (commentAttachments.length === 0) {
+            container.classList.add('d-none');
+            hiddenInput.value = '';
+        } else {
+            container.classList.remove('d-none');
+            list.innerHTML = commentAttachments.map(att => `
+            <div class="d-flex align-items-center gap-2 p-2 bg-secondary-subtle rounded">
+                <span class="text-primary">${getFileIcon(att.mimetype)}</span>
+                <span class="flex-grow-1 small">${att.name}</span>
+                <button type="button" onclick="removeCommentAttachment('${att.id}')" class="btn btn-sm btn-outline-danger btn-icon">
+                    ×
+                </button>
+            </div>
+        `).join('');
+            hiddenInput.value = commentAttachments.map(att => att.id).join(',');
+        }
+    }
+
+    function removeCommentAttachment(id) {
+        commentAttachments = commentAttachments.filter(att => att.id !== id);
+        updateCommentAttachmentsDisplay();
+    }
+
+    function addCommentAttachment(attachment) {
+        if (!commentAttachments.find(att => att.id === attachment.id)) {
+            commentAttachments.push(attachment);
+            updateCommentAttachmentsDisplay();
+        }
+    }
+
+    function getFileIcon(mimetype) {
+        if (!mimetype) return '📄';
+        if (mimetype.includes('pdf')) return '📄';
+        if (mimetype.includes('word') || mimetype.includes('document')) return '📝';
+        if (mimetype.includes('excel') || mimetype.includes('spreadsheet')) return '📊';
+        if (mimetype.includes('image')) return '🖼️';
+        return '📄';
+    }
+
+    // Load sites for comment upload
+    function loadCommentSites() {
+        fetch('/api/sites/{{user.username}}')
+            .then(response => response.json())
+            .then(data => {
+                const select = document.getElementById('comment-site-select');
+                select.innerHTML = '<option value="">Select a site...</option>';
+                const sites = data.items || []; // Access the sites array from the response
+                sites.forEach(site => {
+                    select.innerHTML += `<option value="${site.site_id}">${site.name}</option>`;
+                });
+                select.disabled = false;
+                select.onchange = loadCommentDrives;
+
+            })
+            .catch(error => {
+                console.error('Error loading sites:', error);
+                showError('Failed to load SharePoint sites: ' + error.message);
+            });
+    }
+
+    function loadCommentDrives() {
+        const siteId = document.getElementById('comment-site-select').value;
+        const driveSelect = document.getElementById('comment-drive-select');
+        if (!siteId) return;
+
+        fetch(`/api/sites/${siteId}/drives`)
+            .then(response => response.json())
+            .then(data => {
+                driveSelect.innerHTML = '<option value="">Select a library...</option>';
+                drives = data.items || []
+                drives.forEach(drive => {
+                    const option = document.createElement('option');
+                    option.value = drive.drive_id;
+                    option.textContent = drive.name;
+                    driveSelect.appendChild(option);
+                });
+                driveSelect.disabled = false;
+                driveSelect.onchange = () => loadCommentFolders(siteId, driveSelect.value);
+            });
+    }
+
+    function loadCommentFolders(siteId, driveId) {
+        if (!siteId || !driveId) return;
+
+        fetch(`/api/sharepoint/drives/${driveId}/folders/`)
+            .then(response => response.json())
+            .then(data => {
+                const select = document.getElementById('comment-folder-select');
+                select.innerHTML = '<option value="">Root Folder</option>';
+                folders = data.folders || [];
+                folders.forEach(folder => {
+                    select.innerHTML += `<option value="${folder.id}">${folder.name}</option>`;
+                });
+                select.disabled = false;
+            });
+    }
+
+    // Handle comment upload form submission
+    document.getElementById('comment-upload-form').addEventListener('submit', function (e) {
+        e.preventDefault();
+
+        const formData = new FormData(this);
+        const progressBar = document.getElementById('comment-progress-bar');
+        const progressText = document.getElementById('comment-progress-text');
+        const progressContainer = document.getElementById('comment-upload-progress');
+
+        progressContainer.classList.remove('d-none');
+
+        fetch(this.action, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    addCommentAttachment(data.attachment);
+                    hideCommentUploadModal();
+                    this.reset();
+                } else {
+                    alert('Upload failed: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                alert('Upload failed: ' + error.message);
+            })
+            .finally(() => {
+                progressContainer.classList.add('d-none');
+                progressBar.classList.add('progress-bar-initial');
+                progressText.textContent = '0%';
+            });
+    });
+
+    // SharePoint file selection for comments
+    function loadCommentSharepointSites() {
+        fetch('/api/sites/{{user.username}}')
+            .then(response => response.json())
+            .then(data => {
+                const select = document.getElementById('comment-sharepoint-site-select');
+                select.innerHTML = '<option value="">Select a site...</option>';
+                const sites = data.items || []; // Access the sites array from the response
+                sites.forEach(site => {
+                    select.innerHTML += `<option value="${site.site_id}">${site.name}</option>`;
+                });
+            })
+            .catch(error => {
+                console.error('Error loading sites:', error);
+                showError('Failed to load SharePoint sites: ' + error.message);
+            });
+    }
+
+    function loadCommentSharepointDrives() {
+        const siteId = document.getElementById('comment-sharepoint-site-select').value;
+        if (!siteId) return;
+
+        fetch(`/api/sites/${siteId}/drives`)
+            .then(response => response.json())
+            .then(data => {
+                const select = document.getElementById('comment-sharepoint-drive-select');
+                select.innerHTML = '<option value="">Select a library...</option>';
+                data.items.forEach(drive => {
+                    select.innerHTML += `<option value="${drive.drive_id}">${drive.name}</option>`;
+                });
+                select.disabled = false;
+            });
+    }
+
+    function loadCommentSharepointFolders() {
+        const siteId = document.getElementById('comment-sharepoint-site-select').value;
+        const driveId = document.getElementById('comment-sharepoint-drive-select').value;
+        if (!siteId || !driveId) return;
+
+        fetch(`/api/sharepoint/drives/${driveId}/folders/`)
+            .then(response => response.json())
+            .then(data => {
+                const select = document.getElementById('comment-sharepoint-folder-select');
+                select.innerHTML = '<option value="">Root Folder</option>';
+                data.folders.forEach(folder => {
+                    select.innerHTML += `<option value="${folder.id}">${folder.name}</option>`;
+                });
+                select.disabled = false;
+
+                // Automatically load files for root folder
+                loadCommentSharepointFiles();
+            });
+    }
+
+    function loadCommentSharepointFiles() {
+        const siteId = document.getElementById('comment-sharepoint-site-select').value;
+        const driveId = document.getElementById('comment-sharepoint-drive-select').value;
+        const folderId = document.getElementById('comment-sharepoint-folder-select').value;
+
+        if (!siteId || !driveId) return;
+
+        // If no folder selected, use root folder
+        const targetFolderId = folderId || 'root';
+        let url = `/api/sharepoint/folders/${targetFolderId}/items/?drive_id=${driveId}`;
+
+        fetch(url)
+            .then(response => response.json())
+            .then(data => {
+                const list = document.getElementById('comment-sharepoint-files-list');
+                const selectBtn = document.getElementById('comment-sharepoint-select-btn');
+                const files = data.files || []; // Access the files array from the response
+
+                if (files.length === 0) {
+                    list.innerHTML = '<p class="text-center text-body-secondary py-4">No files found</p>';
+                    selectBtn.disabled = true;
+                } else {
+                    list.innerHTML = files.map(file => `
+                    <div class="d-flex align-items-center gap-3 p-3 rounded-3 border cursor-pointer" onclick="selectCommentSharepointFile('${file.id}', '${file.name.replace(/'/g, "\\'").replace(/"/g, '\\"')}', '${file.mimetype || ''}', '${file.size || 0}')">
+                        <div class="text-primary">${getFileIcon(file.mimetype)}</div>
+                        <div class="flex-grow-1">
+                            <div class="fw-medium">${file.name}</div>
+                            <div class="small text-body-secondary">${file.size ? formatFileSize(file.size) : ''}</div>
+                        </div>
+                        <div class="d-flex align-items-center justify-content-center">
+                            <input type="radio" class="form-check-input" name="comment-sharepoint-file" value="${file.id}" />
+                        </div>
+                    </div>
+                `).join('');
+                    selectBtn.disabled = false;
+                }
+            });
+    }
+
+    let selectedCommentSharepointFile = null;
+
+    function selectCommentSharepointFile(id, name, mimetype, size) {
+        selectedCommentSharepointFile = {
+            id,
+            name,
+            mimetype,
+            size
+        };
+        // Update radio button selection
+        document.querySelectorAll('input[name="comment-sharepoint-file"]').forEach(radio => {
+            radio.checked = radio.value == id;
+        });
+        // Enable select button
+        document.getElementById('comment-sharepoint-select-btn').disabled = false;
+    }
+
+    function linkCommentSharepointFile() {
+        if (!selectedCommentSharepointFile) return;
+
+        const siteId = document.getElementById('comment-sharepoint-site-select').value;
+        const driveId = document.getElementById('comment-sharepoint-drive-select').value;
+        const folderId = document.getElementById('comment-sharepoint-folder-select').value;
+        const type = document.getElementById('comment-sharepoint-type-select').value;
+
+        fetch('/api/attachments/link-sharepoint/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                site_id: siteId,
+                drive_id: driveId,
+                folder_id: folderId,
+                file_id: selectedCommentSharepointFile.id,
+                workflow_id: '{{ workflow.id }}',
+                type: type
+            })
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    addCommentAttachment(data.attachment);
+                    hideCommentSharepointModal();
+                    // Reset selection
+                    selectedCommentSharepointFile = null;
+                    document.getElementById('comment-sharepoint-files-list').innerHTML =
+                        '<p class="text-center text-body-secondary py-4">📁 Select a folder to view files</p>';
+                    document.getElementById('comment-sharepoint-select-btn').disabled = true;
+                } else {
+                    alert('Failed to link file: ' + (data.error || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                alert('Failed to link file: ' + error.message);
+            });
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+</script>
+{% if can_refer %}
+<!-- Referral Modal -->
+<div class="modal fade" id="refer-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title fs-5">Refer Workflow</h3>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body d-flex flex-column gap-4">
+                <p class="small text-body-secondary mb-0">
+                    Select one or more groups to refer this workflow to. Each group can have its own reason.
+                </p>
+                <!-- Available Groups Section -->
+                <div>
+                    <label class="form-label fw-medium" for="group-search">Search Groups</label>
+                    <input type="text" id="group-search" name="search" class="form-control"
+                        placeholder="Type to search groups..." hx-get="{% url 'api_referral_targets' workflow.pk %}"
+                        hx-trigger="keyup changed delay:300ms" hx-target="#available-groups"
+                        hx-indicator="#search-indicator">
+                    <span id="search-indicator" class="htmx-indicator spinner-border spinner-border-sm" aria-hidden="true"></span>
+                    <div id="available-groups"
+                        class="border border-secondary-subtle rounded-3 mt-2 overflow-auto" style="max-height: 15rem;">
+                        <div class="text-center text-body-secondary py-4">Start typing to search for groups...</div>
+                    </div>
+                </div>
+                <!-- Selected Groups Section -->
+                <div>
+                    <label class="form-label fw-medium">Selected Groups <span id="selected-count"
+                            class="badge bg-primary">0</span></label>
+                    <div id="selected-groups" class="d-flex flex-column gap-3 border border-secondary-subtle rounded-3 p-3"
+                        style="min-height: 100px;">
+                        <div class="text-center text-body-secondary py-4">No groups selected yet. Select groups from above.
+                        </div>
+                    </div>
+                </div>
+                <!-- Deadline Setting (Optional) -->
+                <div>
+                    <label class="form-label fw-medium" for="referral-deadline">Referral Deadline <span
+                            class="text-body-secondary opacity-75 fw-normal">(optional)</span></label>
+                    <input type="datetime-local" id="referral-deadline" class="form-control">
+                    <div class="form-text">
+                        Set a deadline for referral response. If set, notifications will be sent before deadline and referral
+                        will be auto-recalled when expired.
+                    </div>
+                </div>
+                <div id="refer-error" class="alert alert-danger mb-0 d-none" role="alert"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="refer-submit-btn" class="btn btn-warning" disabled>
+                    {% lucide "send" class="w-4 h-4 me-1" %} Refer to Selected Groups
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% if active_referrals %}
+{% if user == workflow.owner or can_edit %}
+<!-- Recall/Send Back Confirmation Modal -->
+<div class="modal fade" id="recall-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title fs-5">
+                    {% if user == workflow.owner %}Recall Referral{% else %}Send Back{% endif %}
+                </h3>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-body-secondary mb-4" id="recall-message">
+                    {% if user == workflow.owner %}
+                    This will recall the referral to the selected group.
+                    {% else %}
+                    This will send the workflow back to the selected group.
+                    {% endif %}
+                </p>
+                <div class="mb-4">
+                    <label class="form-label fw-medium" for="recall-reason">
+                        {% if user == workflow.owner %}Recall Reason{% else %}Send Back Reason{% endif %}
+                        <span class="text-body-secondary opacity-75 fw-normal">(optional)</span>
+                    </label>
+                    <textarea id="recall-reason" class="form-control" rows="2"
+                        placeholder="{% if user == workflow.owner %}Reason for recall…{% else %}Reason for sending back…{% endif %}"></textarea>
+                </div>
+                <div id="recall-error" class="alert alert-danger mb-0 d-none" role="alert"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" id="recall-submit-btn" class="btn btn-danger">
+                    {% lucide "circle-x" class="w-4 h-4 me-1" %}
+                    {% if user == workflow.owner %}Recall Referral{% else %}Send Back{% endif %}
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endif %}
+<script>
+    (function () {
+        const REFER_URL = '{% url "workflow_refer" workflow.pk %}';
+        const REFERRAL_TARGETS_URL = '{% url "api_referral_targets" workflow.pk %}';
+        const CSRF = '{{ csrf_token }}';
+
+        function post(data) {
+            const fd = new FormData();
+            for (const [k, v] of Object.entries(data)) fd.append(k, v);
+            fd.append('csrfmiddlewaretoken', CSRF);
+            return fetch(REFER_URL, {
+                method: 'POST',
+                body: fd
+            }).then(r => r.json());
+        }
+
+        // Load available groups - now handled by HTMX search
+        // Initialize event listeners for dynamically loaded content
+        function initializeGroupEventListeners() {
+            const container = document.getElementById('available-groups');
+
+            // Add event listeners for checkboxes
+            container.querySelectorAll('.group-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', function () {
+                    if (this.checked) {
+                        addGroupToSelected(this.dataset.groupId, this.dataset.groupName);
+                    } else {
+                        removeGroupFromSelected(this.dataset.groupId);
+                    }
+                });
+            });
+
+            // Add event listeners for add buttons
+            container.querySelectorAll('.add-group-btn').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    addGroupToSelected(this.dataset.groupId, this.dataset.groupName);
+                });
+            });
+        }
+
+        // Set up HTMX event listener to re-initialize after content loads
+        document.body.addEventListener('htmx:afterSwap', function (evt) {
+            if (evt.target.id === 'available-groups') {
+                initializeGroupEventListeners();
+            }
+        });
+
+        // Selected groups management
+        const selectedGroups = {};
+
+        function addGroupToSelected(groupId, groupName) {
+            if (selectedGroups[groupId]) return;
+
+            selectedGroups[groupId] = { name: groupName, reason: '' };
+
+            // Update checkbox
+            const checkbox = document.querySelector(`.group-checkbox[data-group-id="${groupId}"]`);
+            if (checkbox) checkbox.checked = true;
+
+            updateSelectedGroupsDisplay();
+        }
+
+        function removeGroupFromSelected(groupId) {
+            delete selectedGroups[groupId];
+
+            // Update checkbox
+            const checkbox = document.querySelector(`.group-checkbox[data-group-id="${groupId}"]`);
+            if (checkbox) checkbox.checked = false;
+
+            updateSelectedGroupsDisplay();
+        }
+
+        function updateSelectedGroupsDisplay() {
+            const container = document.getElementById('selected-groups');
+            const countBadge = document.getElementById('selected-count');
+            const submitBtn = document.getElementById('refer-submit-btn');
+
+            const groupIds = Object.keys(selectedGroups);
+            countBadge.textContent = groupIds.length;
+            submitBtn.disabled = groupIds.length === 0;
+
+            if (groupIds.length === 0) {
+                container.innerHTML = '<div class="text-center text-body-secondary py-4">No groups selected yet. Select groups from above.</div>';
+                return;
+            }
+
+            container.innerHTML = groupIds.map(groupId => { const group = selectedGroups[groupId]; return `<div class="border border-secondary-subtle rounded-3 p-3"><div class="d-flex align-items-center justify-content-between mb-2"><span class="fw-medium small">${group.name}</span><button class="btn btn-sm btn-outline-secondary btn-icon remove-group-btn" data-group-id="${groupId}" title="Remove">{% lucide "x" class="w-3 h-3" %}</button></div><div><label class="form-label small">Reason for ${group.name} <span class="text-body-secondary opacity-75 fw-normal">(optional)</span></label><textarea class="form-control form-control-sm w-100" rows="2" data-group-id="${groupId}" placeholder="Reason for referring to ${group.name}..." data-reason-field="${groupId}">${group.reason}</textarea></div></div>`; }).join('');
+
+            // Add event listeners for remove buttons and reason fields
+            container.querySelectorAll('.remove-group-btn').forEach(btn => {
+                btn.addEventListener('click', function () {
+                    removeGroupFromSelected(this.dataset.groupId);
+                });
+            });
+
+            container.querySelectorAll('textarea[data-reason-field]').forEach(textarea => {
+                textarea.addEventListener('input', function () {
+                    selectedGroups[this.dataset.groupId].reason = this.value;
+                });
+            });
+        }
+
+        // Modal open/close events
+        const referModal = document.getElementById('refer-modal');
+        if (referModal) {
+            referModal.addEventListener('show.bs.modal', function () {
+                // Reset selected groups when modal opens
+                Object.keys(selectedGroups).forEach(groupId => delete selectedGroups[groupId]);
+                updateSelectedGroupsDisplay();
+                // Clear search input
+                document.getElementById('group-search').value = '';
+                // Reset available groups to initial state
+                document.getElementById('available-groups').innerHTML =
+                    '<div class="text-center text-body-secondary py-4">Start typing to search for groups...</div>';
+            });
+        }
+
+        // Refer submit
+        const referSubmit = document.getElementById('refer-submit-btn');
+        if (referSubmit) {
+            referSubmit.addEventListener('click', function () {
+                const errEl = document.getElementById('refer-error');
+                errEl.classList.add('d-none');
+
+                const groupIds = Object.keys(selectedGroups);
+                if (groupIds.length === 0) {
+                    errEl.textContent = 'Please select at least one group.';
+                    errEl.classList.remove('d-none');
+                    return;
+                }
+
+                referSubmit.disabled = true;
+
+                // Get deadline value
+                const deadlineInput = document.getElementById('referral-deadline');
+                const deadline = deadlineInput.value ? new Date(deadlineInput.value).toISOString() : '';
+
+                // Create referrals for each selected group
+                const referralPromises = groupIds.map(groupId => {
+                    return post({
+                        action: 'refer',
+                        group_id: groupId,
+                        reason: selectedGroups[groupId].reason,
+                        deadline: deadline
+                    });
+                });
+
+                Promise.all(referralPromises)
+                    .then(results => {
+                        const failures = results.filter(r => !r.success);
+                        if (failures.length === 0) {
+                            location.reload();
+                        } else {
+                            const errorMessages = failures.map(r => r.error || 'Failed to refer.').join('; ');
+                            errEl.textContent = `Some referrals failed: ${errorMessages}`;
+                            errEl.classList.remove('d-none');
+                            referSubmit.disabled = false;
+                        }
+                    })
+                    .catch(() => {
+                        errEl.textContent = 'Network error.';
+                        errEl.classList.remove('d-none');
+                        referSubmit.disabled = false;
+                    });
+            });
+        }
+
+        // Quick-refer buttons in Referrals tab
+        document.querySelectorAll('.refer-quick-btn').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const groupId = this.dataset.groupId;
+                const groupName = this.dataset.groupName;
+                const sel = document.getElementById('refer-group-select');
+                if (sel) {
+                    sel.value = groupId;
+                }
+                document.getElementById('refer-modal') && typeof bootstrap !== 'undefined' &&
+                    bootstrap.Modal.getOrCreateInstance(document.getElementById('refer-modal')).show();
+            });
+        });
+
+        // Recall buttons (both header and tab)
+        let currentRecallGroupId = null;
+        let currentRecallGroupName = null;
+        let isRecallAll = false;
+
+        function openRecall(groupId = null, groupName = null, recallAll = false) {
+            currentRecallGroupId = groupId;
+            currentRecallGroupName = groupName;
+            isRecallAll = recallAll;
+
+            const modal = document.getElementById('recall-modal');
+            const message = document.getElementById('recall-message');
+            const submitBtn = document.getElementById('recall-submit-btn');
+
+            if (recallAll) {
+                message.textContent = 'This will recall ALL active referrals to this workflow. The workflow will no longer be accessible to any referred groups.';
+                submitBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 me-1"><circle cx="12" cy="12" r="10"></circle><path d="m15 9-6 6"></path><path d="m9 9 6 6"></path></svg> Recall All Referrals';
+            } else {
+                message.textContent = `This will send the workflow back to ${groupName}. The workflow will no longer be accessible to that group.`;
+                submitBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 me-1"><circle cx="12" cy="12" r="10"></circle><path d="m15 9-6 6"></path><path d="m9 9 6 6"></path></svg> Send Back';
+            }
+
+            if (typeof bootstrap !== 'undefined') {
+                bootstrap.Modal.getOrCreateInstance(modal).show();
+            }
+        }
+
+        const recallBtn = document.getElementById('recall-btn');
+        if (recallBtn) recallBtn.addEventListener('click', () => openRecall(null, null, true));
+
+        // Single recall buttons
+        document.querySelectorAll('.recall-single-btn').forEach(btn => {
+            btn.addEventListener('click', function () {
+                openRecall(this.dataset.groupId, this.dataset.groupName, false);
+            });
+        });
+
+        // Recall all buttons (both header and bottom)
+        const recallAllHeaderBtn = document.getElementById('recall-all-header-btn');
+        if (recallAllHeaderBtn) {
+            recallAllHeaderBtn.addEventListener('click', () => openRecall(null, null, true));
+        }
+
+        const recallAllBtn = document.getElementById('recall-all-btn');
+        if (recallAllBtn) {
+            recallAllBtn.addEventListener('click', () => openRecall(null, null, true));
+        }
+
+        // Recall submit
+        const recallSubmit = document.getElementById('recall-submit-btn');
+        if (recallSubmit) {
+            recallSubmit.addEventListener('click', function () {
+                const reason = document.getElementById('recall-reason').value.trim();
+                const errEl = document.getElementById('recall-error');
+                errEl.classList.add('d-none');
+                recallSubmit.disabled = true;
+
+                if (isRecallAll) {
+                    // Recall all active referrals
+                    const activeReferralElements = document.querySelectorAll('.recall-single-btn');
+                    const recallPromises = Array.from(activeReferralElements).map(btn => {
+                        return post({
+                            action: 'recall',
+                            group_id: btn.dataset.groupId,
+                            recall_reason: reason
+                        });
+                    });
+
+                    Promise.all(recallPromises)
+                        .then(results => {
+                            const failures = results.filter(r => !r.success);
+                            if (failures.length === 0) {
+                                location.reload();
+                            } else {
+                                const errorMessages = failures.map(r => r.error || 'Failed to recall.').join('; ');
+                                errEl.textContent = `Some recalls failed: ${errorMessages}`;
+                                errEl.classList.remove('d-none');
+                                recallSubmit.disabled = false;
+                            }
+                        })
+                        .catch(() => {
+                            errEl.textContent = 'Network error.';
+                            errEl.classList.remove('d-none');
+                            recallSubmit.disabled = false;
+                        });
+                } else {
+                    // Recall specific referral
+                    post({
+                        action: 'recall',
+                        group_id: currentRecallGroupId,
+                        recall_reason: reason
+                    })
+                        .then(data => {
+                            if (data.success) {
+                                location.reload();
+                            } else {
+                                errEl.textContent = data.error || 'Failed to recall.';
+                                errEl.classList.remove('d-none');
+                                recallSubmit.disabled = false;
+                            }
+                        })
+                        .catch(() => {
+                            errEl.textContent = 'Network error.';
+                            errEl.classList.remove('d-none');
+                            recallSubmit.disabled = false;
+                        });
+                }
+            });
+        }
+    })();
+</script>
+{% if allowed_child_configs %}
+<!-- Bulk Sub-workflow Creation Modal -->
+<div class="modal fade" id="bulk-create-modal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title fs-5">Add Sub-workflows</h3>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="small text-body-secondary mb-4">
+                    Fill in as many rows as needed. Rows with an empty title will be
+                    skipped.
+                </p>
+                <div class="mb-4">
+                    <label class="form-label fw-medium" for="bulk-wf-type">Sub-workflow Type</label>
+                    <select id="bulk-wf-type" class="form-select" style="max-width: 20rem;">
+                        {% for config in allowed_child_configs %}
+                        <option value="{{ config.child_type.pk }}">
+                            {{ config.relationship_label }} —
+                            {{ config.child_type.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle w-100 mb-0">
+                        <thead>
+                            <tr>
+                                <th class="text-body-secondary opacity-75" style="width: 2rem;">#</th>
+                                <th>
+                                    Title <span class="text-danger">*</span>
+                                </th>
+                                <th style="width: 8rem;">Priority</th>
+                                <th style="width: 10rem;">Deadline</th>
+                                <th>Description</th>
+                                <th style="width: 2rem;"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="bulk-rows">
+                        </tbody>
+                    </table>
+                </div>
+                <button type="button" onclick="bulkAddRow()" class="btn btn-outline-secondary btn-sm mt-3 d-inline-flex align-items-center gap-2">
+                    {% lucide "plus" class="w-4 h-4" %} Add row
+                </button>
+                <div id="bulk-error" class="alert alert-danger mt-3 mb-0 d-none" role="alert"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" onclick="bulkSubmit()" class="btn btn-primary" id="bulk-submit-btn">
+                    {% lucide "save" class="w-4 h-4 me-1" %} Create All
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    const BULK_CREATE_URL = "{% url 'workflow_bulk_create' workflow.pk %}";
+    const CSRF_TOKEN = getCookie('csrftoken');
+
+    function bulkAddRow() {
+        const tbody = document.getElementById('bulk-rows');
+        const idx = tbody.rows.length + 1;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+      <td class="text-body-secondary opacity-75 small">${idx}</td>
+      <td><input type="text" name="titles[]" class="form-control form-control-sm w-100" placeholder="Title" /></td>
+      <td>
+        <select name="priorities[]" class="form-select form-select-sm w-100">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+          <option value="urgent">Urgent</option>
+        </select>
+      </td>
+      <td><input type="date" name="deadlines[]" class="form-control form-control-sm w-100" /></td>
+      <td><input type="text" name="descriptions[]" class="form-control form-control-sm w-100" placeholder="Optional" /></td>
+      <td>
+        <button type="button" onclick="this.closest('tr').remove(); renumberRows();" class="btn btn-sm btn-outline-danger btn-icon" title="Remove row">
+          {% lucide "x" class="w-3 h-3" %}
+        </button>
+      </td>
+    `;
+        tbody.appendChild(tr);
+    }
+
+    function renumberRows() {
+        document.querySelectorAll('#bulk-rows tr').forEach((tr, i) => {
+            tr.cells[0].textContent = i + 1;
+        });
+    }
+
+    function bulkSubmit() {
+        const typeId = document.getElementById('bulk-wf-type').value;
+        const rows = document.querySelectorAll('#bulk-rows tr');
+        const errorEl = document.getElementById('bulk-error');
+        errorEl.classList.add('d-none');
+
+        const formData = new FormData();
+        formData.append('workflow_type', typeId);
+        formData.append('csrfmiddlewaretoken', CSRF_TOKEN);
+
+        let hasTitle = false;
+        rows.forEach(tr => {
+            const title = tr.querySelector('input[name="titles[]"]').value.trim();
+            const priority = tr.querySelector('select[name="priorities[]"]').value;
+            const deadline = tr.querySelector('input[name="deadlines[]"]').value;
+            const description = tr.querySelector('input[name="descriptions[]"]').value.trim();
+            formData.append('titles[]', title);
+            formData.append('priorities[]', priority);
+            formData.append('deadlines[]', deadline);
+            formData.append('descriptions[]', description);
+            if (title) hasTitle = true;
+        });
+
+        if (!hasTitle) {
+            errorEl.textContent = 'Please enter at least one title.';
+            errorEl.classList.remove('d-none');
+            return;
+        }
+
+        const btn = document.getElementById('bulk-submit-btn');
+        btn.disabled = true;
+        btn.textContent = 'Creating...';
+
+        fetch(BULK_CREATE_URL, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': CSRF_TOKEN
+            }
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    const modalEl = document.getElementById('bulk-create-modal');
+                    if (modalEl && typeof bootstrap !== 'undefined') {
+                        bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+                    }
+                    location.reload();
+                } else {
+                    errorEl.textContent = data.error || 'Failed to create sub-workflows.';
+                    errorEl.classList.remove('d-none');
+                    btn.disabled = false;
+                    btn.textContent = 'Create All';
+                }
+            })
+            .catch(() => {
+                errorEl.textContent = 'Network error. Please try again.';
+                errorEl.classList.remove('d-none');
+                btn.disabled = false;
+                btn.textContent = 'Create All';
+            });
+    }
+
+    // Pre-populate 3 rows when modal opens
+    const bulkCreateModal = document.getElementById('bulk-create-modal');
+    if (bulkCreateModal) {
+        bulkCreateModal.addEventListener('show.bs.modal', function () {
+            const tbody = document.getElementById('bulk-rows');
+            if (tbody.rows.length === 0) {
+                bulkAddRow();
+                bulkAddRow();
+                bulkAddRow();
+            }
+        });
+    }
+</script>
+{% endif %}
+<!-- Share Modal -->
+<div id="share-modal" class="modal fade" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title fs-5">Share Workflow</h3>
+                <button type="button" onclick="hideShareModal()" class="btn-close" aria-label="Close"></button>
+            </div>
+            <div class="modal-body d-flex flex-column gap-4">
+                <!-- Copy Link -->
+                <div>
+                    <label class="form-label fw-medium">Share Link</label>
+                    <div class="d-flex gap-2">
+                        <input type="text" id="share-link" readonly
+                            value="{{ request.scheme }}://{{ request.get_host }}{% url 'workflow_detail' workflow.pk %}"
+                            class="form-control flex-grow-1">
+                        <button type="button" onclick="copyShareLink()" class="btn btn-primary">
+                            {% lucide "copy" class="w-4 h-4" %}
+                        </button>
+                    </div>
+                    <div class="form-text">Anyone with this link can view the workflow</div>
+                </div>
+                <!-- Report Link -->
+                <div>
+                    <label class="form-label fw-medium">Report Link</label>
+                    <div class="d-flex gap-2">
+                        <input type="text" id="report-link" readonly
+                            value="{{ request.scheme }}://{{ request.get_host }}{% url 'workflow_report' workflow.pk %}?format=html"
+                            class="form-control flex-grow-1">
+                        <button type="button" onclick="copyReportLink()" class="btn btn-primary">
+                            {% lucide "copy" class="w-4 h-4" %}
+                        </button>
+                    </div>
+                    <div class="form-text">Share the comprehensive report view</div>
+                </div>
+                <!-- Email Share -->
+                <div>
+                    <label class="form-label fw-medium">Share via Email</label>
+                    <form id="email-share-form" class="d-flex flex-column gap-3">
+                        {% csrf_token %}
+                        <input type="email" name="email" placeholder="recipient@example.com"
+                            class="form-control w-100" required>
+                        <textarea name="message" placeholder="Optional message..." class="form-control w-100"
+                            rows="3"></textarea>
+                        <button type="submit" class="btn btn-primary w-100 d-inline-flex align-items-center justify-content-center gap-2">
+                            {% lucide "mail" class="w-4 h-4" %}
+                            Send Email
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    function showShareModal() {
+        const modalEl = document.getElementById('share-modal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).show();
+        }
+    }
+
+    function hideShareModal() {
+        const modalEl = document.getElementById('share-modal');
+        if (modalEl && typeof bootstrap !== 'undefined') {
+            bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+        }
+    }
+
+    function copyShareLink() {
+        const input = document.getElementById('share-link');
+        input.select();
+        document.execCommand('copy');
+
+        // Show feedback
+        const btn = event.target.closest('button');
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = '✓';
+        btn.classList.add('btn-success');
+        setTimeout(() => {
+            btn.innerHTML = originalHTML;
+            btn.classList.remove('btn-success');
+        }, 2000);
+    }
+
+    function copyReportLink() {
+        const input = document.getElementById('report-link');
+        input.select();
+        document.execCommand('copy');
+
+        // Show feedback
+        const btn = event.target.closest('button');
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = '✓';
+        btn.classList.add('btn-success');
+        setTimeout(() => {
+            btn.innerHTML = originalHTML;
+            btn.classList.remove('btn-success');
+        }, 2000);
+    }
+
+    // Handle email share form submission
+    document.getElementById('email-share-form').addEventListener('submit', function (e) {
+        e.preventDefault();
+
+        const formData = new FormData(this);
+        const submitBtn = this.querySelector('button[type="submit"]');
+        const originalHTML = submitBtn.innerHTML;
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = 'Sending...';
+
+        fetch('{% url "workflow_share_email" workflow.pk %}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': formData.get('csrfmiddlewaretoken')
+            }
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Email sent successfully!');
+                    this.reset();
+                    hideShareModal();
+                } else {
+                    alert('Error: ' + (data.error || 'Failed to send email'));
+                }
+            })
+            .catch(error => {
+                alert('Error sending email: ' + error.message);
+            })
+            .finally(() => {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalHTML;
+            });
+    });
+    document.addEventListener('DOMContentLoaded', function () {
+        const hash = window.location.hash;
+        if (hash) {
+            // Hide all tab content
+            const tabNav = document.getElementById('detail-tabs');
+            const tabs = tabNav ? tabNav.querySelectorAll('.nav-link') : [];
+            tabs.forEach(tab => {
+                tab.classList.remove('active');
+            });
+            // Show the content of the active tab
+            const activeTab = document.querySelector(hash);
+            if (activeTab) {
+                activeTab.classList.add('active');
+            }
+        } else {
+            // Default to showing the first tab
+            const firstTab = document.querySelector('#detail-tabs .nav-link');
+            if (firstTab) {
+                firstTab.classList.add('active');
+            }
+        }
+    });
+</script>
+{% endpartialdef %}
+{% block content %}
+{% partial content %}
+{% endblock content %}

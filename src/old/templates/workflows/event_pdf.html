@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>{{ event.title }} - Meeting Report</title>
+</head>
+<body>
+    <div class="header">
+        <h1>{{ event.title }}</h1>
+        <p><strong>Meeting Report</strong></p>
+        <p>Generated on: {% now "F d, Y H:i" %}</p>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Event Details</div>
+        <table>
+            <tr>
+                <td width="150"><strong>Event Type:</strong></td>
+                <td>{{ event.event_type.name }}</td>
+            </tr>
+            <tr>
+                <td><strong>Date & Time:</strong></td>
+                <td>{{ event.start_datetime|date:"F d, Y" }} from {{ event.start_datetime|date:"H:i" }} to {{ event.end_datetime|date:"H:i" }}</td>
+            </tr>
+            <tr>
+                <td><strong>Venue:</strong></td>
+                <td>
+                    {% if event.venue %}
+                        {{ event.venue.name }}{% if event.venue.building %}, {{ event.venue.building }}{% endif %}
+                        {% if event.venue.floor %}, Floor {{ event.venue.floor }}{% endif %}
+                        {% if event.venue.room_number %}, Room {{ event.venue.room_number }}{% endif %}
+                    {% else %}
+                        No venue specified
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <td><strong>Group:</strong></td>
+                <td>{{ event.group.name }}</td>
+            </tr>
+            <tr>
+                <td><strong>Status:</strong></td>
+                <td>{{ event.status|title }}</td>
+            </tr>
+            <tr>
+                <td><strong>Organizer:</strong></td>
+                <td>{{ event.organizer.get_full_name|default:event.organizer.username }}</td>
+            </tr>
+        </table>
+    </div>
+
+    {% if event.description %}
+    <div class="section">
+        <div class="section-title">Description</div>
+        <p>{{ event.description|linebreaks }}</p>
+    </div>
+    {% endif %}
+
+    <div class="section">
+        <div class="section-title">Attendance Summary</div>
+        <table>
+            <tr>
+                <td width="150"><strong>Total Members:</strong></td>
+                <td>{{ attendances|length }}</td>
+            </tr>
+            {% for status, count in status_counts.items %}
+            <tr>
+                <td><strong>{{ status|title }}:</strong></td>
+                <td>{{ count }}</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Attendance Records</div>
+        <table>
+            <thead>
+                <tr>
+                    <th width="40">#</th>
+                    <th width="200">Name</th>
+                    <th width="250">Email</th>
+                    <th width="120">Status</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for attendance in attendances %}
+                <tr>
+                    <td>{{ forloop.counter }}</td>
+                    <td>{{ attendance.user.get_full_name|default:attendance.user.username }}</td>
+                    <td>{{ attendance.user.email }}</td>
+                    <td>
+                        <span class="status-badge status-{{ attendance.status }}">
+                            {{ attendance.get_status_display }}
+                        </span>
+                    </td>
+                    <td>{{ attendance.notes|default:"-" }}</td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="5" style="text-align: center; font-style: italic;">
+                        No attendance records found. Event may not be marked as completed.
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    {% if attendances %}
+    <div class="section">
+        <div class="section-title">Attendance Statistics</div>
+        <table>
+            <tr>
+                <td width="200"><strong>Attendance Rate:</strong></td>
+                <td>
+                    {% with attended=status_counts.attended|default:0 %}
+                        {% if attended %}
+                            {% widthratio attended attendances|length 100 %}%
+                        {% else %}
+                            0%
+                        {% endif %}
+                    {% endwith %}
+                </td>
+            </tr>
+            <tr>
+                <td><strong>Response Rate:</strong></td>
+                <td>
+                    {% with attended=status_counts.attended|default:0 %}
+                    {% with absent=status_counts.absent|default:0 %}
+                    {% with apology=status_counts.apology|default:0 %}
+                    {% with responded=attended|add:absent|add:apology %}
+                        {% if responded %}
+                            {% widthratio responded attendances|length 100 %}%
+                        {% else %}
+                            0%
+                        {% endif %}
+                    {% endwith %}
+                    {% endwith %}
+                    {% endwith %}
+                    {% endwith %}
+                </td>
+            </tr>
+        </table>
+    </div>
+    {% endif %}
+
+    <div class="section" style="margin-top: 40px; text-align: center; font-size: 10px; color: #666;">
+        <p>This report was generated from Parliament Workflow System</p>
+        <p>Page 1 of 1</p>
+    </div>
+</body>
+</html>

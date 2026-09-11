@@ -1,0 +1,210 @@
+{% extends 'base.html' %}
+{% block title %}{{ event.title }}{% endblock %}
+{% partialdef content %}
+<div class="container-xxl d-flex flex-column gap-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb small mb-0">
+            <li class="breadcrumb-item">
+                <a hx-get="{% url 'dashboard' %}" hx-target="#content-area">Dashboard</a>
+            </li>
+            <li class="breadcrumb-item">
+                <a hx-get="{% url 'event_list' %}" hx-target="#content-area">Events</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">{{ event.title|truncatewords:5 }}</li>
+        </ol>
+    </nav>
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+                <div>
+                    <h1 class="fw-bold">{{ event.title }}</h1>
+                    <div class="d-flex gap-2 mt-3">
+                        <span class="badge bg-primary fs-6">{{ event.event_type.name }}</span>
+                        <div class="dropdown">
+                            <button type="button"
+                                   class="btn btn-sm btn-outline-secondary dropdown-toggle d-inline-flex align-items-center gap-1"
+                                   data-bs-toggle="dropdown" aria-expanded="false">
+                                {{ event.status|title }}
+                                {% lucide "chevron-down" class="w-3 h-3" %}
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end shadow" style="width: 10rem;">
+                                {% for status_choice in event.STATUS_CHOICES %}
+                                    {% comment %} Exclude 'in_progress' and 'completed' - these are handled automatically {% endcomment %}
+                                    {% if status_choice.0 != 'in_progress' and status_choice.0 != 'completed' %}
+                                        <li>
+                                            <a href="{% url 'event_update_status' event.pk status_choice.0 %}"
+                                               {% comment %}
+                                               hx-target="#content-area"
+                                               {% endcomment %}
+                                               class="dropdown-item d-flex align-items-center justify-content-between">
+                                                {{ status_choice.1|title }}
+                                                {% if status_choice.0 == event.status %}
+                                                    {% lucide "check" class="w-4 h-4 text-primary" %}
+                                                {% endif %}
+                                            </a>
+                                        </li>
+                                    {% endif %}
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                <!-- Actions Dropdown -->
+                <div class="dropdown">
+                    <button type="button" class="btn btn-secondary dropdown-toggle d-inline-flex align-items-center gap-1"
+                            data-bs-toggle="dropdown" aria-expanded="false">
+                        {% comment %} {% lucide "move-horizontal" class="w-5 h-5" %} {% endcomment %}
+                        Actions
+                        {% lucide "chevron-down" class="w-4 h-4" %}
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end shadow" style="width: 12rem;">
+                        <li>
+                            <a hx-get="{% url 'event_edit' event.pk %}"
+                               hx-target="#content-area"
+                               class="dropdown-item d-flex align-items-center gap-2">
+                                {% lucide "pencil" class="w-4 h-4" %}
+                                Edit
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#" onclick="shareEvent()" class="dropdown-item d-flex align-items-center gap-2">
+                                {% lucide "share" class="w-4 h-4" %}
+                                Share
+                            </a>
+                        </li>
+                        <li>
+                            <a hx-get="{% url 'event_attendance_edit' event.pk %}"
+                               hx-target="#content-area"
+                               class="dropdown-item d-flex align-items-center gap-2">
+                                {% lucide "users" class="w-4 h-4" %}
+                                Edit Attendance
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{% url 'event_export_pdf' event.pk %}"
+                               target="_blank"
+                               class="dropdown-item d-flex align-items-center gap-2">
+                                {% lucide "file-text" class="w-4 h-4" %}
+                                Export PDF
+                            </a>
+                        </li>
+                        <li>
+                            <a hx-get="{% url 'event_export' event.pk %}"
+                               hx-target="#content-area"
+                               class="dropdown-item d-flex align-items-center gap-2">
+                                {% lucide "calendar" class="w-4 h-4" %}
+                                Export iCal
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <hr>
+            <div class="row row-cols-1 row-cols-md-2 g-4">
+                <div class="d-flex flex-column gap-3">
+                    <div>
+                        <div class="small text-body-secondary">Date &amp; Time</div>
+                        <div class="fw-semibold">
+                            {{ event.start_datetime|date:"F d, Y" }}
+                            <br>
+                            {{ event.start_datetime|date:"H:i" }} - {{ event.end_datetime|date:"H:i" }}
+                        </div>
+                    </div>
+                    {% if event.venue %}
+                        <div>
+                            <div class="small text-body-secondary">Venue</div>
+                            <div class="fw-semibold">{{ event.venue.name }}</div>
+                            {% if event.venue.location %}<div class="small text-body-secondary">{{ event.venue.location }}</div>{% endif %}
+                        </div>
+                    {% endif %}
+                </div>
+                <div class="d-flex flex-column gap-3">
+                    <div>
+                        <div class="small text-body-secondary">Group</div>
+                        <div class="fw-semibold">{{ event.group.name }}</div>
+                    </div>
+                    <div>
+                        <div class="small text-body-secondary">Organizer</div>
+                        <div>{{ event.organizer.get_full_name|default:event.organizer.username }}</div>
+                    </div>
+                </div>
+            </div>
+            {% if event.description %}
+                <hr>
+                <div>
+                    <div class="small text-body-secondary mb-2">Description</div>
+                    <div>{{ event.description|linebreaks }}</div>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    <!-- Attendance -->
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h2 class="card-title h5">
+                {% lucide "users" class="w-5 h-5" %}
+                Attendance
+            </h2>
+            <div class="table-responsive mt-3">
+                <table class="table table-striped align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Status</th>
+                            <th>Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for attendance in attendances %}
+                            <tr>
+                                <td>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <span class="rounded-circle bg-dark text-white d-inline-flex align-items-center justify-content-center flex-shrink-0"
+                                              style="width: 32px; height: 32px; font-size: 0.875rem;">
+                                            {{ attendance.user.first_name.0|default:attendance.user.username.0|upper }}
+                                        </span>
+                                        {{ attendance.user.get_full_name|default:attendance.user.username }}
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge {% if attendance.status == 'attended' %}bg-success{% elif attendance.status == 'absent' %}bg-danger{% else %}bg-info{% endif %}">
+                                        {{ attendance.status|title }}
+                                    </span>
+                                </td>
+                                <td>{{ attendance.notes|default:"-" }}</td>
+                            </tr>
+                        {% empty %}
+                            <tr>
+                                <td colspan="3" class="text-center text-body-secondary">No attendance records</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+function shareEvent() {
+    const url = window.location.href;
+    const title = "{{ event.title|escapejs }}";
+
+    if (navigator.share) {
+        navigator.share({
+            title: title,
+            url: url
+        }).catch(err => console.log('Error sharing:', err));
+    } else {
+        // Fallback: copy to clipboard
+        navigator.clipboard.writeText(url).then(() => {
+            alert('Event link copied to clipboard!');
+        }).catch(() => {
+            prompt('Copy this event link:', url);
+        });
+    }
+}
+</script>
+{% endpartialdef %}
+{% block content %}
+    {% partial content %}
+{% endblock %}

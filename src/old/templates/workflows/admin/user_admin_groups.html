@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}User Group Memberships {% endblock %}
+
+{% partialdef content %}
+<div class="container-xxl py-2">
+  <!-- Breadcrumb -->
+  <nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb small">
+      <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'admin_users' %}">Users</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Group Memberships</li>
+    </ol>
+  </nav>
+
+  <!-- Header -->
+  <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+      <h1 class="d-flex align-items-center gap-2">
+        {% lucide "users" class="w-8 h-8" %}
+        User Group Memberships
+      </h1>
+      <p class="page-subtitle">Manage user assignments to groups and roles</p>
+    </div>
+    <button class="btn btn-primary d-inline-flex align-items-center gap-2">
+      {% lucide "plus" class="w-5 h-5" %}
+      Add Membership
+    </button>
+  </div>
+
+  <!-- Filters -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        <div class="col-12 col-md-6 col-lg-3">
+          <label class="form-label" for="user-select">User</label>
+          <select name="user" id="user-select" class="form-select">
+            <option value="">All Users</option>
+            {% for user in users %}
+            <option value="{{ user.id }}" {% if request.GET.user == user.id|stringformat:"s" %}selected{% endif %}>
+              {{ user.get_full_name|default:user.username }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-12 col-md-6 col-lg-3">
+          <label class="form-label" for="group-select">Group</label>
+          <select name="group" id="group-select" class="form-select">
+            <option value="">All Groups</option>
+            {% for group in groups %}
+            <option value="{{ group.id }}" {% if request.GET.group == group.id|stringformat:"s" %}selected{% endif %}>
+              {{ group.name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-12 col-md-6 col-lg-3">
+          <label class="form-label" for="role-select">Role</label>
+          <select name="role" id="role-select" class="form-select">
+            <option value="">All Roles</option>
+            {% for role in roles %}
+            <option value="{{ role.id }}" {% if request.GET.role == role.id|stringformat:"s" %}selected{% endif %}>
+              {{ role.name }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-12 col-md-6 col-lg-3">
+          <label class="form-label" for="is-active-select">Status</label>
+          <select name="is_active" id="is-active-select" class="form-select">
+            <option value="">All Status</option>
+            <option value="true" {% if request.GET.is_active == 'true' %}selected{% endif %}>Active</option>
+            <option value="false" {% if request.GET.is_active == 'false' %}selected{% endif %}>Inactive</option>
+          </select>
+        </div>
+
+        <div class="col-12 d-flex gap-2">
+          <button type="submit" class="btn btn-primary">Filter</button>
+          {% if request.GET.user or request.GET.group or request.GET.role or request.GET.is_active %}
+          <a href="{% url 'admin_memberships' %}" class="btn btn-outline-secondary">Clear</a>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Memberships Table -->
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-striped align-middle mb-0">
+          <thead>
+            <tr>
+              <th>User</th>
+              <th>Group</th>
+              <th>Role</th>
+              <th>Start Date</th>
+              <th>End Date</th>
+              <th>Status</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for membership in memberships %}
+            <tr>
+              <td>
+                <div class="d-flex align-items-center gap-3">
+                  <span class="rounded-circle bg-primary text-white d-inline-flex align-items-center justify-content-center"
+                    style="width:32px;height:32px;flex-shrink:0">
+                    <span class="small">{{ membership.user.first_name.0 }}{{ membership.user.last_name.0 }}</span>
+                  </span>
+                  <div>
+                    <div class="fw-semibold">{{ membership.user.get_full_name|default:membership.user.username }}</div>
+                    <div class="small text-body-secondary">{{ membership.user.username }}</div>
+                  </div>
+                </div>
+              </td>
+              <td>
+                <div class="fw-medium">{{ membership.group.name }}</div>
+                {% if membership.group.group_type %}
+                <div class="small text-body-secondary">{{ membership.group.get_group_type_display }}</div>
+                {% endif %}
+              </td>
+              <td>
+                <span class="badge border border-secondary-subtle text-body bg-transparent">{{ membership.role.name }}</span>
+              </td>
+              <td>{{ membership.start_date|date:"M d, Y" }}</td>
+              <td>{{ membership.end_date|date:"M d, Y"|default:"-" }}</td>
+              <td>
+                {% if membership.is_active %}
+                <span class="badge bg-success">Active</span>
+                {% else %}
+                <span class="badge bg-body-tertiary text-body">Inactive</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="d-flex gap-1">
+                  <button class="btn btn-sm btn-outline-secondary btn-icon" title="Edit">
+                    {% lucide "pencil" class="w-4 h-4" %}
+                  </button>
+                  <button class="btn btn-sm btn-outline-danger btn-icon" title="Delete">
+                    {% lucide "trash-2" class="w-4 h-4" %}
+                  </button>
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="7" class="text-center py-5 text-body-secondary">
+                No memberships found. Try adjusting your filters.
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mt-4">
+    <div class="col">
+      <div class="stat-card">
+        <div>
+          <p class="stat-title">Total Memberships</p>
+          <div class="stat-value text-primary">{{ memberships|length }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="stat-card">
+        <div>
+          <p class="stat-title">Active Memberships</p>
+          <div class="stat-value text-success">{{ memberships|length }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="stat-card">
+        <div>
+          <p class="stat-title">Inactive Memberships</p>
+          <div class="stat-value text-body-secondary">0</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endpartialdef %}
+
+{% block content %}
+{% partial content %}
+{% endblock %}

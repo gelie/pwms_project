@@ -12,9 +12,12 @@
           <div class="fs-2 fw-semibold">{{ report_count }}</div>
           <p class="text-muted">Reports on international engagements and the resolutions concluded there.</p>
           <div class="mt-auto d-flex flex-wrap gap-2">
-            <a class="btn btn-primary" href="{% url "pwms:delegation_reports" %}">{% lucide "list" size=18 %} View reports</a>
-            <a class="btn btn-outline-secondary"
-               href="{% url "pwms:delegation_report_create" %}">{% lucide "plus" size=18 %} New report</a>
+            <a class="btn btn-primary"
+               href="{% url "pwms:delegation_reports" %}">{% lucide "list" size=18 %} View reports</a>
+            {% if can_create_workflows %}
+              <a class="btn btn-outline-secondary"
+                 href="{% url "pwms:delegation_report_create" %}">{% lucide "plus" size=18 %} New report</a>
+            {% endif %}
           </div>
         </div>
       </div>
@@ -28,8 +31,10 @@
           <div class="mt-auto d-flex flex-wrap gap-2">
             <a class="btn btn-primary"
                href="{% url "pwms:international_resolutions" %}">{% lucide "list" size=18 %} View resolutions</a>
-            <a class="btn btn-outline-secondary"
-               href="{% url "pwms:international_resolution_create" %}">{% lucide "plus" size=18 %} New resolution</a>
+            {% if can_create_workflows %}
+              <a class="btn btn-outline-secondary"
+                 href="{% url "pwms:international_resolution_create" %}">{% lucide "plus" size=18 %} New resolution</a>
+            {% endif %}
           </div>
         </div>
       </div>

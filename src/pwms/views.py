@@ -13,7 +13,15 @@ from django.utils.translation import gettext_lazy as _
 
 from .forms import DelegationReportForm, InternationalResolutionForm
 from .models import DelegationReport, Group, InternationalResolution, WorkflowType
-from .services.permissions import DELETE, EDIT, permissions_for, require, resolve
+from .services.permissions import (
+    DELETE,
+    EDIT,
+    VIEW,
+    permissions_for,
+    require,
+    resolve,
+    visible_instances,
+)
 
 
 @login_not_required
@@ -27,18 +35,32 @@ def dashboard(request):
 
 
 def workflows(request):
-    """Overview of the concrete workflow registers."""
-    recent_reports = DelegationReport.objects.select_related(
-        "current_state", "owner"
-    ).order_by("-created_at")[:5]
-    recent_resolutions = InternationalResolution.objects.select_related(
-        "current_state", "owner"
-    ).order_by("-created_at")[:5]
+    """Overview of the concrete workflow registers.
+
+    Counts and recent tables are limited to instances the signed-in user may
+    view, so the page never advertises rows whose detail page would 403.
+    """
+    viewable_reports = visible_instances(
+        request.user,
+        DelegationReport.objects.select_related("current_state", "owner").order_by(
+            "-created_at"
+        ),
+    )
+    viewable_resolutions = visible_instances(
+        request.user,
+        InternationalResolution.objects.select_related(
+            "current_state", "owner"
+        ).order_by("-created_at"),
+    )
     context = {
-        "report_count": DelegationReport.objects.count(),
-        "resolution_count": InternationalResolution.objects.count(),
-        "recent_reports": recent_reports,
-        "recent_resolutions": recent_resolutions,
+        "report_count": len(viewable_reports),
+        "resolution_count": len(viewable_resolutions),
+        "recent_reports": viewable_reports[:5],
+        "recent_resolutions": viewable_resolutions[:5],
+        # The create views redirect away unless the user holds a create role for
+        # at least one enabled workflow type, so gate the "New ..." buttons on
+        # that same condition instead of offering a dead action.
+        "can_create_workflows": WorkflowType.creatable_by(request.user).exists(),
     }
     return render(request, "pwms/workflows.html", context)
 
@@ -132,17 +154,19 @@ def _deny_uncreatable_workflow_type(request):
 
 
 def delegation_reports(request):
-    """List delegation reports, with an optional free-text filter (BR09)."""
+    """List delegation reports the user may view, with a free-text filter (BR09)."""
     query = request.GET.get("q", "").strip()
-    reports = DelegationReport.objects.select_related(
+    matching = DelegationReport.objects.select_related(
         "workflow_type", "current_state", "owner", "assigned_to"
     ).order_by("-created_at")
     if query:
-        reports = reports.filter(
+        matching = matching.filter(
             Q(reference_number__icontains=query)
             | Q(title__icontains=query)
             | Q(engagement_name__icontains=query)
         )
+    # View access gates the listing itself, not just the row actions.
+    reports = visible_instances(request.user, matching)
     editable_pks = {
         report.pk for report in reports if resolve(request.user, report, EDIT)
     }
@@ -169,9 +193,13 @@ def delegation_report_detail(request, public_id):
         ),
         public_id=public_id,
     )
+    require(request.user, report, VIEW)
+    # Contained resolutions are separate instances with their own access, so
+    # only advertise the ones the user may actually open.
     resolutions = [
         {"object": item, "url": _workflow_detail_url(item)}
         for item in report.sub_workflows
+        if resolve(request.user, item, VIEW)
     ]
     context = {
         "report": report,
@@ -253,17 +281,19 @@ def delegation_report_delete(request, public_id):
 
 
 def international_resolutions(request):
-    """List international resolutions, with an optional free-text filter (BR09)."""
+    """List resolutions the user may view, with a free-text filter (BR09)."""
     query = request.GET.get("q", "").strip()
-    resolutions = InternationalResolution.objects.select_related(
+    matching = InternationalResolution.objects.select_related(
         "workflow_type", "current_state", "owner", "assigned_to", "responsible_group"
     ).order_by("-created_at")
     if query:
-        resolutions = resolutions.filter(
+        matching = matching.filter(
             Q(resolution_number__icontains=query)
             | Q(title__icontains=query)
             | Q(resolution_text__icontains=query)
         )
+    # View access gates the listing itself, not just the row actions.
+    resolutions = visible_instances(request.user, matching)
     editable_pks = {
         resolution.pk
         for resolution in resolutions
@@ -298,12 +328,16 @@ def international_resolution_detail(request, public_id):
         ),
         public_id=public_id,
     )
+    require(request.user, resolution, VIEW)
     parent = resolution.parent_workflow
+    # The parent is a separate instance: don't reveal or link it unless the user
+    # may view it too.
+    parent_viewable = parent is not None and resolve(request.user, parent, VIEW)
     context = {
         "resolution": resolution,
         "perms": permissions_for(request.user, resolution),
-        "parent": parent,
-        "parent_url": _workflow_detail_url(parent) if parent is not None else None,
+        "parent": parent if parent_viewable else None,
+        "parent_url": _workflow_detail_url(parent) if parent_viewable else None,
         "referrals": resolution.referrals().select_related(
             "referred_to", "referred_by"
         ),

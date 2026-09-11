@@ -1,0 +1,196 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}SharePoint Sites Administration {% endblock %}
+
+{% block content %}
+{% partialdef content %}
+<div class="container-xxl py-2">
+  <!-- Breadcrumb -->
+  <nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb small">
+      <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+      <li class="breadcrumb-item active" aria-current="page">SharePoint Sites</li>
+    </ol>
+  </nav>
+
+  <!-- Header -->
+  <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+      <h1 class="d-flex align-items-center gap-2">
+        {% lucide "globe" class="w-8 h-8" %}
+        SharePoint Sites
+      </h1>
+      <p class="page-subtitle">Manage SharePoint sites and their configurations</p>
+    </div>
+    <div class="d-flex gap-2">
+      <button onclick="syncSites()" class="btn btn-primary d-inline-flex align-items-center gap-2">
+        {% lucide "refresh-cw" class="w-5 h-5" %}
+        Sync Sites
+      </button>
+    </div>
+  </div>
+
+  <!-- Search and Filters -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        <div class="col-12 col-md-6 col-lg-4">
+          <label class="form-label" for="search-input">Search</label>
+          <div class="input-group">
+            <span class="input-group-text">
+              {% lucide "search" class="w-4 h-4" %}
+            </span>
+            <input type="text" name="search" id="search-input" placeholder="Search sites by name, URL, or site ID..."
+                   value="{{ request.GET.search }}" class="form-control" />
+          </div>
+        </div>
+
+        <div class="col-6 col-lg-2">
+          <label class="form-label" for="is-personal-select">Site Type</label>
+          <select name="is_personal" id="is-personal-select" class="form-select">
+            <option value="">All Sites</option>
+            <option value="false" {% if request.GET.is_personal == "false" %}selected{% endif %}>Team Sites</option>
+            <option value="true" {% if request.GET.is_personal == "true" %}selected{% endif %}>Personal Sites</option>
+          </select>
+        </div>
+
+        <div class="col-12 d-flex gap-2">
+          <button type="submit" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2">
+            {% lucide "filter" class="w-4 h-4" %}
+            Filter
+          </button>
+
+          {% if request.GET.search or request.GET.is_personal %}
+            <a href="{% url 'admin_sharepoint_sites' %}" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2">
+              {% lucide "x" class="w-4 h-4" %}
+              Clear
+            </a>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Sites Table -->
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      {% if sites_with_counts %}
+        <div class="table-responsive">
+          <table class="table table-striped align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Site Name</th>
+                <th>Type</th>
+                <th>Members</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in sites_with_counts %}
+                <tr onclick="window.open('{{ item.site.url }}', '_blank')" style="cursor:pointer">
+                  <td>
+                    <div class="d-flex align-items-center gap-2">
+                      {% if item.site.is_personal_site %}
+                        {% lucide "user" class="w-4 h-4 text-info" %}
+                      {% else %}
+                        {% lucide "building" class="w-4 h-4 text-success" %}
+                      {% endif %}
+                      <span class="fw-medium">{{ item.site.name }}</span>
+                    </div>
+                  </td>
+                  <td>
+                    {% if item.site.is_personal_site %}
+                      <span class="badge bg-info">Personal</span>
+                    {% else %}
+                      <span class="badge bg-success">Team</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <div class="d-flex align-items-center gap-1">
+                      <span class="badge bg-body-tertiary text-body">{{ item.member_count }}</span>
+                      <a href="{% url 'admin_sharepoint_members' %}?site={{ item.site.site_id }}" onclick="event.stopPropagation()" class="link-primary small">
+                        View
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <div class="text-center py-5">
+          {% lucide "globe" class="w-12 h-12 d-block mx-auto mb-3 text-body-secondary opacity-50" %}
+          <h3 class="fs-5 fw-semibold mb-2">No sites found</h3>
+          <p class="text-body-secondary mb-4">
+            {% if request.GET.search or request.GET.is_personal %}
+              No sites match your current filters. Try adjusting your search criteria.
+            {% else %}
+              No SharePoint sites have been synchronized yet.
+            {% endif %}
+          </p>
+          {% if not request.GET.search and not request.GET.is_personal %}
+            <button onclick="syncSites()" class="btn btn-primary d-inline-flex align-items-center gap-2">
+              {% lucide "refresh-cw" class="w-5 h-5" %}
+              Sync Sites Now
+            </button>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Stats Cards -->
+  <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mt-4">
+    <div class="col">
+      <div class="stat-card">
+        <div class="stat-icon text-primary">
+          {% lucide "globe" class="w-8 h-8" %}
+        </div>
+        <div>
+          <p class="stat-title">Total Sites</p>
+          <div class="stat-value text-primary">{{ sites_with_counts|length }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="stat-card">
+        <div class="stat-icon text-success">
+          {% lucide "building" class="w-8 h-8" %}
+        </div>
+        <div>
+          <p class="stat-title">Team Sites</p>
+          <div class="stat-value text-success">{{ team_sites_count }}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="stat-card">
+        <div class="stat-icon text-info">
+          {% lucide "user" class="w-8 h-8" %}
+        </div>
+        <div>
+          <p class="stat-title">Personal Sites</p>
+          <div class="stat-value text-info">{{ personal_sites_count }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endpartialdef %}
+
+<script>
+function syncSites() {
+  if (confirm('This will synchronize all SharePoint sites from Microsoft Graph. Continue?')) {
+    window.location.href = '/api/sharepoint/sync-sites/';
+  }
+}
+
+function viewSiteDetails(siteId) {
+  // This could open a modal with detailed site information
+  alert('Site details for ' + siteId + '\n\nThis could show more detailed information about the site, drives, folders, etc.');
+}
+</script>
+{% endblock %}

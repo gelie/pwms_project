@@ -1040,6 +1040,50 @@ class WorkflowCrudViewTests(TestCase):
         self.assertEqual(self.client.post(delete_url).status_code, 403)
         self.assertTrue(DelegationReport.objects.filter(pk=report.pk).exists())
 
+    def test_detail_requires_view_access(self):
+        """A non-owner without instance access cannot open a detail page."""
+        self.client.post(
+            reverse("pwms:delegation_report_create"), self._report_payload()
+        )
+        self.client.post(
+            reverse("pwms:international_resolution_create"),
+            self._resolution_payload(),
+        )
+        report = DelegationReport.objects.get(title="CRUD report")
+        resolution = InternationalResolution.objects.get(resolution_number="IR-CRUD-1")
+
+        User = get_user_model()
+        stranger = User.objects.create_user(username="view_stranger", password="pw")
+        self.client.force_login(stranger)
+
+        report_url = reverse("pwms:delegation_report_detail", args=[report.public_id])
+        resolution_url = reverse(
+            "pwms:international_resolution_detail", args=[resolution.public_id]
+        )
+        self.assertEqual(self.client.get(report_url).status_code, 403)
+        self.assertEqual(self.client.get(resolution_url).status_code, 403)
+
+    def test_lists_hide_instances_without_view_access(self):
+        """List pages only render rows the signed-in user may view."""
+        self.client.post(
+            reverse("pwms:delegation_report_create"),
+            self._report_payload(title="Owner only report"),
+        )
+        report = DelegationReport.objects.get(title="Owner only report")
+
+        User = get_user_model()
+        stranger = User.objects.create_user(username="list_stranger", password="pw")
+        self.client.force_login(stranger)
+
+        response = self.client.get(reverse("pwms:delegation_reports"))
+        self.assertNotContains(response, "Owner only report")
+
+        # The owner still sees their own row.
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("pwms:delegation_reports"))
+        self.assertContains(response, "Owner only report")
+        self.assertContains(response, report.reference_number)
+
 
 class PermissionResolverTests(TestCase):
     """The unified permission resolver service (view/edit/delete/share/comment/manage)."""
@@ -1140,3 +1184,130 @@ class PermissionResolverTests(TestCase):
         self.assertTrue(resolve(self.user, self.group, COMMENT))
         self.assertFalse(resolve(self.user, self.group, EDIT))
         self.assertFalse(resolve(self.user, self.group, MANAGE))
+
+
+class WorkflowPermissionInheritanceTests(TestCase):
+    """A child workflow inherits its parent's effective permissions."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.parent_owner = User.objects.create_user(
+            username="inherit_parent_owner", password="pw"
+        )
+        cls.child_owner = User.objects.create_user(
+            username="inherit_child_owner", password="pw"
+        )
+        cls.colleague = User.objects.create_user(
+            username="inherit_colleague", password="pw"
+        )
+        cls.group = Group.objects.create(
+            name="Inheritance Committee", group_type="portfolio_committee"
+        )
+        cls.role = Role.objects.create(name="Inheritance Member")
+        GroupMembership.objects.create(
+            user=cls.colleague, group=cls.group, role=cls.role
+        )
+
+        cls.report_type = WorkflowType.objects.get(name="Delegation Report")
+        cls.resolution_type = WorkflowType.objects.get(name="International Resolution")
+        cls.report = DelegationReport.objects.create(
+            workflow_type=cls.report_type,
+            current_state=cls.report_type.get_initial_state(),
+            title="Parent report",
+            owner=cls.parent_owner,
+        )
+        cls.resolution = InternationalResolution.objects.create(
+            workflow_type=cls.resolution_type,
+            current_state=cls.resolution_type.get_initial_state(),
+            resolution_number="IR-INHERIT-1",
+            title="Child resolution",
+            owner=cls.child_owner,
+        )
+        cls.report.add_sub_workflow(cls.resolution)
+
+    def test_parent_group_grant_cascades_to_child(self):
+        """A group grant on the report reaches the resolution it contains."""
+        self.assertFalse(resolve(self.colleague, self.resolution, VIEW))
+
+        WorkflowGroupAccess.objects.create(
+            content_type=ContentType.objects.get_for_model(DelegationReport),
+            object_id=self.report.pk,
+            group=self.group,
+            can_view=True,
+        )
+
+        self.assertTrue(resolve(self.colleague, self.report, VIEW))
+        self.assertTrue(resolve(self.colleague, self.resolution, VIEW))
+
+    def test_parent_owner_view_cascades_to_child_only(self):
+        """The report owner may view the child, but not edit/delete it."""
+        self.assertEqual(self.resolution.owner, self.child_owner)
+        self.assertTrue(resolve(self.parent_owner, self.resolution, VIEW))
+        self.assertFalse(resolve(self.parent_owner, self.resolution, EDIT))
+        self.assertFalse(resolve(self.parent_owner, self.resolution, DELETE))
+
+    def test_only_view_cascades_to_child(self):
+        """A parent grant lends view access only; mutations stay per-instance."""
+        WorkflowGroupAccess.objects.create(
+            content_type=ContentType.objects.get_for_model(DelegationReport),
+            object_id=self.report.pk,
+            group=self.group,
+            can_view=True,
+            can_edit=True,
+            can_transition=True,
+        )
+        self.assertTrue(resolve(self.colleague, self.resolution, VIEW))
+        self.assertFalse(resolve(self.colleague, self.resolution, EDIT))
+        self.assertFalse(resolve(self.colleague, self.resolution, "transition"))
+
+        # The child's own grant still governs its own mutations.
+        WorkflowGroupAccess.objects.create(
+            content_type=ContentType.objects.get_for_model(InternationalResolution),
+            object_id=self.resolution.pk,
+            group=self.group,
+            can_edit=True,
+        )
+        self.assertTrue(resolve(self.colleague, self.resolution, EDIT))
+
+    def test_child_grant_does_not_leak_up_to_parent(self):
+        """Inheritance is downward only."""
+        WorkflowGroupAccess.objects.create(
+            content_type=ContentType.objects.get_for_model(InternationalResolution),
+            object_id=self.resolution.pk,
+            group=self.group,
+            can_view=True,
+        )
+
+        self.assertTrue(resolve(self.colleague, self.resolution, VIEW))
+        self.assertFalse(resolve(self.colleague, self.report, VIEW))
+
+    def test_unrelated_user_is_still_denied(self):
+        User = get_user_model()
+        stranger = User.objects.create_user(username="inherit_stranger", password="pw")
+        self.assertFalse(resolve(stranger, self.report, VIEW))
+        self.assertFalse(resolve(stranger, self.resolution, VIEW))
+
+    def test_parent_owner_can_open_child_detail_page(self):
+        """The cascade is wired into the views, not just the resolver."""
+        self.client.force_login(self.parent_owner)
+        report_page = self.client.get(
+            reverse("pwms:delegation_report_detail", args=[self.report.public_id])
+        )
+        self.assertEqual(report_page.status_code, 200)
+        # The contained resolution now appears on the report page...
+        self.assertContains(report_page, "IR-INHERIT-1")
+        # ...and opens directly for the report owner.
+        resolution_page = self.client.get(
+            reverse(
+                "pwms:international_resolution_detail", args=[self.resolution.public_id]
+            )
+        )
+        self.assertEqual(resolution_page.status_code, 200)
+
+        # The child's own owner gains nothing on the parent (downward only).
+        self.client.force_login(self.child_owner)
+        parent_page = self.client.get(
+            reverse("pwms:delegation_report_detail", args=[self.report.public_id])
+        )
+        self.assertEqual(parent_page.status_code, 403)

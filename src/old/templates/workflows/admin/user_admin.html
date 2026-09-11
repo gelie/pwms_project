@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}User Administration {% endblock %}
+
+{% partialdef content %}
+<div class="container-xxl py-2">
+  <!-- Breadcrumb -->
+  <nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb small">
+      <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Users</li>
+    </ol>
+  </nav>
+
+  <!-- Header -->
+  <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+      <h1 class="d-flex align-items-center gap-2">
+        {% lucide "users" class="w-8 h-8" %}
+        Users
+      </h1>
+      <p class="page-subtitle">Manage parliamentary system users</p>
+    </div>
+    <button class="btn btn-primary d-inline-flex align-items-center gap-2">
+      {% lucide "plus" class="w-5 h-5" %}
+      Create User
+    </button>
+  </div>
+
+  <!-- Search and Filters -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        <div class="col-12 col-md-6 col-lg-4">
+          <label class="form-label" for="search-input">Search</label>
+          <div class="input-group">
+            <span class="input-group-text">
+              {% lucide "search" class="w-4 h-4" %}
+            </span>
+            <input type="text" name="search" id="search-input"
+              placeholder="Search users by name, username, email, constituency, or party..."
+              value="{{ request.GET.search }}" class="form-control" />
+          </div>
+        </div>
+
+        <div class="col-6 col-lg-3">
+          <label class="form-label" for="employee-type-select">Employee Type</label>
+          <select name="employee_type" id="employee-type-select" class="form-select">
+            <option value="">All Employee Types</option>
+            {% for value, label in employee_types %}
+            <option value="{{ value }}" {% if request.GET.employee_type == value %}selected{% endif %}>{{ label }}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-6 col-lg-2">
+          <label class="form-label" for="is-active-select">Status</label>
+          <select name="is_active" id="is-active-select" class="form-select">
+            <option value="">All Status</option>
+            <option value="true" {% if request.GET.is_active == 'true' %}selected{% endif %}>Active</option>
+            <option value="false" {% if request.GET.is_active == 'false' %}selected{% endif %}>Inactive</option>
+          </select>
+        </div>
+
+        <div class="col-12 d-flex gap-2">
+          <button type="submit" class="btn btn-primary">Filter</button>
+          {% if request.GET.search or request.GET.employee_type or request.GET.is_active %}
+          <a href="{% url 'admin_users' %}" class="btn btn-outline-secondary">Clear</a>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- User Directory -->
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-striped align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Username</th>
+              <th>Email</th>
+              <th>MP Status</th>
+              <th>Party</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for user in users %}
+            <tr>
+              <td>
+                <div class="d-flex align-items-center gap-3">
+                  <span class="rounded-circle bg-primary text-white d-inline-flex align-items-center justify-content-center"
+                    style="width:40px;height:40px;flex-shrink:0">
+                    <span class="small">{{ user.first_name.0 }}{{ user.last_name.0 }}</span>
+                  </span>
+                  <div>
+                    <div class="fw-semibold">{{ user.get_full_name|default:user.username }}</div>
+                    {% if user.positiondesc %}
+                    <div class="small text-body-secondary">{{ user.positiondesc }}</div>
+                    {% endif %}
+                  </div>
+                </div>
+              </td>
+              <td>{{ user.username }}</td>
+              <td>{{ user.email }}</td>
+              <td>
+                {% if user.is_mp %}
+                <span class="badge bg-success">MP</span>
+                {% else %}
+                <span class="badge bg-body-tertiary text-body">Staff</span>
+                {% endif %}
+              </td>
+              <td>{{ user.party_affiliation|default:"-" }}</td>
+              <td>
+                <div class="d-flex gap-1">
+                  <button class="btn btn-sm btn-outline-secondary btn-icon" title="Edit">
+                    {% lucide "pencil" class="w-4 h-4" %}
+                  </button>
+                  <button class="btn btn-sm btn-outline-secondary btn-icon" title="View">
+                    {% lucide "eye" class="w-4 h-4" %}
+                  </button>
+                  <button class="btn btn-sm btn-outline-danger btn-icon" title="Delete">
+                    {% lucide "trash-2" class="w-4 h-4" %}
+                  </button>
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="6" class="text-center py-5 text-body-secondary">
+                No users found. Try adjusting your filters.
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pagination -->
+  <div class="d-flex justify-content-between align-items-center mt-4">
+    <div class="small text-body-secondary">
+      Showing {{ users|length }} of {{ users|length }} results
+    </div>
+  </div>
+</div>
+{% endpartialdef %}
+
+{% block content %}
+{% partial content %}
+{% endblock %}

@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Group Administration {% endblock %}
+
+{% partialdef content %}
+<div class="container-xxl py-2">
+  <!-- Breadcrumb -->
+  <nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb small">
+      <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Groups</li>
+    </ol>
+  </nav>
+
+  <!-- Header -->
+  <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+      <h1 class="d-flex align-items-center gap-2">
+        {% lucide "users" class="w-8 h-8" %}
+        Groups
+      </h1>
+      <p class="page-subtitle">Manage groups and their hierarchies</p>
+    </div>
+    <button class="btn btn-primary d-inline-flex align-items-center gap-2">
+      {% lucide "plus" class="w-5 h-5" %}
+      Create Group
+    </button>
+  </div>
+
+  <!-- Search and Filters -->
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end">
+        <div class="col-12 col-md-6 col-lg-4">
+          <label class="form-label" for="search-input">Search</label>
+          <div class="input-group">
+            <span class="input-group-text">
+              {% lucide "search" class="w-4 h-4" %}
+            </span>
+            <input type="text" name="search" id="search-input" placeholder="Search groups by name or description..."
+              value="{{ request.GET.search }}" class="form-control" />
+          </div>
+        </div>
+
+        <div class="col-6 col-lg-2">
+          <label class="form-label" for="group-type-select">Group Type</label>
+          <select name="group_type" id="group-type-select" class="form-select">
+            <option value="">All Group Types</option>
+            <option value="committee" {% if request.GET.group_type == 'committee' %}selected{% endif %}>Committee</option>
+            <option value="department" {% if request.GET.group_type == 'department' %}selected{% endif %}>Department
+            </option>
+            <option value="assembly" {% if request.GET.group_type == 'assembly' %}selected{% endif %}>Assembly</option>
+          </select>
+        </div>
+
+        <div class="col-12 d-flex gap-2">
+          <button type="submit" class="btn btn-primary">Filter</button>
+          {% if request.GET.search or request.GET.group_type %}
+          <a href="{% url 'admin_groups' %}" class="btn btn-outline-secondary">Clear</a>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Groups Table -->
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-striped align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Type</th>
+              <th>Parent Group</th>
+              <th>Members</th>
+              <th>Workflows</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for group in groups %}
+            <tr style="cursor:pointer" data-url="{% url 'group_detail' group.pk %}"
+              onclick="window.location.href=this.dataset.url">
+              <td>
+                <div class="d-flex align-items-center gap-3">
+                  <span class="bg-primary text-white d-inline-flex align-items-center justify-content-center rounded-3"
+                    style="width:40px;height:40px;flex-shrink:0">
+                    {% lucide "users" class="w-5 h-5" %}
+                  </span>
+                  <div>
+                    <div class="fw-semibold">{{ group.name }}</div>
+                    {% if group.description %}
+                    <div class="small text-body-secondary text-truncate" style="max-width:20rem">{{ group.description|truncatewords:10 }}
+                    </div>
+                    {% endif %}
+                  </div>
+                </div>
+              </td>
+              <td>
+                {% if group.group_type %}
+                <span class="badge border border-secondary-subtle text-body bg-transparent">{{ group.get_group_type_display }}</span>
+                {% else %}
+                <span class="text-body-secondary">-</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if group.parent %}
+                <a href="#" class="link-primary">{{ group.parent.name }}</a>
+                {% else %}
+                <span class="text-body-secondary">Root</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="d-flex align-items-center gap-2">
+                  <span class="badge bg-body-tertiary text-body">{{ group.members.count }}</span>
+                  <span class="small text-body-secondary">members</span>
+                </div>
+              </td>
+              <td>
+                <div class="d-flex align-items-center gap-2">
+                  <span class="badge bg-body-tertiary text-body">{{ group.workflows.count }}</span>
+                  <span class="small text-body-secondary">workflows</span>
+                </div>
+              </td>
+              <td>
+                <div class="d-flex gap-1" onclick="event.stopPropagation()">
+                  <button class="btn btn-sm btn-outline-secondary btn-icon" title="Edit">
+                    {% lucide "pencil" class="w-4 h-4" %}
+                  </button>
+                  <button class="btn btn-sm btn-outline-danger btn-icon" title="Delete">
+                    {% lucide "trash-2" class="w-4 h-4" %}
+                  </button>
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="6" class="text-center py-5 text-body-secondary">
+                No groups found. Try adjusting your filters.
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-4 mt-4">
+    <div class="col">
+      <div class="stat-card">
+        <div class="stat-icon text-primary">
+          {% lucide "users" class="w-8 h-8" %}
+        </div>
+        <div>
+          <p class="stat-title">Total Groups</p>
+          <div class="stat-value text-primary">{{ groups|length }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="stat-card">
+        <div class="stat-icon text-success">
+          {% lucide "briefcase" class="w-8 h-8" %}
+        </div>
+        <div>
+          <p class="stat-title">Committees</p>
+          <div class="stat-value text-success">0</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="stat-card">
+        <div class="stat-icon text-info">
+          {% lucide "building" class="w-8 h-8" %}
+        </div>
+        <div>
+          <p class="stat-title">Departments</p>
+          <div class="stat-value text-info">0</div>
+        </div>
+      </div>
+    </div>
+    <div class="col">
+      <div class="stat-card">
+        <div class="stat-icon text-warning">
+          {% lucide "landmark" class="w-8 h-8" %}
+        </div>
+        <div>
+          <p class="stat-title">Assemblies</p>
+          <div class="stat-value text-warning">0</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endpartialdef %}
+
+{% block content %}
+{% partial content %}
+{% endblock %}

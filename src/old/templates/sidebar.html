@@ -1,0 +1,307 @@
+<!-- Icon Rail (Always Visible) -->
+<aside id="aside" class="w-10 w-md-20">
+  <a hx-get="{% url 'dashboard' %}" hx-target="#content-area" hx-push-url="true"
+    class="w-100 sidebar-icon-btn {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}"
+    data-panel="dashboard" title="Dashboard">
+    <div class="d-flex flex-column align-items-center">
+      {% lucide "chart-pie" class="w-6 h-6" %}
+      <span class="nav-label d-none d-md-inline">Dashboard</span>
+    </div>
+  </a>
+  <a hx-get="{% url 'workflow_list' %}" hx-target="#content-area" hx-push-url="true"
+    class="w-100 sidebar-icon-btn {% if request.resolver_match.url_name == 'workflow_list' %}active{% endif %}"
+    data-panel="workflows" title="Workflows">
+    <div class="d-flex flex-column align-items-center">
+      {% lucide "git-branch" class="w-6 h-6" %}
+      <span class="nav-label d-none d-md-inline">Workflows</span>
+    </div>
+  </a>
+  {% if user.is_superuser or user.can_manage_permissions %}
+  <a hx-get="{% url 'delegation_list' %}" hx-target="#content-area" hx-push-url="true"
+    class="w-100 sidebar-icon-btn {% if request.resolver_match.url_name == 'delegation_list' %}active{% endif %}"
+    data-panel="delegations" title="Delegations">
+    <div class="d-flex flex-column align-items-center">
+      {% lucide "user-plus" class="w-6 h-6" %}
+      <span class="nav-label d-none d-md-inline">Delegations</span>
+    </div>
+  </a>
+  {% endif %}
+  {% comment %} <a hx-get="{% url 'event_list' %}" hx-target="#content-area" hx-push-url="true"
+    class="w-100 sidebar-icon-btn {% if request.resolver_match.url_name == 'event_list' %}active{% endif %}"
+    data-panel="events" title="Events">
+    <div class="d-flex flex-column align-items-center">
+      {% lucide "calendar" class="w-6 h-6" %}
+      <span class="nav-label">Events</span>
+    </div>
+  </a> {% endcomment %}
+  <a hx-get="{% url 'group_list' %}" hx-target="#content-area" hx-push-url="true"
+    class="w-100 sidebar-icon-btn {% if request.resolver_match.url_name == 'group_list' %}active{% endif %}"
+    data-panel="groups" title="Groups">
+    <div class="d-flex flex-column align-items-center">
+      {% lucide "users" class="w-6 h-6" %}
+      <span class="nav-label d-none d-md-inline">Groups</span>
+    </div>
+  </a>
+  <a hx-get="{% url 'reports' %}" hx-target="#content-area" hx-push-url="true"
+    class="w-100 sidebar-icon-btn {% if request.resolver_match.url_name == 'reports' %}active{% endif %}" data-panel="reports"
+    title="Reports">
+    <div class="d-flex flex-column align-items-center">
+      {% lucide "file-text" class="w-6 h-6" %}
+      <span class="nav-label d-none d-md-inline">Reports</span>
+    </div>
+  </a>
+  {% if user.is_staff %}
+  <hr class="rail-divider">
+  <a hx-get="{% url 'admin_users' %}" hx-target="#content-area" hx-push-url="true" class="w-100 sidebar-icon-btn"
+    data-panel="admin" title="Administration">
+    <div class="d-flex flex-column align-items-center">
+      {% lucide "settings" class="w-6 h-6" %}
+      <span class="nav-label d-none d-md-inline">Admin</span>
+    </div>
+  </a>
+  {% endif %}
+</aside>
+
+<!-- Collapsible Side Panels -->
+<div id="sidebar-panels" class="sidebar-panel-container ms-10 ms-md-5">
+  <div class="d-flex justify-content-end">
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-circle mt-2 me-2 d-flex justify-content-center align-items-center" style="width:32px;height:32px;"
+            onclick="toggleSidebarPanels()" title="Close panel" aria-label="Close panel">
+      <span aria-hidden="true" style="font-size:24px">&times;</span>
+    </button>
+  </div>
+  <!-- Dashboard Panel -->
+  <div id="panel-dashboard" class="sidebar-panel" data-panel="dashboard">
+    <div class="sidebar-panel-inner">
+      <h3 class="panel-title">Dashboard</h3>
+      <ul class="panel-nav">
+        <li>
+          <a hx-get="{% url 'dashboard' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "house" class="w-4 h-4" %}
+            <span>Overview</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'dashboard' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "trending-up" class="w-4 h-4" %}
+            <span>Analytics</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'dashboard' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "activity" class="w-4 h-4" %}
+            <span>Recent Activity</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+  <!-- Workflows Panel -->
+  <div id="panel-workflows" class="sidebar-panel" data-panel="workflows">
+    <div class="sidebar-panel-inner">
+      <h3 class="panel-title">Workflows</h3>
+      <ul class="panel-nav">
+        <li>
+          <a hx-get="{% url 'workflow_list' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "circle-plus" class="w-4 h-4" %}
+            <span>Create Workflow</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'workflow_list' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "clock" class="w-4 h-4" %}
+            <span>Overdue Workflows</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'workflow_list' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "list" class="w-4 h-4" %}
+            <span>All Workflows</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'workflow_list' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "user-check" class="w-4 h-4" %}
+            <span>Assigned to Me</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'workflow_list' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "archive" class="w-4 h-4" %}
+            <span>Archived</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+  <!-- Delegations Panel -->
+  <div id="panel-delegations" class="sidebar-panel" data-panel="delegations">
+    <div class="sidebar-panel-inner">
+      <h3 class="panel-title">Delegations</h3>
+      <ul class="panel-nav">
+        <li>
+          <a hx-get="{% url 'delegation_list' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "circle-plus" class="w-4 h-4" %}
+            <span>Create Delegation</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'delegation_list' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "list" class="w-4 h-4" %}
+            <span>All Delegations</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+  <!-- Events Panel -->
+  <div id="panel-events" class="sidebar-panel" data-panel="events">
+    <div class="sidebar-panel-inner">
+      <h3 class="panel-title">Events</h3>
+      <ul class="panel-nav">
+        <li>
+          <a hx-get="{% url 'event_list' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "circle-plus" class="w-4 h-4" %}
+            <span>Create Event</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'event_list' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "calendar-days" class="w-4 h-4" %}
+            <span>Upcoming Events</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'event_list' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "list" class="w-4 h-4" %}
+            <span>All Events</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'event_list' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "calendar-check" class="w-4 h-4" %}
+            <span>My Events</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+  <!-- Groups Panel -->
+  <div id="panel-groups" class="sidebar-panel" data-panel="groups">
+    <div class="sidebar-panel-inner">
+      <h3 class="panel-title">Groups</h3>
+      <ul class="panel-nav">
+        <li>
+          <a hx-get="{% url 'group_list' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "circle-plus" class="w-4 h-4" %}
+            <span>Create Group</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'group_list' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "list" class="w-4 h-4" %}
+            <span>All Groups</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'group_list' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "users" class="w-4 h-4" %}
+            <span>My Groups</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+  <!-- Reports Panel -->
+  <div id="panel-reports" class="sidebar-panel" data-panel="reports">
+    <div class="sidebar-panel-inner">
+      <h3 class="panel-title">Reports</h3>
+      <ul class="panel-nav">
+        <li>
+          <a hx-get="{% url 'reports' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "file-chart-column" class="w-4 h-4" %}
+            <span>Workflow Reports</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'reports' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "chart-pie" class="w-4 h-4" %}
+            <span>Performance</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'reports' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "download" class="w-4 h-4" %}
+            <span>Export Data</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+  {% if user.is_staff %}
+  <!-- Admin Panel -->
+  <div id="panel-admin" class="sidebar-panel" data-panel="admin">
+    <div class="sidebar-panel-inner">
+      <h3 class="panel-title">Administration</h3>
+      <ul class="panel-nav">
+        <li>
+          <a hx-get="{% url 'admin_users' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "user" class="w-4 h-4" %}
+            <span>Users</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'admin_groups' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "users" class="w-4 h-4" %}
+            <span>Groups</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'admin_roles' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "shield" class="w-4 h-4" %}
+            <span>Roles</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'admin_workflow_types' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "git-branch" class="w-4 h-4" %}
+            <span>Workflow Types</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'admin_sharepoint_sites' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "globe" class="w-4 h-4" %}
+            <span>SharePoint Sites</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'admin_sharepoint_members' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "user-check" class="w-4 h-4" %}
+            <span>Site Members</span>
+          </a>
+        </li>
+        <li>
+          <a hx-get="{% url 'delegation_list' %}" hx-target="#content-area" hx-push-url="true">
+            {% lucide "user-plus" class="w-4 h-4" %}
+            <span>Delegations</span>
+          </a>
+        </li>
+        <li class="dropdown-divider"></li>
+        <li>
+          <a href="/admin/">
+            {% lucide "settings" class="w-4 h-4" %}
+            <span>Admin Panel</span>
+          </a>
+        </li>
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Floating Popup (shown when hovering the icon rail while panels are closed) -->
+<div id="sidebar-popup" class="sidebar-popup">
+  <div class="panel-content">
+    <!-- Content will be dynamically inserted here -->
+  </div>
+</div>

@@ -1,0 +1,525 @@
+{% extends 'base.html' %}
+{% block title %}Edit Workflow Template{% endblock %}
+{% partialdef content %}
+<div class="mx-auto w-100 py-2 d-flex flex-column gap-4" style="max-width:56rem">
+  <!-- Header -->
+  <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+      <h1 class="d-flex align-items-center gap-2">
+        {% lucide "pencil" class="w-8 h-8" %}
+        Edit Workflow Template
+      </h1>
+      <p class="page-subtitle">Modify workflow template settings</p>
+    </div>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <a href="{% url 'admin_workflow_type_states' workflow_type.pk %}"
+         class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2">{% lucide "circle-dot" class="w-4 h-4" %} States</a>
+      <a href="{% url 'admin_workflow_type_transitions' workflow_type.pk %}"
+         class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2">{% lucide "arrow-right-left" class="w-4 h-4" %} Transitions</a>
+      <a href="{% url 'admin_workflow_type_referral_configs' workflow_type.pk %}"
+         class="btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-2">{% lucide "send" class="w-4 h-4" %} Referral Configs</a>
+    </div>
+  </div>
+  <!-- Form -->
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <!-- Store group data as JSON in data attribute -->
+      <div id="group-data" data-groups='{
+        {% for group in groups %}
+          "{{ group.name|lower }}": {{ group.id }}{% if not forloop.last %},{% endif %} {% endfor %} }' style="display: none;">
+        </div>
+        <!-- Store group-roles mapping as JSON in data attribute -->
+        <div id="group-roles-data"
+             data-group-roles='{{ group_roles|safe }}'
+             style="display: none"></div>
+        <form method="post" class="d-flex flex-column gap-4">
+          {% csrf_token %}
+          <!-- Basic Information -->
+          <section class="d-flex flex-column gap-3">
+            <h2 class="h5 border-bottom pb-2 mb-3 d-flex align-items-center gap-2">
+              {% lucide "info" class="w-5 h-5" %}
+              Basic Information
+            </h2>
+            <div class="row g-3">
+              <!-- Name -->
+              <div class="col-md-6">
+                <label class="form-label fw-medium">Template Name * <span class="small fw-normal text-body-secondary">Required</span></label>
+                <input type="text"
+                       name="name"
+                       class="form-control"
+                       placeholder="e.g., Petition Workflow"
+                       value="{{ workflow_type.name }}"
+                       required />
+              </div>
+              <!-- Status -->
+              <div class="col-md-6">
+                <label class="form-label fw-medium d-block">Status</label>
+                <div class="form-check form-switch mt-2">
+                  <input type="checkbox"
+                         name="enabled"
+                         class="form-check-input"
+                         role="switch"
+                         {% if workflow_type.enabled %}checked{% endif %} />
+                  <label class="form-check-label">Enable this template</label>
+                </div>
+              </div>
+            </div>
+            <!-- Description -->
+            <div>
+              <label class="form-label fw-medium">Description <span class="small fw-normal text-body-secondary">Optional</span></label>
+              <textarea name="description"
+                        class="form-control"
+                        rows="3"
+                        placeholder="Describe the purpose and use case of this workflow template...">{{ workflow_type.description }}</textarea>
+            </div>
+          </section>
+          <!-- Group Assignment -->
+          <section class="d-flex flex-column gap-3">
+            <h2 class="h5 border-bottom pb-2 mb-3 d-flex align-items-center gap-2">
+              {% lucide "users" class="w-5 h-5" %}
+              Group Assignment
+            </h2>
+            <div>
+              <label class="form-label fw-medium">Owner Group * <span class="small fw-normal text-body-secondary">Required</span></label>
+              <!-- Searchable group input -->
+              <div class="position-relative">
+                <input type="text"
+                       name="group_name"
+                       class="form-control"
+                       placeholder="Search and select group..."
+                       value="{{ workflow_type.group.name }}" />
+                <input type="hidden"
+                       name="group"
+                       id="selected-group"
+                       value="{{ workflow_type.group.id }}" />
+                <!-- Dropdown menu -->
+                <div id="groups-list"
+                     class="position-absolute top-100 start-0 end-0 bg-white border border-secondary-subtle rounded-3 shadow d-none overflow-auto"
+                     style="max-height:12rem; z-index:10">
+                  {% for group in groups %}
+                    <div class="p-2 rounded-1" style="cursor:pointer"
+                         data-value="{{ group.name }}"
+                         data-id="{{ group.id }}">
+                      <div class="d-flex align-items-center gap-2">
+                        {% lucide "users" class="w-4 h-4" %}
+                        <span>{{ group.name }}</span>
+                      </div>
+                    </div>
+                  {% endfor %}
+                </div>
+              </div>
+              <div class="form-text">The group that owns all workflows of this type</div>
+            </div>
+          </section>
+          <!-- Create Permissions -->
+          <section class="d-flex flex-column gap-3">
+            <h2 class="h5 border-bottom pb-2 mb-3 d-flex align-items-center gap-2">
+              {% lucide "shield-check" class="w-5 h-5" %}
+              Create Permissions
+            </h2>
+            <div>
+              <label class="form-label fw-medium" for="role-dropdown">Roles that can create workflows <span class="small fw-normal text-body-secondary">Select one or more roles</span></label>
+              <!-- Searchable multi-select dropdown -->
+              <div class="position-relative">
+                <input type="text"
+                       id="role-dropdown"
+                       class="form-control"
+                       placeholder="Search and select roles..."
+                       readonly />
+                <input type="hidden" name="create_roles" id="selected-roles" />
+                <!-- Dropdown menu -->
+                <div id="role-dropdown-menu"
+                     class="position-absolute top-100 start-0 end-0 bg-white border border-secondary-subtle rounded-3 shadow d-none overflow-auto"
+                     style="max-height:12rem; z-index:10">
+                  <div class="p-2">
+                    <input type="text"
+                           id="role-search-input"
+                           class="form-control form-control-sm mb-2"
+                           placeholder="Search roles..."
+                           onclick="event.stopPropagation()" />
+                    <div id="role-options-list">
+                      {% for role in roles %}
+                        <label class="d-flex align-items-center gap-3 p-2 rounded-1 role-option"
+                               data-role-name="{{ role.name|lower }}"
+                               data-role-id="{{ role.id }}"
+                               data-available-groups="">
+                          <input type="checkbox"
+                                 value="{{ role.id }}"
+                                 class="form-check-input"
+                                 onclick="event.stopPropagation()"
+                                 {% if role in workflow_type.create_roles.all %}checked{% endif %} />
+                          <span class="small">{{ role.name }}</span>
+                        </label>
+                      {% endfor %}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="form-text">Only users with these roles can create workflows of this type</div>
+            </div>
+          </section>
+          <!-- States & Transitions Management -->
+          <section class="d-flex flex-column gap-3">
+            <h2 class="h5 border-bottom pb-2 mb-3 d-flex align-items-center gap-2">
+              {% lucide "git-branch" class="w-5 h-5" %}
+              States & Transitions
+            </h2>
+            <p class="small text-body-secondary">Define the workflow states and transitions for this workflow type</p>
+            <div class="row row-cols-1 row-cols-md-2 g-4">
+              <!-- States Management -->
+              <div class="col">
+                <div class="card border border-secondary-subtle h-100">
+                  <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                      <h4 class="fw-medium d-flex align-items-center gap-2 mb-0">
+                        {% lucide "circle-dot" class="w-4 h-4" %}
+                        Workflow States
+                      </h4>
+                      <span class="badge bg-body-tertiary text-body" id="states-count">{{ workflow_type.states.count }}
+                      states</span>
+                    </div>
+                    <p class="small text-body-secondary mb-3">Define the different states a workflow can be in</p>
+                    <button type="button"
+                            class="btn btn-outline-secondary btn-sm w-100 d-inline-flex align-items-center justify-content-center gap-2"
+                            onclick="openStatesModal('{{ workflow_type.pk }}')">
+                      {% lucide "settings" class="w-4 h-4" %}
+                      Manage States
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <!-- Transitions Management -->
+              <div class="col">
+                <div class="card border border-secondary-subtle h-100">
+                  <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between mb-3">
+                      <h4 class="fw-medium d-flex align-items-center gap-2 mb-0">
+                        {% lucide "arrow-right-left" class="w-4 h-4" %}
+                        Workflow Transitions
+                      </h4>
+                      <span class="badge bg-body-tertiary text-body" id="transitions-count">{{ workflow_type.transitions.count }}
+                      transitions</span>
+                    </div>
+                    <p class="small text-body-secondary mb-3">Define how workflows move between states</p>
+                    <button type="button"
+                            class="btn btn-outline-secondary btn-sm w-100 d-inline-flex align-items-center justify-content-center gap-2"
+                            onclick="openTransitionsModal('{{ workflow_type.pk }}')">
+                      {% lucide "settings" class="w-4 h-4" %}
+                      Manage Transitions
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="alert alert-info d-flex align-items-center gap-2 mb-0" role="alert">
+              <div class="d-flex align-items-center gap-2">
+                {% lucide "info" class="w-4 h-4" %}
+                <span class="small">
+                  Configure states and transitions to define the workflow process flow. States represent workflow stages,
+                  and transitions define how workflows move between them.
+                </span>
+              </div>
+            </div>
+          </section>
+          <!-- Form Actions -->
+          <div class="d-flex justify-content-between align-items-center pt-4 border-top">
+            <a href="{% url 'admin_workflow_types' %}" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2">
+              {% lucide "x" class="w-4 h-4" %}
+              Cancel
+            </a>
+            <div class="d-flex align-items-center gap-3">
+              <button type="reset" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2">
+                {% lucide "refresh-cw" class="w-4 h-4" %}
+                Reset
+              </button>
+              <button type="submit" class="btn btn-primary d-inline-flex align-items-center gap-2">
+                {% lucide "check" class="w-4 h-4" %}
+                Update Template
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+    <!-- Help Section -->
+    <div class="card shadow-sm mt-4">
+      <div class="card-body">
+        <h3 class="card-title h5 d-flex align-items-center gap-2">
+          {% lucide "circle-help" class="w-5 h-5" %}
+          Template Editing Help
+        </h3>
+        <div class="small d-flex flex-column gap-3 mt-4">
+          <div>
+            <p class="fw-semibold mb-2">Editing Guidelines:</p>
+            <ul class="d-flex flex-column gap-1 ms-4 mb-0">
+              <li class="d-flex align-items-start gap-2">
+                <span class="text-primary">•</span>
+                <span>Review group assignment before changing - it affects permissions</span>
+              </li>
+              <li class="d-flex align-items-start gap-2">
+                <span class="text-primary">•</span>
+                <span>Disabling a template prevents new workflow creation</span>
+              </li>
+            </ul>
+          </div>
+          <hr class="my-2">
+          <p class="small text-body-secondary mb-0">
+            Changes will take effect immediately for new workflows. Existing
+            workflows may need manual updates.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+  document.addEventListener('DOMContentLoaded', function () {
+    // Group selection handling
+    const groupInput = document.querySelector('input[name="group_name"]');
+    const selectedGroupInput = document.getElementById('selected-group');
+    const groupsList = document.getElementById('groups-list');
+    const groupDataElement = document.getElementById('group-data');
+    const groupRolesDataElement = document.getElementById('group-roles-data');
+
+    // Parse group data from data attribute
+    let groupMap = {};
+    try {
+      const rawGroupData = groupDataElement.getAttribute('data-groups') || '{}';
+      console.log('Raw group data:', rawGroupData);
+      groupMap = JSON.parse(rawGroupData);
+      console.log('Parsed group map:', groupMap);
+    } catch (e) {
+      console.error('Error parsing group data:', e);
+    }
+
+    // Parse group-roles mapping
+    let groupRolesMap = {};
+    try {
+      groupRolesMap = groupRolesDataElement.getAttribute('data-group-roles') || '{}';
+      console.log('Raw group roles data:', groupRolesMap);
+      // If it's already a string, parse it, otherwise use as-is
+      if (typeof groupRolesMap === 'string') {
+        groupRolesMap = JSON.parse(groupRolesMap);
+      }
+      console.log('Parsed group roles map:', groupRolesMap);
+    } catch (e) {
+      console.error('Error parsing group roles data:', e);
+      groupRolesMap = {};
+    }
+
+    // Function to filter roles based on selected group
+    function filterRolesByGroup(groupId) {
+      console.log('Filtering roles for group ID:', groupId);
+      console.log('Available group roles:', groupRolesMap);
+
+      const roleOptions = document.querySelectorAll('.role-option');
+      const availableRoleIds = new Set();
+
+      if (groupId && groupRolesMap[groupId]) {
+        console.log('Found roles for group:', groupRolesMap[groupId]);
+        groupRolesMap[groupId].forEach(role => {
+          availableRoleIds.add(role.id.toString());
+        });
+        console.log('Available role IDs:', Array.from(availableRoleIds));
+      } else {
+        console.log('No roles found for group or group ID is empty');
+      }
+
+      let visibleCount = 0;
+      let hiddenCount = 0;
+
+      roleOptions.forEach(function (option) {
+        const roleId = option.getAttribute('data-role-id');
+        if (availableRoleIds.has(roleId)) {
+          option.style.display = 'flex';
+          visibleCount++;
+        } else {
+          option.style.display = 'none';
+          hiddenCount++;
+          // Uncheck hidden roles
+          const checkbox = option.querySelector('input[type="checkbox"]');
+          if (checkbox.checked) {
+            checkbox.checked = false;
+            updateSelectedRolesDisplay();
+          }
+        }
+      });
+
+      console.log(`Role filtering complete: ${visibleCount} visible, ${hiddenCount} hidden`);
+    }
+
+    groupInput.addEventListener('change', function () {
+      const selectedValue = this.value.toLowerCase();
+      const selectedId = groupMap[selectedValue];
+
+      if (selectedId) {
+        selectedGroupInput.value = selectedId;
+        filterRolesByGroup(selectedId);
+      } else {
+        selectedGroupInput.value = '';
+        filterRolesByGroup(null);
+      }
+    });
+
+    // Handle dropdown item clicks
+    const groupItems = groupsList.querySelectorAll('div[data-value][data-id]');
+    groupItems.forEach(function (item) {
+      item.addEventListener('click', function () {
+        const groupName = this.getAttribute('data-value');
+        const groupId = this.getAttribute('data-id');
+
+        groupInput.value = groupName;
+        selectedGroupInput.value = groupId;
+        groupsList.classList.add('d-none');
+        filterRolesByGroup(groupId);
+      });
+    });
+
+    // Toggle dropdown when clicking on the input
+    groupInput.addEventListener('focus', function () {
+      groupsList.classList.remove('d-none');
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function (event) {
+      if (!groupInput.contains(event.target) && !groupsList.contains(event.target)) {
+        groupsList.classList.add('d-none');
+      }
+    });
+
+    // Role dropdown functionality
+    const roleDropdown = document.getElementById('role-dropdown');
+    const roleDropdownMenu = document.getElementById('role-dropdown-menu');
+    const roleSearchInput = document.getElementById('role-search-input');
+    const roleOptions = document.querySelectorAll('.role-option');
+    const selectedRolesInput = document.getElementById('selected-roles');
+
+    // Toggle dropdown
+    roleDropdown.addEventListener('click', function () {
+      roleDropdownMenu.classList.toggle('d-none');
+      if (!roleDropdownMenu.classList.contains('d-none')) {
+        roleSearchInput.focus();
+      }
+    });
+
+    // Close dropdown when clicking outside
+    document.addEventListener('click', function (event) {
+      if (!roleDropdown.contains(event.target) && !roleDropdownMenu.contains(event.target)) {
+        roleDropdownMenu.classList.add('d-none');
+      }
+    });
+
+    // Search functionality (combined with group filtering)
+    roleSearchInput.addEventListener('input', function () {
+      const searchTerm = this.value.toLowerCase();
+      const selectedGroupId = selectedGroupInput.value;
+
+      roleOptions.forEach(function (option) {
+        const roleName = option.getAttribute('data-role-name');
+        const roleId = option.getAttribute('data-role-id');
+        let isVisible = true;
+
+        // Check if role matches search
+        if (searchTerm && !roleName.includes(searchTerm)) {
+          isVisible = false;
+        }
+
+        // Check if role is available in selected group
+        if (selectedGroupId && groupRolesMap[selectedGroupId]) {
+          const availableRoleIds = groupRolesMap[selectedGroupId].map(role => role.id.toString());
+          if (!availableRoleIds.includes(roleId)) {
+            isVisible = false;
+          }
+        }
+
+        option.style.display = isVisible ? 'flex' : 'none';
+      });
+    });
+
+    // Handle checkbox changes
+    roleOptions.forEach(function (option) {
+      const checkbox = option.querySelector('input[type="checkbox"]');
+      const roleName = option.querySelector('span').textContent;
+
+      checkbox.addEventListener('change', function () {
+        updateSelectedRolesDisplay();
+      });
+    });
+
+    // Update the display and hidden input
+    function updateSelectedRolesDisplay() {
+      const selectedRoles = [];
+      const selectedNames = [];
+
+      roleOptions.forEach(function (option) {
+        const checkbox = option.querySelector('input[type="checkbox"]');
+        if (checkbox.checked) {
+          selectedRoles.push(checkbox.value);
+          selectedNames.push(option.querySelector('span').textContent);
+        }
+      });
+
+      // Update hidden input
+      selectedRolesInput.value = selectedRoles.join(',');
+
+      // Update display
+      if (selectedNames.length > 0) {
+        roleDropdown.value = selectedNames.length === 1 ?
+          selectedNames[0] :
+          `${selectedNames.length} roles selected`;
+      } else {
+        roleDropdown.value = '';
+      }
+    }
+
+
+
+    // Initialize role display with existing selections
+    updateSelectedRolesDisplay();
+
+
+
+    // Initialize with the current workflow type's group and filter roles
+    const currentGroupId = selectedGroupInput.value;
+    console.log('Current group ID from input:', currentGroupId);
+    console.log('Selected group input element:', selectedGroupInput);
+
+    if (currentGroupId) {
+      // Find the group name for the current group ID
+      const currentGroupName = Object.keys(groupMap).find(key => groupMap[key] === currentGroupId);
+      console.log('Found group name for ID:', currentGroupName);
+
+      if (currentGroupName) {
+        // Set the group input to the proper case name
+        groupInput.value = currentGroupName.charAt(0).toUpperCase() + currentGroupName.slice(1);
+        console.log('Set group input to:', groupInput.value);
+      }
+
+      filterRolesByGroup(currentGroupId);
+      console.log('Initial role filtering for group:', currentGroupId);
+    } else {
+      console.log('No current group ID found, using fallback');
+      // Fallback: pre-select the first group and filter roles
+      if (groupsList.children.length > 0) {
+        const firstOption = groupsList.children[0];
+        groupInput.value = firstOption.value;
+        selectedGroupInput.value = firstOption.getAttribute('data-id');
+        filterRolesByGroup(firstOption.getAttribute('data-id'));
+      }
+    }
+  });
+
+  // Global functions to open states and transitions modals
+  function openStatesModal(workflowTypeId) {
+    // Open states management modal/page
+    window.open(`/manage/workflow-types/${workflowTypeId}/states/`, '_blank', 'width=800,height=600');
+  }
+
+  function openTransitionsModal(workflowTypeId) {
+    // Open transitions management modal/page
+    window.open(`/manage/workflow-types/${workflowTypeId}/transitions/`, '_blank', 'width=800,height=600');
+  }
+  </script>
+{% endpartialdef content %}
+{% block content %}
+  {% partial content %}
+{% endblock %}

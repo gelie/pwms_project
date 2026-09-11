@@ -1,0 +1,629 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Create Workflow Template {% endblock %}
+
+{% partialdef content %}
+<div class="mx-auto w-100 py-2" style="max-width:56rem">
+  <!-- Breadcrumb -->
+  <nav aria-label="breadcrumb" class="mb-4">
+    <ol class="breadcrumb small">
+      <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'admin_workflow_types' %}">Workflow Templates</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Create Template</li>
+    </ol>
+  </nav>
+
+  <!-- Header -->
+  <div class="mb-4">
+    <h1 class="d-flex align-items-center gap-2">
+      {% lucide "circle-plus" class="w-8 h-8" %}
+      Create Workflow Template
+    </h1>
+    <p class="page-subtitle">Create a new workflow template for parliamentary processes</p>
+  </div>
+
+  <!-- Form -->
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <!-- Store group data as JSON in data attribute -->
+      {% comment %} {{ groups | json_script:"groups-data" }} {% endcomment %}
+      {% comment %} {{ group_roles | json_script:"group-roles-data" }} {% endcomment %}
+      {% comment %} {{ roles | json_script:"roles-data" }} {% endcomment %}
+      {% comment %} <div id="group-data" data-groups='{{ groups|safe }}'></div> {% endcomment %}
+       <div id="group-data" data-groups='{
+        {% for group in groups %}
+          "{{ group.name|lower }}": "{{ group.id }}"{% if not forloop.last %},{% endif %} {% endfor %} }'></div>
+        {% comment %} {% for group in groups %}
+        "{{ group.name|lower }}": {{ group.id|stringformat:"s" }}{% if not forloop.last %},{% endif %}
+        {% endfor %}
+      }'></div> {% endcomment %}
+
+      <!-- Store group-roles mapping as JSON in data attribute -->
+       {% comment %} <div id="group-roles-data" data-group-roles="{{ group_roles|safe }}"></div> {% endcomment %}
+      <div id="group-roles-data" data-group-roles='{{group_roles|safe}}'></div>
+
+
+      <form method="post" class="d-flex flex-column gap-4">
+        {% csrf_token %}
+
+        <!-- Basic Information -->
+        <section class="d-flex flex-column gap-3">
+          <h2 class="h5 border-bottom pb-2 mb-3 d-flex align-items-center gap-2">
+            {% lucide "info" class="w-5 h-5" %}
+            Basic Information
+          </h2>
+
+          <div class="row g-3">
+            <!-- Name -->
+            <div class="col-md-6">
+              <label class="form-label fw-medium">Template Name * <span class="small fw-normal text-body-secondary">Required</span></label>
+              <input type="text" name="name" class="form-control" placeholder="e.g., Petition Workflow"
+                required />
+            </div>
+
+            <!-- Status -->
+            <div class="col-md-6">
+              <label class="form-label fw-medium d-block">Status</label>
+              <div class="form-check form-switch mt-2">
+                <input type="checkbox" name="enabled" class="form-check-input" role="switch" checked />
+                <label class="form-check-label">Enable this template</label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Description -->
+          <div>
+            <label class="form-label fw-medium">Description <span class="small fw-normal text-body-secondary">Optional</span></label>
+            <textarea name="description" class="form-control" rows="3"
+              placeholder="Describe the purpose and use case of this workflow template..."></textarea>
+          </div>
+        </section>
+
+        <!-- Group Assignment -->
+        <section class="d-flex flex-column gap-3">
+          <h2 class="h5 border-bottom pb-2 mb-3 d-flex align-items-center gap-2">
+            {% lucide "users" class="w-5 h-5" %}
+            Group Assignment
+          </h2>
+
+          <div>
+            <label class="form-label fw-medium" for="group_name">Owner Group * <span class="small fw-normal text-body-secondary">Required</span></label>
+            <input type="text" id="group_name" name="group_name" class="form-control"
+              placeholder="Search and select a group..." list="groups-list" required />
+            <input type="hidden" name="group" id="selected-group" required />
+            <datalist id="groups-list">
+              {% for group in groups %}
+              <option value="{{ group.name }}" data-id="{{ group.id }}"></option>
+              {% endfor %}
+            </datalist>
+            <div class="form-text">All workflows of this type will belong to this group</div>
+          </div>
+        </section>
+
+        <!-- Create Roles -->
+        <section class="d-flex flex-column gap-3">
+          <h2 class="h5 border-bottom pb-2 mb-3 d-flex align-items-center gap-2">
+            {% lucide "shield-check" class="w-5 h-5" %}
+            Create Permissions
+          </h2>
+
+          <div>
+            <label class="form-label fw-medium" for="role-dropdown">Roles that can create workflows <span class="small fw-normal text-body-secondary">Select one or more roles</span></label>
+
+            <!-- Searchable multi-select dropdown -->
+            <div class="position-relative">
+              <input type="text" id="role-dropdown" class="form-control"
+                placeholder="Search and select roles..." readonly />
+              <input type="hidden" name="create_roles" id="selected-roles" />
+
+              <!-- Dropdown menu -->
+              <div id="role-dropdown-menu"
+                class="position-absolute top-100 start-0 end-0 bg-white border border-secondary-subtle rounded-3 shadow d-none overflow-auto"
+                style="max-height:12rem; z-index:10">
+                <div class="p-2">
+                  <input type="text" id="role-search-input" class="form-control form-control-sm mb-2"
+                    placeholder="Search roles..." onclick="event.stopPropagation()" />
+                  <div id="role-options-list">
+                    {% for role in roles %}
+                    <label class="d-flex align-items-center gap-3 p-2 rounded-1 create-role-option"
+                      data-role-name="{{ role.name|lower }}" data-role-id="{{ role.id|stringformat:'s' }}"
+                      data-available-groups="">
+                      <input type="checkbox" value="{{ role.id|stringformat:'s' }}" class="form-check-input"
+                        onclick="event.stopPropagation()" />
+                      <span class="small">{{ role.name }}</span>
+                    </label>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-text">Only users with these roles can create workflows of this type</div>
+          </div>
+        </section>
+
+        <!-- Notification Roles -->
+        <section class="d-flex flex-column gap-3">
+          <h2 class="h5 border-bottom pb-2 mb-3 d-flex align-items-center gap-2">
+            {% lucide "bell" class="w-5 h-5" %}
+            Creation Notifications
+          </h2>
+
+          <div>
+            <label class="form-label fw-medium" for="notify-role-dropdown">Roles to notify when a workflow is created <span class="small fw-normal text-body-secondary">Select one or more roles</span></label>
+
+            <div class="position-relative">
+              <input type="text" id="notify-role-dropdown" class="form-control"
+                placeholder="Search and select roles..." readonly />
+              <input type="hidden" name="notify_roles" id="selected-notify-roles" />
+
+              <div id="notify-role-dropdown-menu"
+                class="position-absolute top-100 start-0 end-0 bg-white border border-secondary-subtle rounded-3 shadow d-none overflow-auto"
+                style="max-height:12rem; z-index:10">
+                <div class="p-2">
+                  <input type="text" id="notify-role-search-input" class="form-control form-control-sm mb-2"
+                    placeholder="Search roles..." onclick="event.stopPropagation()" />
+                  <div id="notify-role-options-list">
+                    {% for role in roles %}
+                    <label class="d-flex align-items-center gap-3 p-2 rounded-1 notify-role-option"
+                      data-role-name="{{ role.name|lower }}" data-role-id="{{ role.id|stringformat:'s' }}"
+                      data-available-groups="">
+                      <input type="checkbox" value="{{ role.id|stringformat:'s' }}" class="form-check-input"
+                        onclick="event.stopPropagation()" />
+                      <span class="small">{{ role.name }}</span>
+                    </label>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-text">These roles will receive a notification when a workflow of this type is created</div>
+          </div>
+        </section>
+
+        <!-- States & Transitions Management -->
+        <section class="d-flex flex-column gap-3">
+          <h2 class="h5 border-bottom pb-2 mb-3 d-flex align-items-center gap-2">
+            {% lucide "git-branch" class="w-5 h-5" %}
+            States & Transitions
+          </h2>
+          <p class="small text-body-secondary">Define the workflow states and transitions for this workflow type</p>
+
+          <div class="row row-cols-1 row-cols-md-2 g-4">
+            <!-- States Management -->
+            <div class="col">
+              <div class="card border border-secondary-subtle h-100">
+                <div class="card-body">
+                  <div class="d-flex align-items-center justify-content-between mb-3">
+                    <h4 class="fw-medium d-flex align-items-center gap-2 mb-0">
+                      {% lucide "circle-dot" class="w-4 h-4" %}
+                      Workflow States
+                    </h4>
+                    <span class="badge bg-body-tertiary text-body">0 states</span>
+                  </div>
+                  <p class="small text-body-secondary mb-3">Define the different states a workflow can be in</p>
+                  <button type="button" class="btn btn-outline-secondary btn-sm w-100 d-inline-flex align-items-center justify-content-center gap-2" onclick="openStatesModal()">
+                    {% lucide "plus" class="w-4 h-4" %}
+                    Manage States
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Transitions Management -->
+            <div class="col">
+              <div class="card border border-secondary-subtle h-100">
+                <div class="card-body">
+                  <div class="d-flex align-items-center justify-content-between mb-3">
+                    <h4 class="fw-medium d-flex align-items-center gap-2 mb-0">
+                      {% lucide "arrow-right-left" class="w-4 h-4" %}
+                      Workflow Transitions
+                    </h4>
+                    <span class="badge bg-body-tertiary text-body">0 transitions</span>
+                  </div>
+                  <p class="small text-body-secondary mb-3">Define how workflows move between states</p>
+                  <button type="button" class="btn btn-outline-secondary btn-sm w-100 d-inline-flex align-items-center justify-content-center gap-2" onclick="openTransitionsModal()">
+                    {% lucide "plus" class="w-4 h-4" %}
+                    Manage Transitions
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="alert alert-info d-flex align-items-center gap-2 mb-0" role="alert">
+            <div class="d-flex align-items-center gap-2">
+              {% lucide "info" class="w-4 h-4" %}
+              <span class="small">
+                You can configure states and transitions after creating the workflow type. These define the workflow
+                process flow.
+              </span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Form Actions -->
+        <div class="d-flex justify-content-between align-items-center pt-4 border-top">
+          <a href="{% url 'admin_workflow_types' %}" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2">
+            {% lucide "x" class="w-4 h-4" %}
+            Cancel
+          </a>
+          <div class="d-flex align-items-center gap-3">
+            <button type="reset" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2">
+              {% lucide "refresh-cw" class="w-4 h-4" %}
+              Reset
+            </button>
+            <button type="submit" class="btn btn-primary d-inline-flex align-items-center gap-2">
+              {% lucide "check" class="w-4 h-4" %}
+              Create Template
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Help Section -->
+  <div class="card shadow-sm mt-4">
+    <div class="card-body">
+      <h3 class="card-title h5 d-flex align-items-center gap-2">
+        {% lucide "circle-help" class="w-5 h-5" %}
+        Template Creation Help
+      </h3>
+
+      <div class="small d-flex flex-column gap-3 mt-4">
+        <div>
+          <p class="fw-semibold mb-2">Before creating a template:</p>
+          <ul class="d-flex flex-column gap-1 ms-4 mb-0">
+            <li class="d-flex align-items-start gap-2">
+              <span class="text-primary">•</span>
+              <span>Ensure you have selected the appropriate owner group</span>
+            </li>
+            <li class="d-flex align-items-start gap-2">
+              <span class="text-primary">•</span>
+              <span>Choose roles that should have permission to create workflows</span>
+            </li>
+            <li class="d-flex align-items-start gap-2">
+              <span class="text-primary">•</span>
+              <span>Provide a clear description for template identification</span>
+            </li>
+          </ul>
+        </div>
+
+        <hr class="my-2">
+
+        <p class="small text-body-secondary mb-0">After creation, you can configure states and transitions. The workflow
+          type's specific fields are now defined by the explicit typed workflow profile.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    // Group selection handling
+    //const groupInput = document.querySelector('input[name="group_name"]');
+    const groupInput = document.getElementById('group_name');
+    const selectedGroupInput = document.getElementById('selected-group');
+    const groupsList = document.getElementById('groups-list');
+    const groupDataElement = document.getElementById('group-data');
+    const groupRolesDataElement = document.getElementById('group-roles-data');
+
+//    const raw = groupDataElement && groupDataElement.getAttribute('data-groups');
+    {% comment %} const raw = groupDataElement.textContent; groupMap = JSON.parse(raw); {% endcomment %}
+    {% comment %} console.log('raw data-groups:', raw); {% endcomment %}
+    // Parse group data from data attribute
+    let groupMap = {};
+    try {
+      if (groupDataElement) {
+        groupMap = JSON.parse(groupDataElement.getAttribute('data-groups') || '{}');
+      }
+    } catch (e) {
+      console.error('Error parsing group data:', e);
+    }
+
+    // Parse group-roles mapping
+    let groupRolesMap = {};
+    try {
+      if (groupRolesDataElement) {
+        groupRolesMap = JSON.parse(groupRolesDataElement.getAttribute('data-group-roles') || '{}');
+        console.log('Group roles map:', groupRolesMap);  
+      }
+    } catch (e) {
+      console.error('Error parsing group roles data:', e);
+    }
+
+    // Function to filter roles based on selected group
+    function filterRolesByGroup(groupId) {
+      const roleOptions = document.querySelectorAll('.create-role-option');
+      const availableRoleIds = new Set();
+
+      if (groupId && groupRolesMap[groupId]) {
+        groupRolesMap[groupId].forEach(role => {
+          availableRoleIds.add(role.id.toString());
+        });
+      }
+
+      roleOptions.forEach(function (option) {
+        const roleId = option.getAttribute('data-role-id');
+        if (availableRoleIds.has(roleId)) {
+          option.style.display = 'flex';
+        } else {
+          option.style.display = 'none';
+          // Uncheck hidden roles
+          const checkbox = option.querySelector('input[type="checkbox"]');
+          if (checkbox.checked) {
+            checkbox.checked = false;
+            updateSelectedRolesDisplay();
+          }
+        }
+      });
+    }
+
+    if (groupInput && selectedGroupInput) {
+      groupInput.addEventListener('change', function () {
+        const selectedValue = this.value.toLowerCase();
+        console.log('Selected value:', selectedValue);
+        console.log('Group map:', groupMap);  
+        const selectedId = groupMap[selectedValue];
+
+        if (selectedId) {
+          selectedGroupInput.value = selectedId;
+          filterRolesByGroup(selectedId);
+        } else {
+          selectedGroupInput.value = '';
+          filterRolesByGroup(null);
+        }
+      });
+    }
+
+    // Role dropdown functionality
+    const roleDropdown = document.getElementById('role-dropdown');
+    const roleDropdownMenu = document.getElementById('role-dropdown-menu');
+    const roleSearchInput = document.getElementById('role-search-input');
+    const roleOptions = document.querySelectorAll('.role-option');
+    const selectedRolesInput = document.getElementById('selected-roles');
+
+    // Toggle dropdown
+    if (roleDropdown && roleDropdownMenu && roleSearchInput) {
+      roleDropdown.addEventListener('click', function () {
+        roleDropdownMenu.classList.toggle('d-none');
+        if (!roleDropdownMenu.classList.contains('d-none')) {
+          roleSearchInput.focus();
+        }
+      });
+    }
+
+    // Close dropdown when clicking outside
+    if (roleDropdown && roleDropdownMenu) {
+      document.addEventListener('click', function (event) {
+        if (!roleDropdown.contains(event.target) && !roleDropdownMenu.contains(event.target)) {
+          roleDropdownMenu.classList.add('d-none');
+        }
+      });
+    }
+
+    // Search functionality (combined with group filtering)
+    if (roleSearchInput && selectedGroupInput) {
+      roleSearchInput.addEventListener('input', function () {
+        const searchTerm = this.value.toLowerCase();
+        const selectedGroupId = selectedGroupInput.value;
+
+        roleOptions.forEach(function (option) {
+          const roleName = option.getAttribute('data-role-name');
+          const roleId = option.getAttribute('data-role-id');
+          let isVisible = true;
+
+          // Check if role matches search
+          if (searchTerm && !roleName.includes(searchTerm)) {
+            isVisible = false;
+          }
+
+          // Check if role is available in selected group
+          if (selectedGroupId && groupRolesMap[selectedGroupId]) {
+            const availableRoleIds = groupRolesMap[selectedGroupId].map(role => role.id.toString());
+            if (!availableRoleIds.includes(roleId)) {
+              isVisible = false;
+            }
+          }
+
+          option.style.display = isVisible ? 'flex' : 'none';
+        });
+      });
+    }
+
+    // Handle checkbox changes
+    roleOptions.forEach(function (option) {
+      const checkbox = option.querySelector('input[type="checkbox"]');
+      if (checkbox) {
+        checkbox.addEventListener('change', function () {
+          updateSelectedRolesDisplay();
+        });
+      }
+    });
+
+    // Update the display and hidden input
+    function updateSelectedRolesDisplay() {
+      const selectedRoles = [];
+      const selectedNames = [];
+
+      roleOptions.forEach(function (option) {
+        const checkbox = option.querySelector('input[type="checkbox"]');
+        if (checkbox && checkbox.checked) {
+          selectedRoles.push(checkbox.value);
+          const spanElement = option.querySelector('span');
+          if (spanElement) {
+            selectedNames.push(spanElement.textContent);
+          }
+        }
+      });
+
+      // Update hidden input
+      if (selectedRolesInput) {
+        selectedRolesInput.value = selectedRoles.join(',');
+      }
+
+      // Update display
+      if (roleDropdown) {
+        if (selectedNames.length > 0) {
+          roleDropdown.value = selectedNames.length === 1 ?
+            selectedNames[0] :
+            `${selectedNames.length} roles selected`;
+        } else {
+          roleDropdown.value = '';
+        }
+      }
+    }
+
+    // Creation notify roles dropdown functionality
+    const notifyRoleDropdown = document.getElementById('notify-role-dropdown');
+    const notifyRoleDropdownMenu = document.getElementById('notify-role-dropdown-menu');
+    const notifyRoleSearchInput = document.getElementById('notify-role-search-input');
+    const notifyRoleOptions = document.querySelectorAll('.notify-role-option');
+    const selectedNotifyRolesInput = document.getElementById('selected-notify-roles');
+
+    if (notifyRoleDropdown && notifyRoleDropdownMenu && notifyRoleSearchInput) {
+      notifyRoleDropdown.addEventListener('click', function () {
+        notifyRoleDropdownMenu.classList.toggle('d-none');
+        if (!notifyRoleDropdownMenu.classList.contains('d-none')) {
+          notifyRoleSearchInput.focus();
+        }
+      });
+    }
+
+    if (notifyRoleDropdown && notifyRoleDropdownMenu) {
+      document.addEventListener('click', function (event) {
+        if (!notifyRoleDropdown.contains(event.target) && !notifyRoleDropdownMenu.contains(event.target)) {
+          notifyRoleDropdownMenu.classList.add('d-none');
+        }
+      });
+    }
+
+    if (notifyRoleSearchInput && selectedGroupInput) {
+      notifyRoleSearchInput.addEventListener('input', function () {
+        const searchTerm = this.value.toLowerCase();
+        const selectedGroupId = selectedGroupInput.value;
+
+        notifyRoleOptions.forEach(function (option) {
+          const roleName = option.getAttribute('data-role-name');
+          const roleId = option.getAttribute('data-role-id');
+          let isVisible = true;
+
+          if (searchTerm && !roleName.includes(searchTerm)) {
+            isVisible = false;
+          }
+
+          if (selectedGroupId && groupRolesMap[selectedGroupId]) {
+            const availableRoleIds = groupRolesMap[selectedGroupId].map(role => role.id.toString());
+            if (!availableRoleIds.includes(roleId)) {
+              isVisible = false;
+            }
+          }
+
+          option.style.display = isVisible ? 'flex' : 'none';
+        });
+      });
+    }
+
+    notifyRoleOptions.forEach(function (option) {
+      const checkbox = option.querySelector('input[type="checkbox"]');
+      if (checkbox) {
+        checkbox.addEventListener('change', function () {
+          updateSelectedNotifyRolesDisplay();
+        });
+      }
+    });
+
+    function updateSelectedNotifyRolesDisplay() {
+      const selectedRoles = [];
+      const selectedNames = [];
+
+      notifyRoleOptions.forEach(function (option) {
+        const checkbox = option.querySelector('input[type="checkbox"]');
+        if (checkbox && checkbox.checked) {
+          selectedRoles.push(checkbox.value);
+          const spanElement = option.querySelector('span');
+          if (spanElement) {
+            selectedNames.push(spanElement.textContent);
+          }
+        }
+      });
+
+      if (selectedNotifyRolesInput) {
+        selectedNotifyRolesInput.value = selectedRoles.join(',');
+      }
+
+      if (notifyRoleDropdown) {
+        if (selectedNames.length > 0) {
+          notifyRoleDropdown.value = selectedNames.length === 1 ?
+            selectedNames[0] :
+            `${selectedNames.length} roles selected`;
+        } else {
+          notifyRoleDropdown.value = '';
+        }
+      }
+    }
+
+    // Pre-select the first group and filter roles
+    if (groupsList && groupsList.children.length > 0 && groupInput && selectedGroupInput) {
+      const firstOption = groupsList.children[0];
+      groupInput.value = firstOption.value;
+      selectedGroupInput.value = firstOption.getAttribute('data-id');
+      filterRolesByGroup(firstOption.getAttribute('data-id'));
+    }
+
+    // Functions to open states and transitions modals
+    function openStatesModal(workflowTypeId = null) {
+      // For new workflow types, we need to save first
+      if (!workflowTypeId) {
+        alert('Please save the workflow type first, then you can manage states and transitions.');
+        return;
+      }
+
+      // Open states management modal/page
+      window.open(`/manage/workflow-types/${workflowTypeId}/states/`, '_blank', 'width=800,height=600');
+    }
+
+    function openTransitionsModal(workflowTypeId = null) {
+      // For new workflow types, we need to save first
+      if (!workflowTypeId) {
+        alert('Please save the workflow type first, then you can manage states and transitions.');
+        return;
+      }
+
+      // Open transitions management modal/page
+      window.open(`/manage/workflow-types/${workflowTypeId}/transitions/`, '_blank', 'width=800,height=600');
+    }
+  });
+
+  // Global functions to open states and transitions modals
+  function openStatesModal(workflowTypeId = null) {
+    // For new workflow types, we need to save first
+    if (!workflowTypeId) {
+      alert('Please save the workflow type first, then you can manage states and transitions.');
+      return;
+    }
+
+    // Open states management modal/page
+    window.open(`/manage/workflow-types/${workflowTypeId}/states/`, '_blank', 'width=800,height=600');
+  }
+
+  function openTransitionsModal(workflowTypeId = null) {
+    // For new workflow types, we need to save first
+    if (!workflowTypeId) {
+      alert('Please save the workflow type first, then you can manage states and transitions.');
+      return;
+    }
+
+    // Open transitions management modal/page
+    window.open(`/manage/workflow-types/${workflowTypeId}/transitions/`, '_blank', 'width=800,height=600');
+  }
+</script>
+
+{% endpartialdef %}
+
+{% block content %}
+{% partial content %}
+{% endblock content %}

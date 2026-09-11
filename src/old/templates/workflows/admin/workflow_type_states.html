@@ -1,0 +1,368 @@
+{% extends 'base.html' %}
+
+{% block title %}Manage Workflow States - {{ workflow_type.name }} {% endblock %}
+
+{% partialdef content %}
+<div class="container-xxl py-2 d-flex flex-column gap-4">
+  <!-- Header -->
+  <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+      <h1 class="d-flex align-items-center gap-2">
+        {% lucide "circle-dot" class="w-8 h-8" %}
+        Manage Workflow States
+      </h1>
+      <p class="page-subtitle">
+        Configure states for workflow type: <strong>{{ workflow_type.name }}</strong>
+      </p>
+    </div>
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+      <a href="{% url 'admin_workflow_type_edit' workflow_type.pk %}" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2">
+        {% lucide "arrow-left" class="w-4 h-4" %}
+        Back to Workflow Type
+      </a>
+      <a href="{% url 'admin_workflow_type_transitions' workflow_type.pk %}" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2">
+        {% lucide "arrow-right-left" class="w-4 h-4" %}
+        Transitions
+      </a>
+      <a href="{% url 'admin_workflow_type_referral_configs' workflow_type.pk %}" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2">
+        {% lucide "send" class="w-4 h-4" %}
+        Referral Configs
+      </a>
+    </div>
+  </div>
+
+  <!-- States List -->
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="fs-5 fw-semibold mb-0">Current States</h3>
+        <button class="btn btn-primary btn-sm d-inline-flex align-items-center gap-2" onclick="openAddStateModal()">
+          {% lucide "plus" class="w-4 h-4" %}
+          Add State
+        </button>
+      </div>
+
+      {% if states %}
+      <div class="table-responsive">
+        <table class="table align-middle mb-0">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Description</th>
+              <th>Order</th>
+              <th>Initial State</th>
+              <th>Final State</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for state in states %}
+            <tr>
+              <td>
+                <div class="fw-semibold">{{ state.name }}</div>
+                <div class="small text-body-secondary">{{ state.slug }}</div>
+              </td>
+              <td>
+                <p class="small mb-0">{{ state.description|default:"No description" }}</p>
+              </td>
+              <td>
+                <span class="badge border border-secondary-subtle text-body bg-transparent">{{ state.order }}</span>
+              </td>
+              <td>
+                {% if state.is_initial %}
+                <span class="badge bg-success">Yes</span>
+                {% else %}
+                <span class="badge bg-body-tertiary text-body">No</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if state.is_terminal %}
+                <span class="badge bg-warning text-dark">Yes</span>
+                {% else %}
+                <span class="badge bg-body-tertiary text-body">No</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="d-flex align-items-center gap-1">
+                  <button class="btn btn-sm btn-outline-secondary btn-icon" onclick="editState('{{ state.pk }}')" title="Edit">
+                    {% lucide "pencil" class="w-4 h-4" %}
+                  </button>
+                  <button class="btn btn-sm btn-outline-danger btn-icon" onclick="deleteState('{{ state.pk }}')" title="Delete">
+                    {% lucide "trash-2" class="w-4 h-4" %}
+                  </button>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="text-center py-5 text-body-secondary">
+        {% lucide "circle-dot" class="w-12 h-12 d-block mx-auto mb-4 opacity-50" %}
+        <p class="fs-5 fw-medium mb-2">No states configured</p>
+        <p class="small mb-4">Create your first state to define the workflow process</p>
+        <button class="btn btn-primary d-inline-flex align-items-center gap-2" onclick="openAddStateModal()">
+          {% lucide "plus" class="w-4 h-4" %}
+          Add First State
+        </button>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Help Section -->
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h3 class="card-title h5 d-flex align-items-center gap-2">
+        {% lucide "circle-help" class="w-5 h-5" %}
+        About Workflow States
+      </h3>
+
+      <div class="small d-flex flex-column gap-3 mt-4">
+        <div>
+          <p class="fw-semibold mb-2">What are Workflow States?</p>
+          <p class="text-body-secondary mb-0">States represent the different stages a workflow can go through during its
+            lifecycle. Examples include "Draft", "Under Review", "Approved", "Rejected", etc.</p>
+        </div>
+
+        <div>
+          <p class="fw-semibold mb-2">Initial State</p>
+          <p class="text-body-secondary mb-0">Each workflow type must have one initial state. When a new workflow is
+            created, it automatically starts in this state.</p>
+        </div>
+
+        <div>
+          <p class="fw-semibold mb-2">Order</p>
+          <p class="text-body-secondary mb-0">The order field helps organize states logically. This is especially useful for
+            reporting and displaying workflow progress.</p>
+        </div>
+
+        <hr class="my-2">
+
+        <p class="small text-body-secondary mb-0">
+          <strong>Note:</strong> After configuring states, you can define transitions that control how workflows move
+          between these states.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- Add/Edit State Modal -->
+<div class="modal fade" id="stateModal" tabindex="-1" aria-labelledby="modalTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 class="modal-title fs-5" id="modalTitle">Add Workflow State</h3>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close" onclick="closeStateModal()"></button>
+      </div>
+
+      <form id="stateForm">
+        <div class="modal-body d-flex flex-column gap-3">
+          <input type="hidden" id="stateId" name="stateId">
+
+          <div>
+            <label class="form-label fw-medium" for="stateName">State Name *</label>
+            <input type="text" id="stateName" name="name" class="form-control" required>
+          </div>
+
+          <div>
+            <label class="form-label fw-medium" for="stateDescription">Description</label>
+            <textarea id="stateDescription" name="description" class="form-control" rows="3"></textarea>
+          </div>
+
+          <div>
+            <label class="form-label fw-medium" for="stateOrder">Order</label>
+            <input type="number" id="stateOrder" name="order" class="form-control" min="0" value="0">
+          </div>
+
+          <div>
+            <div class="d-flex justify-content-between align-items-center">
+              <label class="form-label fw-medium mb-0" for="stateIsInitial">Initial State</label>
+              <div class="form-check form-switch mb-0">
+                <input type="checkbox" id="stateIsInitial" name="is_initial" class="form-check-input" role="switch">
+              </div>
+            </div>
+            <div class="form-text">New workflows will start in this state</div>
+          </div>
+
+          <div>
+            <div class="d-flex justify-content-between align-items-center">
+              <label class="form-label fw-medium mb-0" for="stateIsTerminal">Final State</label>
+              <div class="form-check form-switch mb-0">
+                <input type="checkbox" id="stateIsTerminal" name="is_terminal" class="form-check-input" role="switch">
+              </div>
+            </div>
+            <div class="form-text">Workflows end when they reach this state</div>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" onclick="closeStateModal()">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="saveState()">Save State</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  function openStateModal() {
+    const el = document.getElementById('stateModal');
+    if (typeof bootstrap !== 'undefined' && el) {
+      bootstrap.Modal.getOrCreateInstance(el).show();
+    }
+  }
+
+  function openAddStateModal() {
+    document.getElementById('modalTitle').textContent = 'Add Workflow State';
+    document.getElementById('stateForm').reset();
+    document.getElementById('stateId').value = '';
+    openStateModal();
+  }
+
+  function editState(stateId) {
+    // Fetch state data via AJAX
+    fetch(`/manage/workflow-types/{{ workflow_type.pk }}/states/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': getCookie('csrftoken'),
+        },
+        body: `action=get_state&state_id=${stateId}`
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          document.getElementById('modalTitle').textContent = 'Edit Workflow State';
+          document.getElementById('stateId').value = data.state.id;
+          document.getElementById('stateName').value = data.state.name;
+          document.getElementById('stateDescription').value = data.state.description || '';
+          document.getElementById('stateOrder').value = data.state.order;
+          document.getElementById('stateIsInitial').checked = data.state.is_initial;
+          document.getElementById('stateIsTerminal').checked = data.state.is_terminal;
+          openStateModal();
+        } else {
+          alert('Error loading state: ' + data.error);
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert('Error loading state data');
+      });
+  }
+
+  function closeStateModal() {
+    const el = document.getElementById('stateModal');
+    if (typeof bootstrap !== 'undefined' && el) {
+      bootstrap.Modal.getOrCreateInstance(el).hide();
+    }
+  }
+
+  function saveState() {
+    const form = document.getElementById('stateForm');
+    const formData = new FormData(form);
+    const stateId = document.getElementById('stateId').value;
+
+    // Add action to form data
+    const action = stateId ? 'edit' : 'create';
+    formData.append('action', action);
+
+    // Make sure state_id is properly set for edit actions
+    if (stateId) {
+      formData.set('state_id', stateId);
+    }
+
+    // Explicitly include checkbox values (unchecked checkboxes aren't sent in form data)
+    const isInitial = document.getElementById('stateIsInitial').checked;
+    const isTerminal = document.getElementById('stateIsTerminal').checked;
+
+    // Remove existing checkbox values and add explicit ones
+    formData.delete('is_initial');
+    formData.delete('is_terminal');
+    formData.append('is_initial', isInitial ? 'on' : '');
+    formData.append('is_terminal', isTerminal ? 'on' : '');
+
+    // Convert FormData to URL-encoded string
+    const urlEncodedData = new URLSearchParams(formData).toString();
+
+    // Debug: Log the data being sent
+    console.log('Sending data:', urlEncodedData);
+    console.log('Action:', action);
+    console.log('State ID:', stateId);
+    console.log('is_initial:', isInitial);
+    console.log('is_terminal:', isTerminal);
+
+    fetch(`/manage/workflow-types/{{ workflow_type.pk }}/states/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'X-CSRFToken': getCookie('csrftoken'),
+        },
+        body: urlEncodedData
+      })
+      .then(response => response.json())
+      .then(data => {
+        console.log('Response data:', data);
+        if (data.success) {
+          // Reload the page to show the updated data
+          window.location.reload();
+        } else {
+          alert('Error saving state: ' + data.error);
+        }
+      })
+      .catch(error => {
+        console.error('Error:', error);
+        alert('Error saving state');
+      });
+  }
+
+  function deleteState(stateId) {
+    if (confirm('Are you sure you want to delete this state? This action cannot be undone.')) {
+      fetch(`/manage/workflow-types/{{ workflow_type.pk }}/states/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'X-CSRFToken': getCookie('csrftoken'),
+          },
+          body: `action=delete&state_id=${stateId}`
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            // Reload the page to show the updated data
+            window.location.reload();
+          } else {
+            alert('Error deleting state: ' + data.error);
+          }
+        })
+        .catch(error => {
+          console.error('Error:', error);
+          alert('Error deleting state');
+        });
+    }
+  }
+
+  // Helper function to get CSRF token
+  function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i].trim();
+        if (cookie.substring(0, name.length + 1) === (name + '=')) {
+          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+          break;
+        }
+      }
+    }
+    return cookieValue;
+  }
+</script>
+{% endpartialdef %}
+
+{% block content %}
+{% partial content %}
+{% endblock %}

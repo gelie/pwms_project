@@ -1,0 +1,253 @@
+{% load static %}
+<!-- Top Navbar (Parliament header band) -->
+<nav class="navbar navbar-expand parliament-navbar sticky-top">
+  <div class="container-fluid">
+    <div class="d-flex align-items-center">
+      {% if user.is_authenticated %}
+        <button id="hamburger-toggle" class="nav-icon-btn me-2" type="button"
+                title="Toggle navigation panels">
+          {% lucide "menu" class="w-6 h-6" %}
+        </button>
+      {% endif %}
+    </div>
+    <div class="d-flex justify-content-center navbar-center"> <!-- <--- Add this line -->
+        <a class="navbar-brand fs-2" data-bs-toggle="tooltip" data-bs-placement="left" title="Parliament" href="https://www.parliament.gov.za/" target="_blank" style="font-family: ff-dax-pro; font-weight: 700">
+          <span class="d-inline-flex navbar-logo-badge"><img src="{% static 'assets/parliament-logo.svg' %}"
+                       alt="logo" style="width: 48px; height: 48px;" /></span>
+           </a>
+           <a class="navbar-brand fs-2" data-bs-toggle="tooltip" data-bs-placement="top" title="PWMS" href="{% if user.is_authenticated %}{% url 'dashboard' %}{% else %}{% url 'login' %}{% endif %}"
+           title="PWMS" style="font-family: ff-dax-pro; font-weight: 700">
+          <span class="d-none d-lg-inline-flex flex-column lh-sm justify-content-center ms-2">
+            <span class="text-center">PWMS</span>
+            <span class="brand-subtitle fw-bold">Parliament Workflow Management System</span>
+          </span>
+        </a>
+    </div>
+    <div class="d-flex align-items-center gap-2">
+      <!-- Theme Toggle -->
+      <button onclick="toggleTheme()" class="nav-icon-btn" type="button" title="Toggle theme">
+        <span class="d-inline-flex">{% lucide "sun" class="w-5 h-5 theme-icon-light" %}</span>
+        <span class="d-inline-flex">{% lucide "moon" class="w-5 h-5 theme-icon-dark" %}</span>
+      </button>
+      {% if user.is_authenticated %}
+        <!-- Notifications -->
+        <div class="dropdown" id="notif-dropdown">
+          <button class="nav-icon-btn position-relative" type="button"
+                  data-bs-toggle="dropdown" data-bs-auto-close="outside"
+                  aria-expanded="false" onclick="loadNotifications()" title="Notifications">
+            <span class="d-inline-flex">{% lucide "bell" class="w-5 h-5" %}</span>
+            <span id="notif-badge"
+                  class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+                  style="display:none"></span>
+          </button>
+          <div class="dropdown-menu dropdown-menu-end shadow p-2">
+            <div class="d-flex justify-content-between align-items-center px-2 py-1">
+              <h6 class="fw-bold mb-0">Notifications</h6>
+              <div class="d-flex gap-1">
+                <button class="btn btn-sm btn-link p-1" type="button" onclick="markAllRead()">Mark all read</button>
+                <button class="btn btn-sm btn-link p-1 text-danger" type="button"
+                        onclick="clearNotifications()"
+                        title="Clear all notifications">{% lucide "trash" class="w-4 h-4" %}</button>
+              </div>
+            </div>
+            <div id="notif-list" class="notif-list d-flex flex-column gap-1 overflow-y-auto"
+                 style="max-height: 24rem">
+              <p class="small text-body-secondary text-center py-4 mb-0">Loading…</p>
+            </div>
+          </div>
+        </div>
+        <script>
+        // Prevent redeclaration of constants when HTMX loads partial content
+        if (typeof NOTIF_URL === 'undefined') {
+          const NOTIF_URL = "{% url 'notifications_json' %}";
+          const MARK_READ_URL = "{% url 'notifications_mark_read' %}";
+          const CSRF = "{{ csrf_token }}";
+          const CLEAR_URL = "{% url 'notifications_clear' %}";
+
+          const VERB_ICON = {
+            transition: `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-info flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7" /></svg>`,
+            assigned: `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-success flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>`,
+            referred: `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-warning flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1" /><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z" /><line x1="6" y1="1" x2="6" y2="4" /><line x1="10" y1="1" x2="10" y2="4" /><line x1="14" y1="1" x2="14" y2="4" /></svg>`,
+            comment: `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-secondary flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></svg>`,
+            overdue: `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-danger flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>`,
+            pending: `<svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-warning flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10" /><path d="M12 6v6l4 2" /></svg>`,
+          };
+
+          function timeAgo(iso) {
+            const diff = Math.floor((Date.now() - new Date(iso)) / 1000);
+            if (diff < 60) return `${diff}s ago`;
+            if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+            if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+            return `${Math.floor(diff/86400)}d ago`;
+          }
+
+          function loadNotifications() {
+            fetch(NOTIF_URL, {
+                headers: {
+                  "X-Requested-With": "XMLHttpRequest"
+                }
+              })
+              .then(r => r.json())
+              .then(data => {
+                const badge = document.getElementById("notif-badge");
+                if (data.unread_count > 0) {
+                  badge.textContent = data.unread_count > 99 ? "99+" : data.unread_count;
+                  badge.style.display = "";
+                } else {
+                  badge.style.display = "none";
+                }
+
+                const list = document.getElementById("notif-list");
+                if (!data.notifications.length) {
+                  list.innerHTML = `<p class="small text-body-secondary text-center py-4 mb-0">No notifications</p>`;
+                  return;
+                }
+
+                list.innerHTML = data.notifications.map(n => {
+                  const icon = VERB_ICON[n.verb] || VERB_ICON.transition;
+                  const unreadClass = n.is_read ? "" : "unread";
+                  const href = n.workflow_id ? `/workflows/${n.workflow_id}/` : "#";
+                  return `
+                  <a href="${href}" onclick="markRead('${n.id}', event, '${href}')" class="notif-item ${unreadClass}">
+                    <div class="mt-1">${icon}</div>
+                    <div class="flex-grow-1 min-w-0">
+                      <p class="small fw-medium mb-0 text-truncate">${n.title}</p>
+                      <p class="small text-body-secondary mb-0 mt-1 line-clamp-2">${n.message}</p>
+                      <p class="small text-body-secondary opacity-75 mb-0 mt-1">${timeAgo(n.created_at)}</p>
+                    </div>
+                    ${!n.is_read ? '<span class="bg-primary rounded-circle flex-shrink-0 mt-1" style="width:8px;height:8px"></span>' : ''}
+                  </a>`;
+                }).join("");
+              })
+              .catch(err => {
+                document.getElementById("notif-list").innerHTML =
+                  `<p class="small text-danger text-center py-4 mb-0">Failed to load notifications.</p>`;
+              });
+          }
+
+          function markRead(id, event, href) {
+            event.preventDefault();
+            fetch(MARK_READ_URL, {
+              method: "POST",
+              headers: {
+                "X-CSRFToken": CSRF,
+                "Content-Type": "application/x-www-form-urlencoded"
+              },
+              body: `id=${id}`
+            }).then(() => {
+              const badge = document.getElementById("notif-badge");
+              const current = parseInt(badge.textContent) || 0;
+              if (current > 1) {
+                badge.textContent = current - 1;
+              } else {
+                badge.style.display = "none";
+              }
+            }).finally(() => {
+              if (href && href !== "#") window.location.href = href;
+            });
+          }
+
+          function clearNotifications() {
+            if (!confirm("Delete all notifications?")) return;
+            fetch(CLEAR_URL, {
+              method: "POST",
+              headers: {
+                "X-CSRFToken": CSRF,
+                "Content-Type": "application/x-www-form-urlencoded"
+              },
+              body: ""
+            }).then(() => {
+              document.getElementById("notif-badge").style.display = "none";
+              loadNotifications();
+            });
+          }
+
+          function markAllRead() {
+            fetch(MARK_READ_URL, {
+              method: "POST",
+              headers: {
+                "X-CSRFToken": CSRF,
+                "Content-Type": "application/x-www-form-urlencoded"
+              },
+              body: ""
+            }).then(() => {
+              document.getElementById("notif-badge").style.display = "none";
+              loadNotifications();
+            });
+          }
+
+          // Poll unread count every 60s to keep badge fresh
+          function pollUnreadCount() {
+            fetch(NOTIF_URL, {
+                headers: {
+                  "X-Requested-With": "XMLHttpRequest"
+                }
+              })
+              .then(r => r.json())
+              .then(data => {
+                const badge = document.getElementById("notif-badge");
+                if (data.unread_count > 0) {
+                  badge.textContent = data.unread_count > 99 ? "99+" : data.unread_count;
+                  badge.style.display = "";
+                } else {
+                  badge.style.display = "none";
+                }
+              }).catch(() => {});
+          }
+
+          // Initialize notification system only once
+          document.addEventListener("DOMContentLoaded", function () {
+            pollUnreadCount();
+            loadNotifications();
+          });
+          setInterval(pollUnreadCount, 60000);
+        }
+        </script>
+        <!-- User Menu -->
+        <div class="dropdown">
+          <button class="nav-icon-btn" type="button"
+                  data-bs-toggle="dropdown" aria-expanded="false" title="Account">
+            <span class="rounded-circle bg-primary text-white d-inline-flex align-items-center justify-content-center profile-icon">
+              {{ user.first_name.0|default:user.username.0|upper }}
+            </span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end shadow">
+            <li>
+              <span class="dropdown-header">{{ user.get_full_name|default:user.username }}</span>
+            </li>
+            <li>
+              <a class="dropdown-item d-flex align-items-center gap-2" href="#">{% lucide "user" class="w-4 h-4" %} Profile</a>
+            </li>
+            <li>
+              <a class="dropdown-item d-flex align-items-center gap-2" href="#">{% lucide "settings" class="w-4 h-4" %} Settings</a>
+            </li>
+            <li>
+              <hr class="dropdown-divider">
+            </li>
+            <li>
+              <a class="dropdown-item d-flex align-items-center gap-2 text-danger" href="{% url 'logout' %}">
+                {% lucide "log-out" class="w-4 h-4" %} Logout
+              </a>
+            </li>
+          </ul>
+        </div>
+      {% else %}
+        <!-- Login Button for unauthenticated users -->
+        <div class="dropdown">
+          <button class="nav-icon-btn" type="button"
+                  data-bs-toggle="dropdown" aria-expanded="false" title="Account">
+            <span class="d-inline-flex">{% lucide "user" class="w-6 h-6" %}</span>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end shadow">
+            <li>
+              <a class="dropdown-item d-flex align-items-center gap-2" href="#"
+                 data-bs-toggle="modal" data-bs-target="#login-modal">
+                {% lucide "log-in" class="w-4 h-4" %} Login
+              </a>
+            </li>
+          </ul>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</nav>

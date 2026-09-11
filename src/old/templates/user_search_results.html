@@ -1,0 +1,24 @@
+{% if users %}
+  {% for user in users %}
+    <div class="list-group-item d-flex align-items-center justify-content-between"
+         style="cursor: pointer"
+         onclick="selectUser('{{ user.id }}', '{{ user.username }}', '{{ user.first_name }} {{ user.last_name }}', {{ user.is_mp|yesno:'true,false' }})">
+      <div>
+        <div class="fw-medium">
+          {% if user.is_mp == True %}
+            <span class="badge bg-primary">MP</span>
+          {% else %}
+            <span class="badge bg-body-tertiary text-body">Staff</span>
+          {% endif %}
+          {{ user.first_name }} {{ user.last_name }}
+        </div>
+        <div class="small text-body-secondary">@{{ user.username }}</div>
+      </div>
+      {% comment %} <div class="small text-body-secondary">
+    ID: {{ user.id }}
+      </div> {% endcomment %}
+    </div>
+  {% endfor %}
+{% else %}
+  <div class="list-group-item text-center text-body-secondary">No users found matching your search</div>
+{% endif %}

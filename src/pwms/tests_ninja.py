@@ -42,6 +42,15 @@ class NinjaAuditSpikeTests(TestCase):
         self.assertTrue(any(e["action"] == 0 for e in payload))
         self.assertTrue(all("actor_email" in e and "changes" in e for e in payload))
 
+    def test_audit_history_forbidden_without_view_access(self):
+        """An authenticated non-owner with no instance access gets 403."""
+        User = get_user_model()
+        User.objects.create_user(username="bob", password="pw")
+        self.assertTrue(self.client.login(username="bob", password="pw"))
+
+        resp = self.client.get(self.audit_url)
+        self.assertEqual(resp.status_code, 403)
+
     def test_root_and_openapi_docs_served(self):
         self.assertTrue(self.client.login(username="alice", password="pw"))
 

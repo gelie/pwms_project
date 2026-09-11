@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+
+{% partialdef content%}
+<div class="auth-page">
+    <div class="auth-card">
+        <!-- Logo and Title -->
+        <div class="text-center mb-5">
+            <div class="auth-logo">
+                {% lucide "landmark" class="w-10 h-10" %}
+            </div>
+            <h1 class="fw-bold mb-2">PWMS</h1>
+            <p class="text-body-secondary fs-5 mb-0">Parliament Workflow Management System</p>
+        </div>
+
+        <!-- Welcome Message -->
+        <div class="text-center mb-5">
+            <h2 class="fs-4 fw-semibold mb-2">Welcome</h2>
+            <p class="text-body-secondary mb-0">
+                Manage parliamentary workflows, documents, and processes efficiently.
+            </p>
+        </div>
+
+        <!-- Login Button -->
+        <button type="button" class="btn btn-primary w-100 d-inline-flex align-items-center justify-content-center gap-2"
+                data-bs-toggle="modal" data-bs-target="#login-modal">
+            {% lucide "log-in" class="w-5 h-5" %}
+            Sign In
+        </button>
+
+        <!-- Info Section -->
+        <div class="mt-5 text-center">
+        </div>
+    </div>
+</div>
+
+<!-- Include Login Modal Partial -->
+{% include "workflows/_login_modal.html" %}
+
+<script>
+    // Auto-open modal if there are messages (e.g., login errors)
+    document.addEventListener('DOMContentLoaded', function () {
+        {% if messages %}
+        var loginModal = new bootstrap.Modal(document.getElementById('login-modal'));
+        loginModal.show();
+        {% endif %}
+    });
+</script>
+{% endpartialdef content %}
+
+{% block content %}
+{% partial content %}
+{% endblock content %}

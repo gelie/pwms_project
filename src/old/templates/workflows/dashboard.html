@@ -1,0 +1,533 @@
+{% extends "base.html" %}
+{% block title %}
+    Dashboard
+{% endblock title %}
+{% partialdef content %}
+<div id="content" class="container-xxl d-flex flex-column gap-3">
+    <!-- Page Header -->
+    <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div>
+            <h1>Dashboard</h1>
+            <p class="page-subtitle">Welcome back, {{ user.get_full_name|default:user.username }}</p>
+        </div>
+    </div>
+    <!-- Priority Alerts -->
+    {% if urgent_count > 0 or high_count > 0 %}
+        <div class="alert alert-warning shadow-sm d-flex align-items-center gap-2" role="alert">
+            {% lucide "triangle-alert" class="w-6 h-6" %}
+            <div class="flex-grow-1">
+                <h3 class="fw-bold fs-5 mb-0">Priority Workflows</h3>
+                <div class="small">
+                    {% if urgent_count > 0 %}<span class="badge bg-danger me-2">{{ urgent_count }} Urgent</span>{% endif %}
+                    {% if high_count > 0 %}<span class="badge bg-warning text-dark">{{ high_count }} High Priority</span>{% endif %}
+                </div>
+            </div>
+            <a href="{% url 'workflow_list' %}?priority=urgent&priority=high"
+               class="btn btn-sm btn-link">View</a>
+        </div>
+    {% endif %}
+    <!-- Statistics Cards -->
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-4">
+        <!-- Total Workflows -->
+        <div class="col">
+            <div class="stat-card">
+                <div class="stat-icon">{% lucide "git-branch" class="w-8 h-8 text-primary" %}</div>
+                <div>
+                    <p class="stat-title">Total Workflows</p>
+                    <div class="stat-value">{{ total_workflows }}</div>
+                    <p class="stat-desc">All accessible workflows</p>
+                </div>
+            </div>
+        </div>
+        <!-- My Workflows -->
+        <div class="col">
+            <div class="stat-card">
+                <div class="stat-icon">{% lucide "user-check" class="w-8 h-8 text-secondary" %}</div>
+                <div>
+                    <p class="stat-title">My Workflows</p>
+                    <div class="stat-value">{{ my_workflows }}</div>
+                    <p class="stat-desc">Workflows I own</p>
+                </div>
+            </div>
+        </div>
+        <!-- Assigned to Me -->
+        <div class="col">
+            <div class="stat-card">
+                <div class="stat-icon">{% lucide "clipboard-list" class="w-8 h-8 text-warning" %}</div>
+                <div>
+                    <p class="stat-title">Assigned to Me</p>
+                    <div class="stat-value">{{ assigned_to_me }}</div>
+                    <p class="stat-desc">Workflows assigned to me</p>
+                </div>
+            </div>
+        </div>
+        <!-- Overdue -->
+        <div class="col">
+            <div class="stat-card">
+                <div class="stat-icon">{% lucide "circle-alert" class="w-8 h-8 text-danger" %}</div>
+                <div>
+                    <p class="stat-title">Overdue</p>
+                    <div class="stat-value">{{ overdue_workflows }}</div>
+                    <p class="stat-desc">Past deadline</p>
+                </div>
+            </div>
+        </div>
+        <!-- New Workflows -->
+        <div class="col">
+            <div class="stat-card">
+                <div class="stat-icon">{% lucide "circle-check" class="w-8 h-8 text-success" %}</div>
+                <div>
+                    <p class="stat-title">New Workflows</p>
+                    <div class="stat-value">{{ new_workflows }}</div>
+                    <p class="stat-desc">Workflows ready to start</p>
+                </div>
+            </div>
+        </div>
+        <!-- Active Workflows -->
+        <div class="col">
+            <div class="stat-card">
+                <div class="stat-icon">{% lucide "activity" class="w-8 h-8 text-info" %}</div>
+                <div>
+                    <p class="stat-title">Active</p>
+                    <div class="stat-value">{{ active }}</div>
+                    <p class="stat-desc">In progress</p>
+                </div>
+            </div>
+        </div>
+        <!-- Completed Workflows -->
+        <div class="col">
+            <div class="stat-card">
+                <div class="stat-icon">{% lucide "circle-check" class="w-8 h-8 text-success" %}</div>
+                <div>
+                    <p class="stat-title">Completed</p>
+                    <div class="stat-value">{{ completed }}</div>
+                    <p class="stat-desc">Terminal states</p>
+                </div>
+            </div>
+        </div>
+        <!-- Created This Month -->
+        <div class="col">
+            <div class="stat-card">
+                <div class="stat-icon">{% lucide "trending-up" class="w-8 h-8 text-secondary" %}</div>
+                <div>
+                    <p class="stat-title">Created This Month</p>
+                    <div class="stat-value">{{ created_this_month }}</div>
+                    <p class="stat-desc">New workflows</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <style>
+        .pie-chart {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            position: relative;
+            margin: 0 auto;
+            cursor: pointer;
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+
+        .pie-chart:hover {
+            transform: scale(1.05);
+        }
+
+        .pie-chart::before {
+            content: '';
+            position: absolute;
+            inset: 25%;
+            background: oklch(var(--b1));
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.875rem;
+            cursor: pointer;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            transition: background-color 0.2s;
+        }
+
+        .legend-item:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+        }
+    </style>
+    <!-- Workflow Statistics Charts -->
+    <div class="row row-cols-1 row-cols-lg-2 g-4 mb-4">
+        <!-- Workflows by State Pie Chart -->
+        <div class="col">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="card-title h5">
+                        {% lucide "chart-pie" class="w-5 h-5" %}
+                        Workflows by State
+                    </h2>
+                    <div class="mt-4">
+                        {% if total_workflows > 0 %}
+                            <!-- Calculate percentages and angles for pie chart -->
+                            {% for item in workflows_by_state %}
+                                {% widthratio item.count total_workflows 360 as angle %}
+                            {% endfor %}
+                            <!-- Calculate cumulative angles -->
+                            {% with new_item=workflows_by_state.0 completed_item=workflows_by_state.1 progress_item=workflows_by_state.2 %}
+                                {% widthratio new_item.count total_workflows 360 as new_angle %}
+                                {% widthratio completed_item.count total_workflows 360 as completed_angle %}
+                                {% widthratio progress_item.count total_workflows 360 as progress_angle %}
+                                <div class="d-flex align-items-center justify-content-center">
+                                    <div class="w-50 h-50">
+                                        <canvas id="stateChart"></canvas>
+                                    </div>
+                                </div>
+                            {% endwith %}
+                        {% else %}
+                            <div class="d-flex flex-column align-items-center justify-content-center text-body-secondary" style="height: 12rem">
+                                {% lucide "chart-pie" class="w-12 h-12 mb-2" %}
+                                <p class="mb-0">No data available</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Workflows by Type Pie Chart -->
+        <div class="col">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="card-title h5">
+                        {% lucide "chart-pie" class="w-5 h-5" %}
+                        Workflows by Type
+                    </h2>
+                    <div class="mt-4">
+                        {% if workflows_by_type %}
+                            <!-- Build conic gradient with pre-calculated angles -->
+                            <div class="d-flex align-items-center justify-content-center">
+                                <div class="w-50 h-50">
+                                    <canvas id="typeChart"></canvas>
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="d-flex flex-column align-items-center justify-content-center text-body-secondary" style="height: 12rem">
+                                {% lucide "chart-pie" class="w-12 h-12 mb-2" %}
+                                <p class="mb-0">No data available</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Workflow Statistics -->
+    <div class="row row-cols-1 row-cols-lg-2 g-4">
+        <!-- Workflows by State -->
+        <div class="col">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="card-title h5">
+                        {% lucide "chart-bar" class="w-5 h-5" %}
+                        Workflows by State
+                    </h2>
+                    <div class="d-flex flex-column gap-2 mt-4">
+                        {% for item in workflows_by_state %}
+                            <div>
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span>{{ item.name }}</span>
+                                    <span class="fw-semibold">{{ item.count }}</span>
+                                </div>
+                                {% widthratio item.count total_workflows 100 as pct %}
+                                <div class="progress" role="progressbar" style="height: 10px">
+                                    <div class="progress-bar bg-primary" style="width: {{ pct }}%"></div>
+                                </div>
+                                {% comment %} style="--progress-color: {{ item.color }}" {% endcomment %}
+                            </div>
+                        {% empty %}
+                            <p class="text-center text-body-secondary py-4 mb-0">No data available</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Workflows by Type -->
+        <div class="col">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <h2 class="card-title h5">
+                        {% lucide "chart-pie" class="w-5 h-5" %}
+                        Workflows by Type
+                    </h2>
+                    <div class="d-flex flex-column gap-2 mt-4">
+                        {% for item in workflows_by_type %}
+                            <div>
+                                <div class="d-flex justify-content-between small mb-1">
+                                    <span>{{ item.workflow_type__name }}</span>
+                                    <span class="fw-semibold">{{ item.count }}</span>
+                                </div>
+                                {% widthratio item.count total_workflows 100 as pct %}
+                                <div class="progress" role="progressbar" style="height: 10px">
+                                    <div class="progress-bar bg-primary" style="width: {{ pct }}%"></div>
+                                </div>
+                            </div>
+                        {% empty %}
+                            <p class="text-center text-body-secondary py-4 mb-0">No data available</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row row-cols-1 row-cols-lg-2 g-4">
+        <!-- Recent Workflows -->
+        <div class="col">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h2 class="card-title h5">
+                            {% lucide "activity" class="w-5 h-5" %}
+                            Recent Workflows
+                        </h2>
+                        <a href="{% url 'workflow_list' %}" class="btn btn-sm btn-link">View All</a>
+                    </div>
+                    <div class="list-group list-group-flush">
+                        {% for workflow in recent_workflows %}
+                            <a href="{% url 'workflow_detail' workflow.pk %}"
+                               class="list-group-item list-group-item-action">
+                                <div class="d-flex justify-content-between align-items-start gap-3">
+                                    <div class="flex-grow-1">
+                                        <div class="fw-semibold">{{ workflow.title|truncatewords:10 }}</div>
+                                        <div class="small text-body-secondary mt-1">
+                                            <span class="workflow-state-badge"
+                                                  data-state-color="{{ workflow.current_state.color }}">
+                                                {{ workflow.current_state.name }}
+                                            </span>
+                                            <span class="ms-2">{{ workflow.workflow_type.name }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="small text-body-secondary flex-shrink-0">{{ workflow.created_at|timesince }} ago</div>
+                                </div>
+                                {% if workflow.deadline %}
+                                    <div class="small text-body-secondary mt-2">
+                                        {% lucide "clock" class="w-3 h-3" %}
+                                        Deadline: {{ workflow.deadline|date:"M d, Y" }}
+                                    </div>
+                                {% endif %}
+                            </a>
+                        {% empty %}
+                            <div class="text-center py-5 text-body-secondary">
+                                {% lucide "inbox" class="w-12 h-12 mx-auto mb-2" %}
+                                <p class="mb-0">No workflows yet</p>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Upcoming Events -->
+        <div class="col">
+            <div class="card shadow-sm h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <h2 class="card-title h5">
+                            {% lucide "calendar" class="w-5 h-5" %}
+                            Upcoming Events
+                        </h2>
+                        <a href="{% url 'event_list' %}" class="btn btn-sm btn-link">View All</a>
+                    </div>
+                    <div class="list-group list-group-flush">
+                        {% for event in upcoming_events %}
+                            <a href="{% url 'event_detail' event.pk %}"
+                               class="list-group-item list-group-item-action">
+                                <div class="d-flex gap-3">
+                                    <div class="text-center bg-primary text-white rounded-2 p-2 flex-shrink-0" style="min-width: 60px">
+                                        <div class="fs-4 fw-bold">{{ event.start_datetime|date:"d" }}</div>
+                                        <div class="small">{{ event.start_datetime|date:"M" }}</div>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <div class="fw-semibold">{{ event.title|truncatewords:8 }}</div>
+                                        <div class="small text-body-secondary mt-1">
+                                            {% lucide "clock" class="w-3 h-3" %}
+                                            {{ event.start_datetime|date:"H:i" }}
+                                        </div>
+                                        <div class="small text-body-secondary mt-1">
+                                            {% lucide "map-pin" class="w-3 h-3" %}
+                                            {{ event.venue.name|default:"TBA" }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </a>
+                        {% empty %}
+                            <div class="text-center py-5 text-body-secondary">
+                                {% lucide "calendar-x" class="w-12 h-12 mx-auto mb-2" %}
+                                <p class="mb-0">No upcoming events</p>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% block extra_js %}
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script>
+    // Store chart instances to prevent duplicates - use conditional declaration
+    if (typeof stateChartInstance === 'undefined') {
+        var stateChartInstance = null;
+    }
+    if (typeof typeChartInstance === 'undefined') {
+        var typeChartInstance = null;
+    }
+
+    // Function to initialize charts
+    function initializeCharts() {
+        // Destroy existing charts if they exist
+        if (stateChartInstance) {
+            stateChartInstance.destroy();
+            stateChartInstance = null;
+        }
+        if (typeChartInstance) {
+            typeChartInstance.destroy();
+            typeChartInstance = null;
+        }
+
+        // Workflows by State Chart
+        {% if workflows_by_state %}
+            const stateCtx = document.getElementById('stateChart');
+            if (stateCtx) {
+                stateChartInstance = new Chart(stateCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: [
+                            {% for item in workflows_by_state %}
+                            '{{ item.name }}'{% if not forloop.last %},{% endif %}
+                            {% endfor %}
+                        ],
+                        datasets: [{
+                            data: [
+                                {% for item in workflows_by_state %}
+                                {{ item.count }}{% if not forloop.last %},{% endif %}
+                                {% endfor %}
+                            ],
+                            backgroundColor: [
+                                {% for item in workflows_by_state %}
+                                '{{ item.color }}'{% if not forloop.last %},{% endif %}
+                                {% endfor %}
+                            ],
+                            borderWidth: 0
+                        }],
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const label = context.label || '';
+                                        const value = context.parsed || 0;
+                                        const total = {{ total_workflows }};
+                                        const percentage = ((value / total) * 100).toFixed(1);
+                                        return label + ': ' + value + ' (' + percentage + '%)';
+                                    }
+                                }
+                            }
+                        },
+                        cutout: '60%'
+                    }
+                });
+            }
+        {% endif %}
+
+        // Workflows by Type Chart
+        {% if workflows_by_type %}
+            const typeCtx = document.getElementById('typeChart');
+            if (typeCtx) {
+                typeChartInstance = new Chart(typeCtx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: [
+                            {% for item in workflows_by_type %}
+                            '{{ item.workflow_type__name }}'{% if not forloop.last %},{% endif %}
+                            {% endfor %}
+                        ],
+                        datasets: [{
+                            data: [
+                                {% for item in workflows_by_type %}
+                                {{ item.count }}{% if not forloop.last %},{% endif %}
+                                {% endfor %}
+                            ],
+                            backgroundColor: [
+                                {% for item in workflows_by_type %}
+                                '{{ item.color|default:"#3b82f6" }}'{% if not forloop.last %},{% endif %}
+                                {% endfor %}
+                            ],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                display: false
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const label = context.label || '';
+                                        const value = context.parsed || 0;
+                                        const total = {{ total_workflows }};
+                                        const percentage = ((value / total) * 100).toFixed(1);
+                                        return label + ': ' + value + ' (' + percentage + '%)';
+                                    }
+                                }
+                            }
+                        },
+                        cutout: '60%'
+                    }
+                });
+            }
+        {% endif %}
+    }
+
+    // Multiple initialization strategies to handle HTMX loading
+    // 1. Try immediately (for when script loads after DOM)
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+        setTimeout(initializeCharts, 100);
+    }
+
+    // 2. DOMContentLoaded event (standard approach)
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(initializeCharts, 100);
+        });
+    }
+
+    // 3. Window load event (fallback)
+    window.addEventListener('load', function() {
+        setTimeout(initializeCharts, 200);
+    });
+
+    // 4. HTMX after-settle event (for HTMX navigation)
+    document.addEventListener('htmx:afterSettle', function() {
+        setTimeout(initializeCharts, 100);
+    });
+    </script>
+{% endblock extra_js %}
+{% endpartialdef content %}
+{% block content %}
+    {% partial content %} {# Django 6.0 #}
+{% endblock content %}

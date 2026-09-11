@@ -1,0 +1,254 @@
+{% extends "base.html" %}
+{% block title %}
+  Create Workflow
+{% endblock title %}
+{% partialdef content %}
+<div class="container-xxl d-flex flex-column gap-3 mx-auto" style="max-width: 56rem;">
+  <!-- Header -->
+  <div class="page-header d-flex justify-content-between align-items-center flex-wrap gap-3">
+    <div>
+      <h1 class="d-flex align-items-center gap-2">
+        {% lucide "circle-plus" class="w-8 h-8" %}
+        Create a
+        {% if preselected_type_name %}
+          {{ preselected_type_name|title }} Workflow
+        {% else %}
+          New
+          Workflow
+        {% endif %}
+      </h1>
+      <p class="page-subtitle">
+        {% if preselected_type_name %}
+          Start a new {{ preselected_type_name|lower }}
+          process
+        {% else %}
+          Start a new workflow process
+        {% endif %}
+      </p>
+    </div>
+  </div>
+  <!-- Form -->
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <form method="post" class="d-flex flex-column gap-4" id="workflow-create-form">
+        {% csrf_token %}
+        <!-- Basic Information -->
+        <div class="d-flex flex-column gap-3">
+          <h2 class="h5 border-bottom pb-2 mb-3 d-flex align-items-center gap-2">
+            {% lucide "info" class="w-5 h-5" %}
+            Basic Information
+          </h2>
+          <!-- Title -->
+          <div>
+            <label class="form-label">
+              <span class="fw-medium">Title *</span>
+              <span class="text-body-secondary fw-normal">Required</span>
+            </label>
+            <input type="text"
+                   name="title"
+                   class="form-control"
+                   placeholder="Enter workflow title..."
+                   required />
+          </div>
+          <!-- Description -->
+          <div>
+            <label class="form-label">
+              <span class="fw-medium">Description</span>
+              <span class="text-body-secondary fw-normal">Optional</span>
+            </label>
+            <textarea name="description"
+                      class="form-control"
+                      rows="3"
+                      placeholder="Describe the purpose and scope of this workflow..."></textarea>
+          </div>
+          <!-- Workflow Type / Group / Priority / Deadline row -->
+          <div class="row row-cols-1 row-cols-md-2 row-cols-lg-4 g-4">
+            <!-- Workflow Type (read-only display) -->
+            <div class="col">
+              <label class="form-label" for="workflow-type-select">
+                <span class="fw-medium">Workflow Type *</span>
+                <span class="text-body-secondary fw-normal">Required</span>
+              </label>
+              <select id="workflow-type-select"
+                      name="workflow_type"
+                      class="form-select"
+                      {% if preselected_type %}disabled{% endif %}>
+                <option value="">Select a workflow type...</option>
+                {% for wt in workflow_types %}
+                  <option value="{{ wt.pk }}"
+                          data-profile="{{ wt.profile_key|default:'' }}"
+                          {% if preselected_type == wt.pk|stringformat:"s" %}selected{% endif %}>{{ wt.name }}</option>
+                {% endfor %}
+              </select>
+              {% if preselected_type %}
+              <input type="hidden" name="workflow_type" value="{{ preselected_type }}" />
+              {% endif %}
+            </div>
+            <!-- Group Selection -->
+            <div class="col">
+              <label class="form-label" for="group-select">
+                <span class="fw-medium">Owning Group *</span>
+                <span class="text-body-secondary fw-normal">Required</span>
+              </label>
+              <select id="group-select" name="group" class="form-select" required>
+                <option value="">Select a group...</option>
+                {% for group in user_groups %}<option value="{{ group.pk }}">{{ group.name }}</option>{% endfor %}
+              </select>
+              <div class="form-text">Which group owns this workflow</div>
+            </div>
+            <!-- Priority -->
+            <div class="col">
+              <label class="form-label" for="priority-select">
+                <span class="fw-medium">Priority</span>
+              </label>
+              <select id="priority-select" name="priority" class="form-select">
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </div>
+            <!-- Deadline -->
+            <div class="col">
+              <label class="form-label" for="deadline-input">
+                <span class="fw-medium">Deadline</span>
+                <span class="text-body-secondary fw-normal">Optional</span>
+              </label>
+              <input type="datetime-local"
+                     id="deadline-input"
+                     name="deadline"
+                     class="form-control" />
+            </div>
+          </div>
+          <!-- Event Association -->
+          {% comment %} <div class="mb-3">
+            <label class="form-label">
+              <span class="fw-medium">Associated Event</span>
+              <span class="text-body-secondary fw-normal">Optional</span>
+            </label>
+            <select name="event" class="form-select w-100">
+              <option value="">No event association</option>
+              {% for event in available_events %}
+              <option value="{{ event.pk }}">{{ event.title }} - {{ event.start_datetime|date:"M d, Y" }}</option>
+              {% endfor %}
+            </select>
+            <div class="form-text">Link this workflow to a specific event</div>
+          </div> {% endcomment %}
+        </div>
+        <!-- Parent Workflow (if applicable) -->
+        {% if parent_workflow %}
+          <div class="d-flex flex-column gap-3">
+            <h2 class="h5 border-bottom pb-2 mb-3 d-flex align-items-center gap-2">
+              {% lucide "git-branch" class="w-5 h-5" %}
+              Parent Workflow
+            </h2>
+            <div class="alert alert-info shadow-sm d-flex align-items-center gap-2" role="alert">
+              <div class="d-flex align-items-center gap-2">
+                {% lucide "info" class="w-4 h-4" %}
+                <span>
+                  Creating a sub-workflow of: <strong>{{ parent_workflow.title }}</strong>
+                  ({{ parent_workflow.workflow_type.name }})
+                </span>
+              </div>
+            </div>
+            <input type="hidden" name="parent_workflow" value="{{ parent_workflow.pk }}" />
+            {% if workflow_types %}
+              <div class="alert alert-success shadow-sm d-flex align-items-center gap-2 small" role="alert">
+                {% lucide "circle-check" class="w-4 h-4" %}
+                The relationship type will be set automatically based on the selected workflow type.
+              </div>
+            {% else %}
+              <div class="alert alert-warning shadow-sm d-flex align-items-center gap-2" role="alert">
+                {% lucide "alert-triangle" class="w-4 h-4" %}
+                <span>No allowed child workflow types are configured for
+                  <strong>{{ parent_workflow.workflow_type.name }}</strong>. Please contact an administrator.</span>
+              </div>
+            {% endif %}
+          </div>
+        {% endif %}
+        <!-- Type-specific fields (explicit typed profile) -->
+        {% if profile_forms %}
+        <div id="additional-fields-section" class="d-flex flex-column gap-3 d-none">
+          <h2 class="h5 border-bottom pb-2 mb-3 d-flex align-items-center gap-2">
+            {% lucide "settings" class="w-5 h-5" %}
+            Additional Information
+          </h2>
+          <p class="small text-body-secondary">Please provide the following information for this workflow type</p>
+          {% for profile_key, form in profile_forms.items %}
+          <div class="profile-fields row row-cols-1 row-cols-md-2 g-4"
+               data-profile="{{ profile_key }}"
+               hidden>
+            {% for field in form %}
+            <div class="col">
+              <label class="form-label" for="{{ field.id_for_label }}">
+                <span class="fw-medium">{{ field.label }}{% if field.field.required %} *{% endif %}</span>
+                <span class="{% if field.field.required %}text-danger{% else %}text-body-secondary{% endif %} fw-normal">
+                  {% if field.field.required %}Required{% else %}Optional{% endif %}
+                </span>
+              </label>
+              {{ field }}
+              {% if field.help_text %}
+              <div class="form-text">{{ field.help_text }}</div>
+              {% endif %}
+              {% for error in field.errors %}
+              <div class="text-danger small">{{ error }}</div>
+              {% endfor %}
+            </div>
+            {% endfor %}
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+        <!-- Form Actions -->
+        <div class="d-flex justify-content-between align-items-center pt-4 border-top">
+          <a href="{% url 'workflow_list' %}" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2">
+            {% lucide "x" class="w-4 h-4" %}
+            Cancel
+          </a>
+          <div class="d-flex align-items-center gap-3">
+            <button type="reset" class="btn btn-outline-secondary d-inline-flex align-items-center gap-2">
+              {% lucide "refresh-cw" class="w-4 h-4" %}
+              Reset
+            </button>
+            <button type="submit" class="btn btn-primary d-inline-flex align-items-center gap-2">
+              {% lucide "check" class="w-4 h-4" %}
+              Create Workflow
+            </button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+  (function () {
+    const workflowTypeSelect = document.getElementById('workflow-type-select');
+    const additionalFieldsSection = document.getElementById('additional-fields-section');
+    const profileFields = document.querySelectorAll('.profile-fields');
+
+    function updateProfileFields() {
+      if (!additionalFieldsSection || !workflowTypeSelect) return;
+
+      const selectedOption = workflowTypeSelect.selectedOptions && workflowTypeSelect.selectedOptions[0];
+      const profileKey = selectedOption ? (selectedOption.dataset.profile || '') : '';
+
+      let visible = false;
+      profileFields.forEach(function (field) {
+        const match = Boolean(profileKey) && field.dataset.profile === profileKey;
+        field.hidden = !match;
+        if (match) visible = true;
+      });
+
+      additionalFieldsSection.classList.toggle('d-none', !visible);
+    }
+
+    if (workflowTypeSelect && profileFields.length) {
+      workflowTypeSelect.addEventListener('change', updateProfileFields);
+      updateProfileFields();
+    }
+  })();
+</script>
+{% endpartialdef %}
+{% block content %}
+  {% partial content %}
+{% endblock content %}

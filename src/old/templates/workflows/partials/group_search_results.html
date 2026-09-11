@@ -1,0 +1,31 @@
+{% if groups %}
+  <div class="list-group list-group-flush">
+    {% for group in groups %}
+      <div class="list-group-item d-flex align-items-center justify-content-between gap-2 group-item"
+           data-group-id="{{ group.pk }}"
+           data-group-name="{{ group.name }}">
+        <div class="d-flex align-items-center gap-2">
+          <input type="checkbox" class="form-check-input group-checkbox"
+                 data-group-id="{{ group.pk }}"
+                 data-group-name="{{ group.name }}">
+          <span class="small fw-medium">{{ group.name }}</span>
+        </div>
+        <button type="button" class="btn btn-sm btn-outline-secondary add-group-btn"
+                data-group-id="{{ group.pk }}"
+                data-group-name="{{ group.name }}">
+          {% lucide "plus" class="w-3 h-3" %} Add
+        </button>
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  {% if search_query %}
+    <div class="text-center text-body-secondary py-4">
+      No groups found matching "{{ search_query }}"
+    </div>
+  {% else %}
+    <div class="text-center text-body-secondary py-4">
+      No available groups to refer to.
+    </div>
+  {% endif %}
+{% endif %}

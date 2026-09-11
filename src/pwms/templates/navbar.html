@@ -43,16 +43,22 @@
                   <li>
                     <a class="dropdown-item" href="{% url "pwms:workflows" %}">Overview</a>
                   </li>
-                  <li>
-                    <hr class="dropdown-divider">
-                  </li>
-                  <li>
-                    <a class="dropdown-item" href="{% url "pwms:delegation_reports" %}">Delegation Reports</a>
-                  </li>
-                  <li>
-                    <a class="dropdown-item"
-                       href="{% url "pwms:international_resolutions" %}">International Resolutions</a>
-                  </li>
+                  {% if creatable_workflow_types %}
+                    <li class="dropend">
+                      <a class="dropdown-item dropdown-toggle"
+                         href="#"
+                         role="button"
+                         data-bs-toggle="dropdown"
+                         aria-expanded="false">Create a workflow</a>
+                      <ul class="dropdown-menu">
+                        {% for workflow_type in creatable_workflow_types %}
+                          <li>
+                            <a class="dropdown-item" href="{{ workflow_type.url }}">{{ workflow_type.name }}</a>
+                          </li>
+                        {% endfor %}
+                      </ul>
+                    </li>
+                  {% endif %}
                 </ul>
               </li>
               <li class="nav-item dropdown">

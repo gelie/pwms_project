@@ -1,0 +1,17 @@
+<div class="row row-cols-1 row-cols-md-2 g-4">
+    <div class="col">
+        <label class="form-label fw-medium">Start Date &amp; Time *</label>
+        {{ form.start_datetime }}
+        {% if form.start_datetime.errors %}
+        <div class="small text-danger mt-1">{{ form.start_datetime.errors.0 }}</div>
+        {% endif %}
+    </div>
+
+    <div class="col">
+        <label class="form-label fw-medium">End Date &amp; Time *</label>
+        {{ form.end_datetime }}
+        {% if form.end_datetime.errors %}
+        <div class="small text-danger mt-1">{{ form.end_datetime.errors.0 }}</div>
+        {% endif %}
+    </div>
+</div>

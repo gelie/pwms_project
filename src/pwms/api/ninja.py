@@ -11,13 +11,13 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from django.http import Http404
 from ninja import NinjaAPI
 from ninja.errors import HttpError
 from pydantic import BaseModel, ConfigDict
 
 from ..models import InternationalResolution
-from ..utils.audit_helpers import get_audit_trail_by_public_id
+from ..services.permissions import VIEW, resolve
+from ..utils.audit_helpers import get_audit_trail_for_instance
 
 
 def session_auth(request):
@@ -90,9 +90,14 @@ def ninja_root(request):
     summary="Audit history for an InternationalResolution",
 )
 def resolution_audit_history(request, public_id: UUID):
-    """Return the auditlog CRUD trail for a resolution by its public UUID."""
-    try:
-        logs = get_audit_trail_by_public_id(InternationalResolution, public_id)
-    except Http404:
+    """Return the auditlog CRUD trail for a resolution the user may view."""
+    resolution = InternationalResolution.objects.filter(public_id=public_id).first()
+    if resolution is None:
         raise HttpError(404, "Resolution not found")
-    return [_entry_to_schema(entry) for entry in logs]
+    # Mirror the DRF endpoint's contract: 404 for a missing row, 403 when view
+    # access is denied.
+    if not resolve(request.auth, resolution, VIEW):
+        raise HttpError(403, "You do not have permission to view this workflow.")
+    return [
+        _entry_to_schema(entry) for entry in get_audit_trail_for_instance(resolution)
+    ]

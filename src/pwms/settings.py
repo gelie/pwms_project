@@ -110,6 +110,8 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                # Powers the dynamic "Create a workflow" nav menu (creatable types).
+                "pwms.navigation.navigation",
             ],
             "builtins": ["lucide.templatetags.lucide"],
         },

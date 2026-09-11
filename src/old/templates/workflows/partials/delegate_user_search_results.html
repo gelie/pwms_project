@@ -1,0 +1,26 @@
+{% if users %}
+  <div class="list-group list-group-flush">
+    {% for user in users %}
+      <div class="list-group-item list-group-item-action user-option d-flex align-items-center justify-content-between gap-2 py-3"
+           onclick="selectDelegateUser('{{ user.pk }}', '{{ user.first_name }} {{ user.last_name }}', {{ user.is_mp|lower }})">
+        <div>
+          <div class="fw-medium">{{ user.first_name }} {{ user.last_name }}</div>
+          {% if user.username %}<div class="small text-body-secondary">@{{ user.username }}</div>{% endif %}
+        </div>
+        {% if user.is_mp %}
+          <span class="badge bg-success">MP</span>
+        {% else %}
+          <span class="badge bg-body-tertiary text-body">Staff</span>
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="px-3 py-3 small text-body-secondary">
+    {% if search_query %}
+      No users found matching "{{ search_query }}"
+    {% else %}
+      Start typing to search for users
+    {% endif %}
+  </div>
+{% endif %}

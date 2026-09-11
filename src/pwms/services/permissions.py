@@ -8,14 +8,18 @@ used from Django views (templates and ``require``) and from DRF/ninja endpoints.
 Resolution is resource-type aware:
 
 * workflow instances (subclasses of ``AbstractLegislativeWorkflow``) use their
-  three-layer group/Role/State RBAC chain (``instance.can(...)``);
+  three-layer group/Role/State RBAC chain (``instance.can(...)``), and a child
+  additionally inherits its parent's *view* access (see
+  :func:`_resolve_workflow_instance`);
 * any other model falls back to a conservative default, and additional resource
   types can register custom resolvers with :func:`register_resolver`.
 
 Superusers always pass. A workflow instance's ``owner`` is always granted
-view / edit / delete on it. The ``manage`` action additionally honours the global
-``Role.can_manage_permissions`` capability, so a manager role grants the ability
-to administer any resource even without a per-instance grant.
+view / edit / delete on it; only the view right (from that owner grant or the
+group chain) flows down to the instance's descendants. The ``manage`` action
+additionally honours the global ``Role.can_manage_permissions`` capability, so a
+manager role grants the ability to administer any resource even without a
+per-instance grant.
 """
 
 from __future__ import annotations
@@ -97,16 +101,37 @@ def resolve(user, resource, action: str) -> bool:
 
 
 def _resolve_workflow_instance(user, instance, action: str) -> bool:
-    """Resolve an action against a concrete workflow instance's RBAC chain."""
+    """
+    Resolve an action against a workflow instance's RBAC chain.
+
+    Every action is resolved on the instance itself (its owner plus its own
+    group/Role/State chain). In addition, **view** access cascades *down* the
+    hierarchy: a child is viewable when its parent — or, transitively, any
+    ancestor — is. A grant on a delegation report therefore lets its readers see
+    the international resolutions it contains, while edit/delete/transition and
+    the rest stay governed by each instance's own permissions.
+
+    Traversal goes through :class:`WorkflowRelationship` (``get_ancestors()``),
+    so it works for any parent/child :class:`WorkflowType` pair, including ones
+    added later, rather than being tied to report/resolution.
+    """
     if action == CREATE:
         # An instance already exists; "create" is a type-level capability.
         return False
-    # The workflow's owner may always view, edit and delete their own record;
-    # the remaining capabilities (share / comment / manage / transition) still
-    # follow the instance RBAC chain.
+
+    # The owning user may always view, edit and delete their own record; the
+    # remaining capabilities follow the instance's own group/Role/State chain.
     if action in (VIEW, EDIT, DELETE) and user.pk == instance.owner_id:
         return True
-    return instance.can(user, action)
+    if instance.can(user, action):
+        return True
+
+    # Only the view right is inherited from ancestors (owner or group chain).
+    if action == VIEW:
+        for ancestor in instance.get_ancestors():
+            if user.pk == ancestor.owner_id or ancestor.can(user, action):
+                return True
+    return False
 
 
 def _default_resolver(user, resource, action: str) -> bool:
@@ -126,6 +151,16 @@ def _default_resolver(user, resource, action: str) -> bool:
 def permissions_for(user, resource) -> dict[str, bool]:
     """Map each of the six resource actions to its resolved boolean."""
     return {action: resolve(user, resource, action) for action in RESOURCE_ACTIONS}
+
+
+def visible_instances(user, queryset) -> list:
+    """
+    Return the workflow instances in ``queryset`` that ``user`` may view.
+
+    Order is preserved. Uses the same :func:`resolve` chain as the detail views,
+    so a listing can never surface a row whose own page would raise 403.
+    """
+    return [obj for obj in queryset if resolve(user, obj, VIEW)]
 
 
 def require(user, resource, action: str) -> None:

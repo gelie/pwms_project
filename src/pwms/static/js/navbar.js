@@ -17,7 +17,9 @@
 
     // Keep in sync with the hover media query in style.css.
     var DESKTOP = "(min-width: 992px) and (hover: hover) and (pointer: fine)";
-    var SELECTOR = "#main-horiz-menu .nav-item.dropdown";
+    // Also covers the nested "Create a workflow" .dropend submenu, which the CSS opens
+    // on hover too, so its toggle reports an equally truthful aria-expanded.
+    var SELECTOR = "#main-horiz-menu .nav-item.dropdown, #main-horiz-menu .dropend";
     var BAR_SELECTOR = "#main-horiz-menu";
     var EVENTS = [
         "mouseenter",

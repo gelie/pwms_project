@@ -354,6 +354,20 @@ body {
         display: block;
     }
 
+    /* Nested "Create a workflow" submenu — same hover-open behaviour as its parent,
+       positioned to the right of the row. Bootstrap only shifts a .dropend submenu
+       rightwards once its JS has run (it adds data-bs-popper); a hover-opened menu has
+       no inline positioning, so the offsets are spelled out here too. margin-left:0
+       keeps the submenu touching the parent row so the pointer never crosses a dead gap. */
+    #desktop-nav #main-horiz-menu .nav-item.dropdown .dropend:hover>.dropdown-menu,
+    #desktop-nav #main-horiz-menu .nav-item.dropdown .dropend:focus-within>.dropdown-menu {
+        display: block;
+        top: 0;
+        left: 100%;
+        margin-top: 0;
+        margin-left: 0;
+    }
+
     /* Only one menu at a time. :hover and :focus-within are independent conditions on
        sibling items, so a focused toggle (keyboard, or a browser that focuses a clicked
        link) kept its menu rendered next to the one being hovered — two overlapping
@@ -408,6 +422,20 @@ body {
     background-color: var(--theme-menu-hover);
     font-size: 0.9rem;
     /* text-decoration: none; */
+}
+
+/* The nested "Create a workflow" panel isn't a direct child of the top-level
+   .nav-item.dropdown, so the container rules above miss it and it would render as
+   Bootstrap's white, padded, bordered box around the already-green items. Strip that
+   back so it blends with the parent menu. (Its links are already themed, because the
+   "a" rules above use a descendant selector.) */
+#desktop-nav #main-horiz-menu .nav-item.dropdown .dropdown-menu .dropdown-menu {
+    margin-left: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    background-color: var(--theme-green);
 }
 
 /* .sticky.is-anchored {

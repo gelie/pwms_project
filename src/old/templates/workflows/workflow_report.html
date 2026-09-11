@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Workflow Report - {{ workflow.title }}</title>
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: white;
+        }
+
+        .report-container {
+            max-width: 210mm;
+            margin: 0 auto;
+            background: white;
+        }
+
+        .header {
+            border-bottom: 4px solid #5b8f22;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #2c5f0f;
+            font-size: 28px;
+            margin-bottom: 10px;
+        }
+
+        .header .meta {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .section {
+            margin-bottom: 30px;
+            page-break-inside: avoid;
+        }
+
+        .section-title {
+            color: #2c5f0f;
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .info-item {
+            padding: 12px;
+            background: #f8f9fa;
+            border-left: 3px solid #5b8f22;
+        }
+
+        .info-item label {
+            display: block;
+            font-weight: 600;
+            color: #555;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+
+        .info-item .value {
+            color: #333;
+            font-size: 15px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 13px;
+        }
+
+        .status-initial {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .status-terminal {
+            background: #e8f5e9;
+            color: #388e3c;
+        }
+
+        .status-progress {
+            background: #fff3e0;
+            color: #f57c00;
+        }
+
+        .priority-urgent {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .priority-high {
+            background: #fff3e0;
+            color: #ef6c00;
+        }
+
+        .priority-medium {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .priority-low {
+            background: #f1f8e9;
+            color: #689f38;
+        }
+
+        .timeline {
+            position: relative;
+            padding-left: 30px;
+        }
+
+        .timeline-item {
+            position: relative;
+            padding-bottom: 20px;
+        }
+
+        .timeline-item::before {
+            content: '';
+            position: absolute;
+            left: -24px;
+            top: 6px;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #5b8f22;
+            border: 3px solid white;
+            box-shadow: 0 0 0 2px #5b8f22;
+        }
+
+        .timeline-item::after {
+            content: '';
+            position: absolute;
+            left: -19px;
+            top: 18px;
+            width: 2px;
+            height: calc(100% - 12px);
+            background: #e0e0e0;
+        }
+
+        .timeline-item:last-child::after {
+            display: none;
+        }
+
+        .timeline-date {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 3px;
+        }
+
+        .timeline-content {
+            font-size: 14px;
+            color: #333;
+        }
+
+        .timeline-user {
+            font-size: 12px;
+            color: #888;
+            font-style: italic;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+
+        table th {
+            background: #f5f5f5;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 13px;
+            color: #555;
+            border-bottom: 2px solid #ddd;
+        }
+
+        table td {
+            padding: 10px 12px;
+            border-bottom: 1px solid #eee;
+            font-size: 14px;
+        }
+
+        table tr:hover {
+            background: #fafafa;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 5px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: #5b8f22;
+            transition: width 0.3s ease;
+        }
+
+        .footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 2px solid #e0e0e0;
+            text-align: center;
+            color: #888;
+            font-size: 12px;
+        }
+
+        .no-data {
+            padding: 20px;
+            text-align: center;
+            color: #999;
+            font-style: italic;
+            background: #f9f9f9;
+            border-radius: 4px;
+        }
+
+        @media print {
+            body {
+                background: white;
+            }
+
+            .report-container {
+                max-width: 100%;
+            }
+
+            .section {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="report-container">
+        <!-- Header -->
+        <div class="header">
+            <h1>{{ workflow.title }}</h1>
+            <div class="meta">
+                <strong>Workflow Type:</strong> {{ workflow.workflow_type.name }} |
+                <strong>Generated:</strong> {{ report_date|date:"F d, Y H:i" }}
+            </div>
+        </div>
+
+        <!-- Executive Summary -->
+        <div class="section">
+            <h2 class="section-title">Executive Summary</h2>
+            <div class="info-grid">
+                <div class="info-item">
+                    <label>Current Status</label>
+                    <div class="value">
+                        <span
+                            class="status-badge {% if workflow.current_state.is_initial %}status-initial{% elif workflow.current_state.is_terminal %}status-terminal{% else %}status-progress{% endif %}">
+                            {{ workflow.current_state.name }}
+                        </span>
+                    </div>
+                </div>
+                <div class="info-item">
+                    <label>Priority</label>
+                    <div class="value">
+                        <span class="status-badge priority-{{ workflow.priority }}">
+                            {{ workflow.get_priority_display }}
+                        </span>
+                    </div>
+                </div>
+                <div class="info-item">
+                    <label>Owner</label>
+                    <div class="value">{{ workflow.owner.get_full_name|default:workflow.owner.username }}</div>
+                </div>
+                <div class="info-item">
+                    <label>Created</label>
+                    <div class="value">{{ workflow.created_at|date:"F d, Y" }}</div>
+                </div>
+                {% if workflow.assigned_to %}
+                <div class="info-item">
+                    <label>Assigned To</label>
+                    <div class="value">{{ workflow.assigned_to.get_full_name|default:workflow.assigned_to.username }}
+                    </div>
+                </div>
+                {% endif %}
+                {% if workflow.deadline %}
+                <div class="info-item">
+                    <label>Deadline</label>
+                    <div class="value">{{ workflow.deadline|date:"F d, Y" }}</div>
+                </div>
+                {% endif %}
+                {% if workflow.event %}
+                <div class="info-item">
+                    <label>Associated Event</label>
+                    <div class="value">{{ workflow.event.title }}</div>
+                </div>
+                {% endif %}
+                <div class="info-item">
+                    <label>Last Updated</label>
+                    <div class="value">{{ workflow.updated_at|date:"F d, Y H:i" }}</div>
+                </div>
+            </div>
+
+            {% if workflow.description %}
+            <div class="info-item" style="grid-column: 1 / -1;">
+                <label>Description</label>
+                <div class="value">{{ workflow.description }}</div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Additional Information -->
+        {% if typed_fields %}
+        <div class="section">
+            <h2 class="section-title">Additional Information</h2>
+
+            {% for field in typed_fields %}
+            <div class="info-item" style="grid-column: 1 / -1;">
+                <label>{{ field.label }}</label>
+                <div class="value">{{ field.value|default:"—" }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <!-- Progress Overview -->
+        {% if sub_workflows %}
+        <div class="section">
+            <h2 class="section-title">Progress Overview</h2>
+            <div class="info-item">
+                <label>Sub-Processes Completion</label>
+                <div class="value">{{ completion_percentage }}% Complete ({{ completed_count }} of {{ total_count }})
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: {{ completion_percentage }}%"></div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Sub-Processes -->
+        {% if sub_workflows %}
+        <div class="section">
+            <h2 class="section-title">Sub-Processes ({{ sub_workflows|length }})</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Type</th>
+                        <th>Status</th>
+                        <th>Owner</th>
+                        <th>Created</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for sub in sub_workflows %}
+                    <tr>
+                        <td><strong>{{ sub.title }}</strong></td>
+                        <td>{{ sub.workflow_type.name }}</td>
+                        <td>
+                            <span
+                                class="status-badge {% if sub.current_state.is_initial %}status-initial{% elif sub.current_state.is_terminal %}status-terminal{% else %}status-progress{% endif %}">
+                                {{ sub.current_state.name }}
+                            </span>
+                        </td>
+                        <td>{{ sub.owner.get_full_name|default:sub.owner.username }}</td>
+                        <td>{{ sub.created_at|date:"M d, Y" }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- Workflow History -->
+        <div class="section">
+            <h2 class="section-title">Workflow History</h2>
+            {% if transition_logs %}
+            <div class="timeline">
+                {% for log in transition_logs %}
+                <div class="timeline-item">
+                    <div class="timeline-date">{{ log.timestamp|date:"F d, Y H:i" }}</div>
+                    <div class="timeline-content">
+                        <strong>{{ log.from_state.name }}</strong> → <strong>{{ log.to_state.name }}</strong>
+                        {% if log.transition %}
+                        <br><small>via {{ log.transition.name }}</small>
+                        {% endif %}
+                    </div>
+                    <div class="timeline-user">by {{ log.user.get_full_name|default:log.user.username }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="no-data">No state transitions recorded yet</div>
+            {% endif %}
+        </div>
+
+        <!-- Comments & Activity -->
+        {% if comments %}
+        <div class="section">
+            <h2 class="section-title">Recent Comments ({{ comments|length }})</h2>
+            <div class="timeline">
+                {% for comment in comments|slice:":10" %}
+                <div class="timeline-item">
+                    <div class="timeline-date">{{ comment.created_at|date:"F d, Y H:i" }}</div>
+                    <div class="timeline-content">{{ comment.text }}</div>
+                    <div class="timeline-user">by {{ comment.user.get_full_name|default:comment.user.username }}</div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>This report was generated on {{ report_date|date:"F d, Y \a\t H:i" }}</p>
+            <p>Parliament Workflow System</p>
+        </div>
+    </div>
+</body>
+
+</html>

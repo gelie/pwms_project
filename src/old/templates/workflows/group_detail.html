@@ -1,0 +1,149 @@
+{% extends 'base.html' %}
+{% block title %}{{ group.name }}{% endblock %}
+{% partialdef members_table %}
+<div class="table-responsive mt-4" id="members-table">
+    <table class="table table-striped align-middle mb-0">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Role</th>
+                <th>Since</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for membership in memberships %}
+                <tr>
+                    <td>
+                        <div class="d-flex align-items-center gap-2">
+                            <span class="rounded-circle bg-primary text-white d-inline-flex align-items-center justify-content-center flex-shrink-0"
+                                  style="width: 32px; height: 32px; font-size: 0.875rem;">
+                                {{ membership.user.first_name.0|default:membership.user.username.0|upper }}
+                            </span>
+                            {{ membership.user.get_full_name|default:membership.user.username }}
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge border border-secondary-subtle text-body">{{ membership.role.name }}</span>
+                    </td>
+                    <td>{{ membership.start_date|date:"M Y" }}</td>
+                </tr>
+            {% empty %}
+                <tr>
+                    <td colspan="3" class="text-center text-body-secondary">No members found</td>
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+<div class="badge bg-body-tertiary text-body"
+     id="member-count"
+     hx-swap-oob="outerHTML">
+    {{ memberships.count }}
+    {% if member_search %}
+        result{{ memberships.count|pluralize }}
+    {% else %}
+        member{{ memberships.count|pluralize }}
+    {% endif %}
+</div>
+{% endpartialdef %}
+{% partialdef content %}
+<div class="container-xxl d-flex flex-column gap-3">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb small mb-0">
+            <li class="breadcrumb-item">
+                <a href="{% url 'dashboard' %}">Dashboard</a>
+            </li>
+            <li class="breadcrumb-item">
+                <a href="{% url 'group_list' %}">Groups</a>
+            </li>
+            <li class="breadcrumb-item active" aria-current="page">{{ group.name|truncatewords:5 }}</li>
+        </ol>
+    </nav>
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h1 class="fw-bold">{{ group.name }}</h1>
+            <div class="badge bg-primary fs-6 mt-2">{{ group.group_type.name }}</div>
+            {% if group.description %}
+                <hr>
+                <p class="text-body-secondary mb-0">{{ group.description }}</p>
+            {% endif %}
+            <hr>
+            <div class="row row-cols-1 row-cols-md-3 g-4">
+                <div>
+                    <div class="small text-body-secondary">Contact Email</div>
+                    <div>{{ group.contact_email|default:"-" }}</div>
+                </div>
+                <div>
+                    <div class="small text-body-secondary">Contact Phone</div>
+                    <div>{{ group.contact_phone|default:"-" }}</div>
+                </div>
+                <div>
+                    <div class="small text-body-secondary">Location</div>
+                    <div>{{ group.location|default:"-" }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Members -->
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center">
+                <h2 class="card-title h5">
+                    {% lucide "users" class="w-5 h-5" %}
+                    Members
+                </h2>
+                <div class="badge bg-body-tertiary text-body" id="member-count">
+                    {{ memberships.count }}
+                    {% if member_search %}
+                        result{{ memberships.count|pluralize }}
+                    {% else %}
+                        member{{ memberships.count|pluralize }}
+                    {% endif %}
+                </div>
+            </div>
+            <div class="mt-4" style="max-width: 28rem;">
+                <div class="input-group">
+                    <span class="input-group-text">{% lucide "search" class="w-4 h-4" %}</span>
+                    <input type="text"
+                           name="member_search"
+                           placeholder="Search by name or role..."
+                           class="form-control"
+                           hx-get="{% url 'group_detail' group.pk %}#members_table"
+                           hx-trigger="keyup changed delay:300ms"
+                           hx-target="#members-table"
+                           hx-swap="outerHTML"
+                           value="{{ member_search }}">
+                </div>
+            </div>
+            {% partial members_table %}
+        </div>
+    </div>
+    <!-- Child Groups -->
+    {% if children %}
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h2 class="card-title h5">
+                    {% lucide "git-branch" class="w-5 h-5" %}
+                    Sub-Groups
+                </h2>
+                <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4 mt-1">
+                    {% for child in children %}
+                        <div class="col">
+                            <a href="{% url 'group_detail' child.pk %}"
+                               class="card h-100 shadow-sm text-reset text-decoration-none">
+                                <div class="card-body">
+                                    <h3 class="h6 fw-semibold">{{ child.name }}</h3>
+                                    <div class="badge border border-secondary-subtle text-body">{{ child.group_type.name }}</div>
+                                </div>
+                            </a>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endpartialdef %}
+{% block content %}
+    {% partial content %}
+{% endblock %}
