@@ -53,19 +53,19 @@
 <polygon fill="#475569" stroke="#475569" stroke-width="1.3" points="257.5,-265.51 261.1,-273.51 257.65,-267.93 257.65,-273.51 257.5,-273.51 257.35,-273.51 257.35,-267.93 253.9,-273.51 257.5,-265.51"/>
 <text xml:space="preserve" text-anchor="middle" x="325.38" y="-295.25" font-family="DejaVu Sans" font-size="10.00" fill="#475569">Table and refer to Committee</text>
 </g>
-<!-- Closed – House approved -->
+<!-- Closed -->
 <g id="node5" class="node">
-<title>Closed – House approved</title>
-<path fill="#16341f" stroke="#102717" stroke-width="1.2" d="M328.03,-155.25C328.03,-155.25 186.97,-155.25 186.97,-155.25 180.97,-155.25 174.97,-149.25 174.97,-143.25 174.97,-143.25 174.97,-131.25 174.97,-131.25 174.97,-125.25 180.97,-119.25 186.97,-119.25 186.97,-119.25 328.03,-119.25 328.03,-119.25 334.03,-119.25 340.03,-125.25 340.03,-131.25 340.03,-131.25 340.03,-143.25 340.03,-143.25 340.03,-149.25 334.03,-155.25 328.03,-155.25"/>
-<path fill="none" stroke="#102717" stroke-width="1.2" d="M332.03,-159.25C332.03,-159.25 182.97,-159.25 182.97,-159.25 176.97,-159.25 170.97,-153.25 170.97,-147.25 170.97,-147.25 170.97,-127.25 170.97,-127.25 170.97,-121.25 176.97,-115.25 182.97,-115.25 182.97,-115.25 332.03,-115.25 332.03,-115.25 338.03,-115.25 344.03,-121.25 344.03,-127.25 344.03,-127.25 344.03,-147.25 344.03,-147.25 344.03,-153.25 338.03,-159.25 332.03,-159.25"/>
-<text xml:space="preserve" text-anchor="middle" x="257.5" y="-134.68" font-family="DejaVu Sans" font-size="11.00" fill="#ffffff">Closed – House approved</text>
+<title>Closed</title>
+<path fill="#16341f" stroke="#102717" stroke-width="1.2" d="M280.03,-155.25C280.03,-155.25 234.97,-155.25 234.97,-155.25 228.97,-155.25 222.97,-149.25 222.97,-143.25 222.97,-143.25 222.97,-131.25 222.97,-131.25 222.97,-125.25 228.97,-119.25 234.97,-119.25 234.97,-119.25 280.03,-119.25 280.03,-119.25 286.03,-119.25 292.03,-125.25 292.03,-131.25 292.03,-131.25 292.03,-143.25 292.03,-143.25 292.03,-149.25 286.03,-155.25 280.03,-155.25"/>
+<path fill="none" stroke="#102717" stroke-width="1.2" d="M284.03,-159.25C284.03,-159.25 230.97,-159.25 230.97,-159.25 224.97,-159.25 218.97,-153.25 218.97,-147.25 218.97,-147.25 218.97,-127.25 218.97,-127.25 218.97,-121.25 224.97,-115.25 230.97,-115.25 230.97,-115.25 284.03,-115.25 284.03,-115.25 290.03,-115.25 296.03,-121.25 296.03,-127.25 296.03,-127.25 296.03,-147.25 296.03,-147.25 296.03,-153.25 290.03,-159.25 284.03,-159.25"/>
+<text xml:space="preserve" text-anchor="middle" x="257.5" y="-134.68" font-family="DejaVu Sans" font-size="11.00" fill="#ffffff">Closed</text>
 </g>
-<!-- Tabled and referred to Committee&#45;&gt;Closed – House approved -->
+<!-- Tabled and referred to Committee&#45;&gt;Closed -->
 <g id="edge4" class="edge">
-<title>Tabled and referred to Committee&#45;&gt;Closed – House approved</title>
+<title>Tabled and referred to Committee&#45;&gt;Closed</title>
 <path fill="none" stroke="#475569" stroke-width="1.3" d="M257.5,-226.95C257.5,-211.19 257.5,-187.7 257.5,-168.85"/>
 <polygon fill="#475569" stroke="#475569" stroke-width="1.3" points="257.5,-161.07 261.1,-169.07 257.65,-163.48 257.65,-169.07 257.5,-169.07 257.35,-169.07 257.35,-163.48 253.9,-169.07 257.5,-161.07"/>
-<text xml:space="preserve" text-anchor="middle" x="313" y="-191" font-family="DejaVu Sans" font-size="10.00" fill="#475569">Close – House approved</text>
+<text xml:space="preserve" text-anchor="middle" x="295.75" y="-191" font-family="DejaVu Sans" font-size="10.00" fill="#475569">House approved</text>
 </g>
 <!-- legend -->
 <g id="node6" class="node">
