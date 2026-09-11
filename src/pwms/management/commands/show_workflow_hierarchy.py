@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand, CommandError
 
-from workflows.models import Workflow
+from pwms.models import *
 
 
 class Command(BaseCommand):
@@ -81,7 +81,7 @@ class Command(BaseCommand):
             self.display_workflow_tree(workflow, indent_level=1)
 
         # Show summary
-        self.stdout.write(f"\n📊 Summary:")
+        self.stdout.write("\n📊 Summary:")
         self.stdout.write(f"   • Hierarchy Level: {workflow.hierarchy_level}")
         self.stdout.write(f"   • Is Root: {workflow.is_root_workflow}")
         self.stdout.write(f"   • Has Children: {workflow.has_sub_workflows}")
@@ -90,7 +90,7 @@ class Command(BaseCommand):
         )
 
     def show_root_workflows(self, workflow_type_filter=None):
-        queryset = Workflow.objects.filter(parent_workflow__isnull=True)
+        queryset = WorkflowType.objects.filter(parent_workflow__isnull=True)
 
         if workflow_type_filter:
             queryset = queryset.filter(

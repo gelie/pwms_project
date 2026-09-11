@@ -241,3 +241,13 @@ SHAREPOINT_TOKEN_URL = (
     f"https://login.microsoftonline.com/{SHAREPOINT_TENANT_ID}/oauth2/v2.0/token"
 )
 SHAREPOINT_SCOPE = "https://graph.microsoft.com/.default"
+
+# Workflow diagram paths
+WORKFLOW_DIAGRAM_OUTPUT_DIR = BASE_DIR / "src/pwms/diagrams"
+WORKFLOW_DIAGRAM_DIRS = [
+    WORKFLOW_DIAGRAM_OUTPUT_DIR,
+    BASE_DIR / "diagrams",
+]
+# Mermaid Markdown exports land next to the written docs so they render inline
+# in GitHub and VS Code. Override per run with `--mermaid-dir` / `--no-mermaid`.
+WORKFLOW_DIAGRAM_DOCS_DIR = BASE_DIR / "src/pwms/docs"

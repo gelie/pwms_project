@@ -56,6 +56,28 @@ be read to a CSV report for the SharePoint admin (default:
 | `import_states` | import workflow states from CSV for a workflow type | legacy |
 | `generate_diagrams` | render workflow-type diagrams (states/transitions) | legacy |
 
+### Diagram generation
+
+`generate_diagrams` renders every enabled `WorkflowType` as a Graphviz image
+and, by default, a matching Mermaid Markdown file.
+
+| Option | Effect |
+| --- | --- |
+| `--format {dot,png,svg,pdf}` | image format (default `svg`); PNG is rendered at 200 dpi |
+| `--output-dir DIR` | where images are written (default `WORKFLOW_DIAGRAM_OUTPUT_DIR`) |
+| `--workflow-type NAME` | restrict to a single workflow type |
+| `--cluster-states` | group states into Entry / In progress / Closed zones |
+| `--show-roles` | append allowed roles to transition labels |
+| `--include-descriptions` | include state/transition descriptions |
+| `--no-legend` | omit the legend block |
+| `--mermaid-dir DIR` | where Mermaid `.md` files are written (default `WORKFLOW_DIAGRAM_DOCS_DIR`) |
+| `--no-mermaid` | skip Mermaid export |
+
+State colours come from `State.color`, so each workflow keeps its own curated
+palette; transitions that require a comment render as amber dashed arrows.
+Mermaid exports are plain ` ```mermaid ` blocks, so GitHub and VS Code render
+them inline with no build step.
+
 ## Notifications & deadlines
 
 | Command | Purpose | Status |

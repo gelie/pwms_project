@@ -13,3 +13,4 @@ staticfiles/
 # Local secrets & runtime logs (Django project root = repo root)
 .env
 logs/*
+workflow_requirements/*
