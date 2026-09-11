@@ -13,6 +13,8 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
 - ContentType RBAC (`WorkflowGroupAccess`, `WorkflowRolePermission`,
   `WorkflowStatePermission`) with `instance.can(user, action)`
 - Full auditing (`auditlog` CRUD + `TransitionLog`) with API access
+- Append-only domain event log (`EventType` registry + `WorkflowEvent`) with
+  declarative transition guards (`Transition.required_event_types`)
 - DRF API + OpenAPI (Swagger/ReDoc), admin, migrations, tests
 - django-ninja evaluation spike (`/ninja/`)
 
@@ -132,10 +134,48 @@ Per new model, the checklist is:
 
 ---
 
-## Events / calendar (🔜)
+## Domain events & calendar
 
-- `update_event_statuses` hints at event-driven tracking; a calendar of
-  deadlines/debates could reuse `deadline`/`deadline` fields plus flatpickr.
+✅ **Domain event log shipped** — `EventType` (data-driven registry) +
+append-only `WorkflowEvent`, with transition guards
+(`Transition.required_event_types`); see [Data Model §5](./Data%20Model.md).
+Seeded types: report-document-attached, atc-update-published,
+implementation-reported, referral-created, referral-responded,
+referral-recalled, referral-expired. Seeded guard:
+*Delegation Report → Close – House approved* requires the ATC update event.
+
+✅ **Condition rules shipped** — `TransitionCondition` (`no_open_referrals`,
+`all_children_closed`, `field_set`) evaluated by `unmet_transition_conditions()`
+alongside event guards; extend via the `TRANSITION_CONDITION_HANDLERS` registry.
+
+✅ **Typed detail tables shipped** — `DelegationReportUpdate` (BR03 ATC update
+history; `report.record_update(...)` emits `atc-update-published` when ATC
+details are present) and `WorkflowReferral` (below). The legacy single-set
+`atc_*` fields are now read-only "latest" properties.
+
+🔜 **Calendar view** — the legacy `update_event_statuses` command tracked
+scheduled/ongoing/completed *calendar* items (title, start/end); if a
+meetings/sessions calendar is wanted it should be a separate model from the
+workflow event log, reusing `deadline` + flatpickr.
+
+---
+
+## Referrals (✅ shipped · 🔜 background job)
+
+`WorkflowReferral` replaced the `referred_to_groups` M2M as the source of truth:
+GFK to the instance, `referred_to` (FK `Group`), `referred_by`, `referred_at`,
+`due_date`, `status` (open / responded / recalled / expired / cancelled),
+`responded_at/by`, `response_document_url`, recall fields. Creation via
+`instance.refer(group, ...)` is gated by `State.allows_referrals`; creation and
+lifecycle actions emit `referral-*` events automatically.
+
+Migrations: `0008` (model) → `0009` (backfill one open referral per existing M2M
+row + events) → `0010` (drop the M2M and legacy `atc_*` fields); auditlog no
+longer registers `m2m_fields`.
+
+🔜 Still to do: repoint the legacy `check_referral_deadlines` command
+(reminders + auto-recall) at `WorkflowReferral` (`due_date`,
+`deadline_notified_at`, `mark_expired()`).
 
 ---
 

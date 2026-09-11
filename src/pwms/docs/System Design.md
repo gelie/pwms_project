@@ -151,7 +151,7 @@ flowchart LR
 - `workflow_type` → the machine it follows
 - `current_state` → where it is now (must belong to `workflow_type`)
 - `title`, `description`, `owner`, `assigned_to`, `deadline`, `priority`
-- `referred_to_groups` (M2M to `Group`) — dynamic referrals
+- referrals are typed `WorkflowReferral` rows (GFK) — see §5
 
 Because the base is abstract, every concrete subclass gets its own table. Today
 there is one concrete subclass:
@@ -223,10 +223,12 @@ Two complementary mechanisms record history:
 | --- | --- | --- |
 | `auditlog.LogEntry` | every **create / update / delete** of a registered workflow instance | field-level before/after diffs, actor, IP, timestamp |
 | `pwms.TransitionLog` | every **semantic state transition** | `from_state → to_state`, actor, comment, IP, action label |
+| `pwms.WorkflowEvent` | every **domain event** (document attached, ATC published, referral created/responded/...) | append-only, typed registry (`EventType`), JSON payload, actor, origin |
 
 - Registration happens in `PwmsConfig.ready()`:
-  `auditlog.register(InternationalResolution, exclude_fields=["updated_at"], m2m_fields=["referred_to_groups"])`.
-  Add each new concrete subclass there.
+  `auditlog.register(InternationalResolution, exclude_fields=["updated_at"])`.
+  Add each new concrete subclass there. Referral changes are no longer M2M audit
+  entries — they are typed rows whose lifecycle emits `WorkflowEvent` rows.
 - `perform_transition()` writes a `TransitionLog` row **and** the resulting
   `current_state` change is captured by auditlog as an UPDATE entry.
 - `utils/audit_helpers.py` exposes `get_audit_trail_for_instance(instance)` and

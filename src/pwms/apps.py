@@ -27,12 +27,17 @@ class PwmsConfig(AppConfig):
 
         from auditlog.registry import auditlog
 
-        from .models import InternationalResolution
+        from .models import DelegationReport, InternationalResolution
 
+        # Referrals are typed WorkflowReferral rows whose lifecycle is recorded
+        # as domain events, so there are no M2M fields left to track here.
         auditlog.register(
             InternationalResolution,
             exclude_fields=["updated_at"],  # auto timestamps add no audit value
-            m2m_fields=["referred_to_groups"],  # track referral changes
+        )
+        auditlog.register(
+            DelegationReport,
+            exclude_fields=["updated_at"],
         )
 
         # When new concrete workflow models are added (Bill, Motion, Question...),

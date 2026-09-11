@@ -1,9 +1,14 @@
 from typing import ClassVar
 
 from django.contrib import admin
+from django.contrib.contenttypes.admin import GenericTabularInline
 from mptt.admin import MPTTModelAdmin
 
 from .models import (
+    DelegationParticipant,
+    DelegationReport,
+    DelegationReportUpdate,
+    EventType,
     Group,
     GroupMembership,
     InternationalResolution,
@@ -15,9 +20,13 @@ from .models import (
     SharepointToken,
     State,
     Transition,
+    TransitionCondition,
     TransitionLog,
     User,
+    WorkflowEvent,
     WorkflowGroupAccess,
+    WorkflowReferral,
+    WorkflowRelationship,
     WorkflowRolePermission,
     WorkflowStatePermission,
     WorkflowType,
@@ -221,6 +230,15 @@ class StateAdmin(admin.ModelAdmin):
     ordering = ("workflow_type", "order", "name")
 
 
+class TransitionConditionInline(admin.TabularInline):
+    """Extra guard rules evaluated when this transition is performed."""
+
+    model = TransitionCondition
+    extra = 0
+    fields = ("condition_type", "field_name", "enabled", "order")
+    ordering = ("order", "id")
+
+
 @admin.register(Transition)
 class TransitionAdmin(admin.ModelAdmin):
     """Admin for allowed transitions between states."""
@@ -241,8 +259,24 @@ class TransitionAdmin(admin.ModelAdmin):
         "to_state__name",
     )
     autocomplete_fields = ("workflow_type", "from_state", "to_state")
-    filter_horizontal = ("allowed_roles", "notify_roles")
+    filter_horizontal = ("allowed_roles", "notify_roles", "required_event_types")
     ordering = ("workflow_type", "order", "name")
+    inlines: ClassVar[list[type[admin.TabularInline]]] = [TransitionConditionInline]
+
+
+@admin.register(TransitionCondition)
+class TransitionConditionAdmin(admin.ModelAdmin):
+    """Admin for standalone inspection of transition guard rules."""
+
+    list_display = ("transition", "condition_type", "field_name", "enabled", "order")
+    list_filter = ("condition_type", "enabled")
+    search_fields = (
+        "transition__name",
+        "transition__workflow_type__name",
+        "field_name",
+    )
+    autocomplete_fields = ("transition",)
+    ordering = ("transition", "order")
 
 
 # --- Workflow RBAC: instance access, role & state permissions --------------
@@ -313,6 +347,70 @@ class WorkflowStatePermissionAdmin(admin.ModelAdmin):
 # --- Concrete workflow instance & its audit log ----------------------------
 
 
+class WorkflowEventInline(GenericTabularInline):
+    """Read-only timeline of domain events recorded on a workflow instance."""
+
+    model = WorkflowEvent
+    ct_field = "content_type"
+    fk_field = "object_id"
+    extra = 0
+    can_delete = False
+    fields = (
+        "occurred_at",
+        "event_type",
+        "origin",
+        "actor",
+        "document_url",
+        "notes",
+    )
+    readonly_fields = fields
+    verbose_name_plural = "Domain events (timeline)"
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+class WorkflowReferralInline(GenericTabularInline):
+    """Referrals of a workflow instance to committees/groups (BR02.8)."""
+
+    model = WorkflowReferral
+    ct_field = "content_type"
+    fk_field = "object_id"
+    extra = 0
+    can_delete = False
+    fields = (
+        "referred_to",
+        "referred_by",
+        "due_date",
+        "status",
+        "responded_at",
+        "notes",
+    )
+    readonly_fields = ("responded_at",)
+    autocomplete_fields = ("referred_to", "referred_by")
+    verbose_name_plural = "Referrals"
+
+
+class DelegationReportUpdateInline(admin.TabularInline):
+    """BR03 report updates (ATC publication details) appended to a report."""
+
+    model = DelegationReportUpdate
+    extra = 0
+    can_delete = False
+    fields = (
+        "update_date",
+        "resulting_state",
+        "atc_reference",
+        "atc_publication_date",
+        "atc_page_number",
+        "atc_document_url",
+        "notes",
+        "recorded_by",
+    )
+    autocomplete_fields = ("resulting_state", "recorded_by")
+    ordering = ("-update_date",)
+
+
 @admin.register(InternationalResolution)
 class InternationalResolutionAdmin(admin.ModelAdmin):
     """Admin for international-resolution workflow instances."""
@@ -322,20 +420,138 @@ class InternationalResolutionAdmin(admin.ModelAdmin):
         "title",
         "workflow_type",
         "current_state",
+        "responsible_group",
         "owner",
         "priority",
         "deadline",
     )
     list_filter = ("workflow_type", "current_state", "priority")
-    search_fields = ("title", "resolution_number")
+    search_fields = ("title", "resolution_number", "resolution_text")
+    autocomplete_fields = (
+        "workflow_type",
+        "current_state",
+        "responsible_group",
+        "owner",
+        "assigned_to",
+    )
+    ordering = ("resolution_number",)
+    inlines: ClassVar[list[type[admin.InlineModelAdmin]]] = [
+        WorkflowEventInline,
+        WorkflowReferralInline,
+    ]
+
+
+class DelegationParticipantInline(admin.TabularInline):
+    """Delegation members / support officials edited on the report page."""
+
+    model = DelegationParticipant
+    extra = 0
+    fields = (
+        "participant_type",
+        "title",
+        "first_name",
+        "last_name",
+        "delegation_role",
+        "user",
+        "order",
+    )
+    autocomplete_fields = ("user",)
+    ordering = ("participant_type", "order", "last_name")
+
+
+@admin.register(DelegationReport)
+class DelegationReportAdmin(admin.ModelAdmin):
+    """Admin for delegation reports (BRS BR02/BR03)."""
+
+    list_display = (
+        "reference_number",
+        "title",
+        "engagement_name",
+        "current_state",
+        "owner",
+        "assigned_to",
+        "deadline",
+        "is_overdue",
+    )
+    list_filter = ("workflow_type", "current_state", "priority")
+    search_fields = (
+        "reference_number",
+        "title",
+        "engagement_name",
+        "location_city",
+        "location_country",
+    )
     autocomplete_fields = (
         "workflow_type",
         "current_state",
         "owner",
         "assigned_to",
     )
-    filter_horizontal = ("referred_to_groups",)
-    ordering = ("resolution_number",)
+    readonly_fields = ("reference_number",)
+    inlines: ClassVar[list[type[admin.InlineModelAdmin]]] = [
+        DelegationParticipantInline,
+        DelegationReportUpdateInline,
+        WorkflowEventInline,
+        WorkflowReferralInline,
+    ]
+
+    @admin.display(boolean=True, description="Overdue")
+    def is_overdue(self, obj):
+        return obj.is_overdue
+
+
+@admin.register(DelegationParticipant)
+class DelegationParticipantAdmin(admin.ModelAdmin):
+    """Admin for delegation members and support officials (BR02.3.7/8)."""
+
+    list_display = (
+        "delegation_report",
+        "participant_type",
+        "full_name",
+        "delegation_role",
+        "user",
+    )
+    list_filter = ("participant_type",)
+    search_fields = (
+        "first_name",
+        "last_name",
+        "delegation_role",
+        "delegation_report__reference_number",
+        "delegation_report__title",
+    )
+    autocomplete_fields = ("delegation_report", "user")
+    ordering = ("delegation_report", "participant_type", "order", "last_name")
+
+
+@admin.register(WorkflowRelationship)
+class WorkflowRelationshipAdmin(admin.ModelAdmin):
+    """Admin for generic parent/child links between workflow instances."""
+
+    list_display = (
+        "parent_target",
+        "child_target",
+        "relationship_type",
+        "order",
+    )
+    list_filter = (
+        "relationship_type",
+        "parent_content_type",
+        "child_content_type",
+    )
+    search_fields = ("notes",)
+    ordering = ("order", "id")
+
+    @admin.display(description="Parent")
+    def parent_target(self, obj):
+        if obj.parent is not None:
+            return str(obj.parent)
+        return f"#{obj.parent_object_id}"
+
+    @admin.display(description="Child")
+    def child_target(self, obj):
+        if obj.child is not None:
+            return str(obj.child)
+        return f"#{obj.child_object_id}"
 
 
 @admin.register(TransitionLog)
@@ -372,6 +588,113 @@ class TransitionLogAdmin(admin.ModelAdmin):
         return f"#{obj.object_id}"
 
     def has_add_permission(self, request):
+        return False
+
+
+# --- Domain events: registry + append-only log ------------------------------
+
+
+@admin.register(EventType)
+class EventTypeAdmin(admin.ModelAdmin):
+    """Admin for the data-driven registry of workflow event types."""
+
+    list_display = ("name", "slug", "is_system", "created_at")
+    list_filter = ("is_system",)
+    search_fields = ("name", "description")
+    ordering = ("name",)
+
+
+@admin.register(WorkflowEvent)
+class WorkflowEventAdmin(admin.ModelAdmin):
+    """Read-only view of the append-only domain event log."""
+
+    list_display = (
+        "id",
+        "workflow_target",
+        "event_type",
+        "occurred_at",
+        "origin",
+        "actor",
+    )
+    list_filter = ("event_type", "origin", "content_type")
+    search_fields = ("event_type__name", "notes")
+    readonly_fields = (
+        "content_type",
+        "object_id",
+        "event_type",
+        "occurred_at",
+        "actor",
+        "origin",
+        "payload",
+        "document_url",
+        "notes",
+        "transition_log",
+    )
+    ordering = ("-occurred_at",)
+
+    @admin.display(description="Workflow instance")
+    def workflow_target(self, obj):
+        if obj.content_object is not None:
+            return str(obj.content_object)
+        return f"#{obj.object_id}"
+
+    def has_add_permission(self, request):
+        return False
+
+
+# --- Referrals & BR03 report updates ----------------------------------------
+
+
+@admin.register(WorkflowReferral)
+class WorkflowReferralAdmin(admin.ModelAdmin):
+    """Admin for typed referrals (who / to whom / due / response)."""
+
+    list_display = (
+        "id",
+        "workflow_target",
+        "referred_to",
+        "status",
+        "referred_by",
+        "referred_at",
+        "due_date",
+    )
+    list_filter = ("status", "referred_to", "content_type")
+    search_fields = ("notes", "response_notes", "referred_to__name")
+    autocomplete_fields = ("referred_to", "referred_by", "responded_by", "recalled_by")
+    readonly_fields = ("referred_at", "deadline_notified_at")
+    ordering = ("-referred_at",)
+
+    @admin.display(description="Workflow instance")
+    def workflow_target(self, obj):
+        if obj.content_object is not None:
+            return str(obj.content_object)
+        return f"#{obj.object_id}"
+
+
+@admin.register(DelegationReportUpdate)
+class DelegationReportUpdateAdmin(admin.ModelAdmin):
+    """Admin for the BR03 update history (append rows; no deletions)."""
+
+    list_display = (
+        "id",
+        "delegation_report",
+        "update_date",
+        "resulting_state",
+        "atc_reference",
+        "atc_publication_date",
+        "recorded_by",
+    )
+    list_filter = ("resulting_state",)
+    search_fields = (
+        "atc_reference",
+        "notes",
+        "delegation_report__reference_number",
+        "delegation_report__title",
+    )
+    autocomplete_fields = ("delegation_report", "resulting_state", "recorded_by")
+    ordering = ("-update_date",)
+
+    def has_delete_permission(self, request, obj=None):
         return False
 
 

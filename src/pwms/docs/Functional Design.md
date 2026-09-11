@@ -41,9 +41,15 @@ and the typical flows. It complements the structural documents
 
 ### 3.1 Definitions (the machine)
 
-An administrator defines a **WorkflowType** and its **States** and **Transitions**
-(e.g. *International Resolution*: `Drafting → Committee → Gazetted → Adopted`),
-including:
+An administrator defines a **WorkflowType** and its **States** and **Transitions**.
+Two state machines are seeded from the BRS (migration `0005`):
+
+- **Delegation Report** — `Awaiting PGIR approval → Submitted for tabling →
+  Tabled and referred to Committee → Closed – House approved` (BR02.8);
+- **International Resolution** — `Captured → Assigned → In Progress →
+  Implemented → Closed`, nested under the Delegation Report type.
+
+Definitions are customisable in the admin, including:
 
 - which states are initial/terminal;
 - which transitions are allowed (from → to);
@@ -57,7 +63,8 @@ Definitions are reusable: they are exported/imported as JSON
 
 ### 3.2 Instances
 
-A workflow instance (today: **InternationalResolution**) is created with:
+A workflow instance (today: **DelegationReport** and **InternationalResolution**,
+the latter nested inside a report) is created with:
 
 - a workflow **type** and its **initial state**;
 - an **owner** and optionally an **assignee**;
@@ -72,16 +79,29 @@ only the **available transitions** for that state.
 To move an instance forward, a user performs an available transition:
 
 1. The system validates the transition belongs to the type and is valid from the
-   current state; a comment is required if configured.
-2. `current_state` advances to the transition’s `to_state`.
+   current state; **event guards** (`required_event_types`) and **condition
+   rules** (`TransitionCondition`: `no_open_referrals`, `all_children_closed`,
+   `field_set`) must be satisfied, and a comment is required if configured. All
+   unmet guards are reported at once by `unmet_transition_conditions()`.
+2. `current_state` advances to the transition's `to_state`.
 3. A `TransitionLog` entry is written (who, from → to, comment, IP).
 4. The field change is also captured by auditlog.
 5. (Planned) role-based notification emails are dispatched.
 
+Alongside state changes, the instance keeps an **append-only event timeline**
+(`WorkflowEvent`, e.g. *Report document attached*, *ATC update published*) via
+`record_event()`. Events are the evidence guards check — they are never edited;
+corrections are new compensating events.
+
 ### 3.4 Referrals
 
-Instruments can be dynamically **referred to groups** (`referred_to_groups`, M2M,
-audited). This is how a draft passes to a committee for input.
+Instruments can be dynamically **referred to committees/groups** as typed
+`WorkflowReferral` rows (`refer()`, gated by `State.allows_referrals`). Each
+referral carries who referred it, when, its response deadline, status
+(`open`/`responded`/`recalled`/`expired`/`cancelled`) and the response document.
+Lifecycle actions (`respond()` / `recall()` / `mark_expired()`) automatically
+emit `referral-*` events, so the referral appears on the instance timeline; an
+open referral can block a transition via the `no_open_referrals` condition.
 
 ---
 

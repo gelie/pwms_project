@@ -15,7 +15,7 @@ class NinjaAuditSpikeTests(TestCase):
         cls.user = User.objects.create_user(
             username="alice", email="alice@example.com", password="pw"
         )
-        wt = WorkflowType.objects.create(name="International Resolution")
+        wt = WorkflowType.objects.create(name="Test International Resolution")
         draft = State.objects.create(workflow_type=wt, name="Drafting", is_initial=True)
         cls.res = InternationalResolution.objects.create(
             workflow_type=wt,
