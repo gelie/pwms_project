@@ -308,12 +308,14 @@ body {
     }
 }
 
-#desktop-nav #main-horiz-menu>li:first-child {
+#desktop-nav #main-horiz-menu>li:first-child,
+.auth-menu {
     border-left: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-#desktop-nav #main-horiz-menu>li {
-    border-right: 1px solid rgba(255, 255, 255, 0.2);
+#desktop-nav #main-horiz-menu>li,
+.auth-menu .auth-item {
+    border-right: 1px solid rgba(255, 255, 255, 0.2) !important;
 }
 
 
@@ -478,6 +480,7 @@ body {
     padding: 0 0.75rem;
     color: #fff;
     cursor: pointer;
+    border-right: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 html.theme-ready #desktop-nav .theme-toggle {
