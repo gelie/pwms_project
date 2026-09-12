@@ -1,0 +1,62 @@
+{% comment %}
+Searchable foreign-key picker. The real form field is rendered hidden (a <select>
+would list every option up front) and an HTMX-driven text input searches instead.
+Choosing a result writes the option's pk into the hidden field, so an ordinary
+form POST still submits ``name="<field>"``.
+
+Reach it through ``pwms/_picker_field.html``, which only picks this branch for a
+field whose option list is longer than the form's search-picker threshold:
+
+  {% include "pwms/_picker_field.html" with field=form.owner search_url="pwms:user_search" placeholder="Type to search users..." selected_name=form.picker_labels.owner wrapper_class="col-12 col-md-6" %}
+
+``search_url`` is the URL *name* of the view returning the results fragment (the
+fragment must call one of the ``window.select*`` helpers in static/js/htmx-lookup.js).
+``placeholder`` and ``selected_name`` are optional; ``selected_name`` prefills the
+text input with what is already stored, so an edit form shows the current choice.
+
+Two optional arguments wire one picker to another, for a country/city pair:
+
+  ``depends_on``    id of the picker whose hidden input this search sends along
+  ``depends_param`` name of the request parameter it is sent as (default "country")
+  ``clears``        id of the picker that must be reset when this one changes
+
+Example (from the delegation report form):
+
+  {% include "pwms/_picker_field.html" with field=form.location_country search_url="pwms:country_search" clears="#id_location_city_picker" wrapper_class="col-12 col-md-6" %}
+  {% include "pwms/_picker_field.html" with field=form.location_city search_url="pwms:city_search" depends_on="id_location_country" depends_param="country" wrapper_class="col-12 col-md-6" %}
+{% endcomment %}
+<div class="{{ wrapper_class|default:'col-12' }}"
+     id="{{ field.auto_id }}_picker"
+     data-lookup
+     {% if clears %}data-clears="{{ clears }}"{% endif %}>
+  <label class="form-label" for="{{ field.auto_id }}_search">
+    {{ field.label }}
+    {% if field.field.required %}<span class="text-danger" aria-hidden="true">*</span>{% endif %}
+  </label>
+  <div class="position-relative">
+    {{ field }}
+    <input type="text"
+           id="{{ field.auto_id }}_search"
+           name="search"
+           class="form-control"
+           placeholder="{{ placeholder|default:'Type to search...' }}"
+           value="{{ selected_name }}"
+           autocomplete="off"
+           aria-autocomplete="list"
+           aria-expanded="false"
+           aria-controls="{{ field.auto_id }}_results"
+           hx-get="{% url search_url %}"
+           hx-trigger="keyup changed delay:300ms"
+           hx-target="#{{ field.auto_id }}_results"
+           hx-swap="innerHTML"
+           {% if depends_on %}hx-vals='js:{"{{ depends_param|default:"country" }}": document.getElementById("{{ depends_on }}").value}' {% endif %}hx-indicator="#{{ field.auto_id }}_indicator">
+    <span id="{{ field.auto_id }}_indicator"
+          class="htmx-indicator spinner-border spinner-border-sm lookup-spinner"
+          aria-hidden="true"></span>
+    <div id="{{ field.auto_id }}_results"
+         class="lookup-results list-group position-absolute top-100 start-0 end-0 mt-1 bg-body border rounded-3 shadow-sm overflow-auto d-none"
+         aria-label="Matching {{ field.label|lower }}"></div>
+  </div>
+  {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+  {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+</div>

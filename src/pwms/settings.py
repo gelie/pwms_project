@@ -50,7 +50,6 @@ INSTALLED_APPS = [
     "mptt",
     "django_htmx",
     # "django_extensions",
-    # "django_bootstrap5",
     "pwms",  # ← custom app config for auditlog wiring
 ]
 
@@ -176,6 +175,17 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_ROOT = BASE_DIR / "media"
 MEDIA_URL = "media/"
+
+# Date/time pickers (django-flatpickr).
+# https://django-flatpickr.readthedocs.io/
+# The flatpickr build and the package's own glue script are vendored under
+# static/vendor/flatpickr, so the pickers never depend on a CDN at runtime.
+# Both keys name that one directory because the package builds every media URL
+# by appending a fixed file name to them.
+DJANGO_FLATPICKR = {
+    "flatpickr_cdn_url": "vendor/flatpickr/",  # + flatpickr.min.{js,css}
+    "app_static_url": "vendor/flatpickr/",  # + js/django-flatpickr.js
+}
 
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration

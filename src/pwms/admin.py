@@ -7,6 +7,8 @@ from django.db.models import Q
 from mptt.admin import MPTTModelAdmin
 
 from .models import (
+    City,
+    Country,
     DelegationParticipant,
     DelegationReport,
     DelegationReportUpdate,
@@ -543,14 +545,16 @@ class DelegationReportAdmin(admin.ModelAdmin):
         "reference_number",
         "title",
         "engagement_name",
-        "location_city",
-        "location_country",
+        "location_city__name",
+        "location_country__name",
     )
     autocomplete_fields = (
         "workflow_type",
         "current_state",
         "owner",
         "assigned_to",
+        "location_country",
+        "location_city",
     )
     readonly_fields = ("reference_number",)
     inlines: ClassVar[list[type[admin.InlineModelAdmin]]] = [
@@ -784,3 +788,27 @@ class SharepointFolderAdmin(admin.ModelAdmin):
     search_fields = ("name", "site__name", "drive__name")
     autocomplete_fields = ("site", "drive", "parent_folder")
     ordering = ("site", "drive", "name")
+
+
+# --- Reference data: countries & cities (loaded by load_places) ----------------
+
+
+@admin.register(Country)
+class CountryAdmin(admin.ModelAdmin):
+    """Admin for the country list behind the location pickers."""
+
+    list_display = ("name", "code", "iso3", "continent")
+    list_filter = ("continent",)
+    search_fields = ("name", "code", "iso3")
+    ordering = ("name",)
+
+
+@admin.register(City)
+class CityAdmin(admin.ModelAdmin):
+    """Admin for the city list; reference data, curated by ``load_places``."""
+
+    list_display = ("name", "country", "population")
+    list_filter = ("country",)
+    search_fields = ("name", "ascii_name")
+    autocomplete_fields = ("country",)
+    ordering = ("country", "name")

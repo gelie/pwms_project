@@ -41,6 +41,18 @@ be read to a CSV report for the SharePoint admin (default:
 > Sites and drives sync fine with the current token. Skipped sites are written
 > to the CSV failure report described above.
 
+## Reference data (GeoNames)
+
+| Command | Purpose | Status |
+| --- | --- | --- |
+| `load_places` | fill `Country` / `City` from the bundled GeoNames extract (`src/pwms/data`) for the engagement location pickers | ✅ live — see [Data Model](./Data%20Model.md#7-reference-data--countries--cities) |
+
+Key options: `--data-dir DIR` reads `countries.csv` and `cities.csv[.gz]` from
+somewhere other than `src/pwms/data`. Re-running is safe: countries are upserted
+on their ISO code and cities are matched on
+`(country, name, latitude, longitude)`, so existing primary keys (and the reports
+pointing at them) survive.
+
 ## Committee scraping
 
 | Command | Purpose | Status |

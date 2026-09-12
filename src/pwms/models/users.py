@@ -151,6 +151,11 @@ class User(AbstractUser, BaseModel):
         parts = [self.title.title(), self.first_name, self.middle_name, self.last_name]
         return " ".join(part for part in parts if part)
 
+    @property
+    def display_name(self):
+        """Label for the user in lists and search pickers (username as fallback)."""
+        return self.get_full_name() or self.get_username()
+
     def get_absolute_url(self):
         return reverse("bungeni:user_detail", kwargs={"pk": self.pk})
 

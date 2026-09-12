@@ -50,6 +50,21 @@ OpenAPI schema and interactive docs are generated from the **DRF** stack via
 | GET | `/ninja/resolutions/{public_id}/audit/` | same audit trail, typed via Pydantic |
 | GET | `/ninja/openapi.json`, `/ninja/docs` | ninja auto schema / Swagger |
 
+### HTMX search fragments (HTML, not JSON)
+
+The form search pickers call plain Django views that return HTML rows, not API
+responses, so they are deliberately absent from the schema above:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/pwms/user-search/` | users matching `?search=` |
+| GET | `/pwms/group-search/` | groups matching `?search=` |
+| GET | `/pwms/country-search/` | countries matching `?search=` (name or ISO code) |
+| GET | `/pwms/city-search/` | cities matching `?search=`, scoped by `?country=<pk>` |
+
+They are session-authenticated like every other site route. See
+[Search Lookups](./Search%20Lookups.md) for the contract they follow.
+
 ---
 
 ## 3. Response shape — audit history

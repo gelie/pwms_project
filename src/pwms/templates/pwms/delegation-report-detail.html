@@ -79,7 +79,7 @@
           <th scope="row">Location</th>
           <td>
             {% if report.location_city or report.location_country %}
-              {{ report.location_city }}{% if report.location_city and report.location_country %}, {% endif %}{{ report.location_country }}
+              {{ report.location_city.name }}{% if report.location_city and report.location_country %}, {% endif %}{{ report.location_country.name }}
             {% else %}
               —
             {% endif %}

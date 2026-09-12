@@ -10,9 +10,10 @@ order, or used as reference while developing.
 3. [Data Model](./Data%20Model.md) — every model, its fields and relationships.
 4. [Functional Design](./Functional%20Design.md) — what the system does for its users.
 5. [API Reference](./API%20Reference.md) — the endpoints and OpenAPI docs.
-6. [Management Commands](./Management%20Commands.md) — the `manage.py` commands (sync, jobs, diagrams).
-7. [SharePoint Sync](./SharePoint%20Sync.md) — the `populate_sites` command and the local `Sharepoint*` tables.
-8. [Roadmap & Planned Integrations](./Roadmap%20&%20Planned%20Integrations.md) — email, notifications, SharePoint and other plans.
+6. [Search Lookups](./Search%20Lookups.md) — the HTMX search pickers (users, groups, countries, cities) and the country → city cascade.
+7. [Management Commands](./Management%20Commands.md) — the `manage.py` commands (sync, jobs, diagrams).
+8. [SharePoint Sync](./SharePoint%20Sync.md) — the `populate_sites` command and the local `Sharepoint*` tables.
+9. [Roadmap & Planned Integrations](./Roadmap%20&%20Planned%20Integrations.md) — email, notifications, SharePoint and other plans.
 
 ## Conventions used in these documents
 

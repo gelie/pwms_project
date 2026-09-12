@@ -1,0 +1,14 @@
+{% if groups %}
+  {% for group in groups %}
+    <div class="list-group-item d-flex align-items-center justify-content-between"
+         style="cursor: pointer"
+         onclick="selectGroup('{{ group.id }}', '{{ group.name }}')">
+      <div>
+        <div class="fw-medium">{{ group.name }}</div>
+        <div class="small text-body-secondary">{{ group.members.count }} members</div>
+      </div>
+    </div>
+  {% endfor %}
+{% else %}
+  <div class="list-group-item text-center text-body-secondary">No groups found matching your search</div>
+{% endif %}

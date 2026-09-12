@@ -556,3 +556,36 @@ html:not([data-theme]) .theme-toggle .theme-icon-when-auto {
 .group-name[data-level="5"] {
     padding-left: 5rem;
 }
+
+.input-form {
+    background-color: var(--bs-secondary-bg);
+    padding: 2rem;
+}
+
+/* HTMX searchable pickers (see templates/pwms/_lookup_field.html and
+   static/js/htmx-lookup.js). htmx has no built-in indicator styling. */
+.htmx-indicator {
+    display: none;
+}
+
+.htmx-request .htmx-indicator,
+.htmx-request.htmx-indicator {
+    display: inline-block;
+}
+
+.lookup-spinner {
+    position: absolute;
+    top: 0.55rem;
+    right: 0.75rem;
+}
+
+/* Results float over the fields below the input, so they need to clear the
+   background of the rows that follow. The z-index is load-bearing: every picker
+   wrapper is positioned (`position-relative`), so with no positive z-index here
+   the pickers that come later in the form win the tree-order tie and paint over
+   the open results (a user picker sits above the group picker on the form).
+   1050 clears Bootstrap's dropdowns (1000) and sticky bars (1020). */
+.lookup-results {
+    z-index: 1050;
+    max-height: 15rem;
+}

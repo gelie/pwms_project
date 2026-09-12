@@ -5,14 +5,22 @@ from django.contrib.auth.forms import AuthenticationForm, UsernameField
 from django.contrib.auth.views import LoginView as BaseLoginView
 from django.contrib.auth.views import LogoutView as BaseLogoutView
 from django.core.exceptions import PermissionDenied
-from django.db.models import Case, CharField, Q, Value, When
+from django.db.models import Case, CharField, IntegerField, Q, Value, When
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from .forms import DelegationReportForm, InternationalResolutionForm
-from .models import DelegationReport, Group, InternationalResolution, WorkflowType
+from .models import (
+    City,
+    Country,
+    DelegationReport,
+    Group,
+    InternationalResolution,
+    User,
+    WorkflowType,
+)
 from .services.permissions import (
     DELETE,
     EDIT,
@@ -487,3 +495,97 @@ class LogoutView(BaseLogoutView):
     def get(self, request, *args, **kwargs):
         """Render the confirmation page (the logout itself happens on POST)."""
         return self.render_to_response(self.get_context_data(**kwargs))
+
+
+# @htmx_
+def user_search(request):
+    """Search active users and return HTML results for HTMX."""
+    search_query = request.GET.get("search", "")
+
+    users = User.objects.filter(is_active=True)
+
+    if search_query:
+        users = users.filter(
+            Q(username__icontains=search_query)
+            | Q(first_name__icontains=search_query)
+            | Q(last_name__icontains=search_query)
+        )
+
+    users = users.order_by("first_name", "last_name", "username")[:20]
+
+    return render(
+        request=request,
+        template_name="pwms/partials/user_search_results.html",
+        context={"users": users},
+    )
+
+
+def group_search(request):
+    """Search groups and return HTML results for HTMX."""
+    search_query = request.GET.get("search", "")
+
+    groups = Group.objects.all()
+
+    if search_query:
+        groups = groups.filter(Q(name__icontains=search_query))
+
+    groups = groups.order_by("name")[:20]  # Limit to 20 results
+    return render(
+        request=request,
+        template_name="pwms/partials/group_search_results.html",
+        context={"groups": groups},
+    )
+
+
+def country_search(request):
+    """Search countries and return HTML results for HTMX."""
+    search_query = request.GET.get("search", "").strip()
+
+    countries = Country.objects.all()
+    order = ["name"]
+    if search_query:
+        countries = countries.filter(
+            Q(name__icontains=search_query) | Q(code__iexact=search_query)
+        ).annotate(
+            # A name that starts with the query is the likelier match: "south"
+            # should offer South Africa before French Southern Territories.
+            rank=Case(
+                When(name__istartswith=search_query, then=Value(0)),
+                default=Value(1),
+                output_field=IntegerField(),
+            )
+        )
+        order = ["rank", "name"]
+
+    return render(
+        request=request,
+        template_name="pwms/partials/country_search_results.html",
+        context={"countries": countries.order_by(*order)[:20]},
+    )
+
+
+def city_search(request):
+    """
+    Search cities and return HTML results for HTMX.
+
+    The picker sends the country it is paired with as ``country``, so a city can
+    only be chosen for the country that is already selected. An empty search
+    lists that country's largest cities, so the box doubles as a browse control.
+    """
+    search_query = request.GET.get("search", "").strip()
+    country_id = request.GET.get("country", "").strip()
+
+    cities = City.objects.select_related("country")
+    if country_id.isdigit():
+        cities = cities.filter(country_id=int(country_id))
+    if search_query:
+        cities = cities.filter(
+            Q(name__istartswith=search_query) | Q(ascii_name__istartswith=search_query)
+        )
+
+    # Largest places first, which also keeps village namesakes out of the way.
+    return render(
+        request=request,
+        template_name="pwms/partials/city_search_results.html",
+        context={"cities": cities.order_by("-population", "name")[:20]},
+    )

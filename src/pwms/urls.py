@@ -60,6 +60,13 @@ urlpatterns = [
         views.international_resolution_delete,
         name="international_resolution_delete",
     ),
+    # User search
+    path("user-search/", views.user_search, name="user_search"),
+    # Group search for dynamic lookup
+    path("group-search/", views.group_search, name="group_search"),
+    # Country / city lookup for the engagement location pickers
+    path("country-search/", views.country_search, name="country_search"),
+    path("city-search/", views.city_search, name="city_search"),
     path("groups/mine/", views.my_groups, name="my_groups"),
     path("groups/all/", views.all_groups, name="all_groups"),
     path("groups/<int:pk>/", views.group_detail, name="group_detail"),

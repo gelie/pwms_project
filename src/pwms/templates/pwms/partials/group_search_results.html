@@ -1,0 +1,10 @@
+{% for group in groups %}
+  <button type="button"
+          class="list-group-item list-group-item-action"
+          onclick="selectGroup('{{ group.pk }}', '{{ group.name|escapejs }}')">
+    <span class="fw-medium">{{ group.name }}</span>
+    {% if group.parent %}<span class="d-block small text-body-secondary">{{ group.parent.name }}</span>{% endif %}
+  </button>
+{% empty %}
+  <div class="list-group-item small text-body-secondary">No groups found matching your search</div>
+{% endfor %}

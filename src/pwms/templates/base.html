@@ -1,4 +1,5 @@
 {% load static %}
+{% load django_htmx %}
 <!DOCTYPE html>
 <html lang="en" data-bs-theme="light">
   <head>
@@ -22,10 +23,15 @@
     <link rel="stylesheet" href="{% static "css/parl-light-dark.css" %}">
     <link rel="stylesheet" href="{% static "css/style.css" %}">
     <link rel="stylesheet" href="{% static "css/fonts.css" %}">
+    {# Page-specific media, e.g. a form's {{ form.media }}. #}
+    {% block extra_head %}
+    {% endblock extra_head %}
+    {% htmx_script %}
     {# Not deferred: sets <html data-theme> during parsing, before the first paint. #}
     <script src="{% static "js/theme.js" %}"></script>
     <script src="{% static "js/bootstrap.bundle.min.js" %}" defer></script>
     <script src="{% static "js/navbar.js" %}" defer></script>
+    <script src="{% static "js/htmx-lookup.js" %}" defer></script>
     <title>PWMS</title>
   </head>
   <body>

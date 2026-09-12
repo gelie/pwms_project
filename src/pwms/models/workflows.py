@@ -1587,14 +1587,20 @@ class DelegationReport(AbstractLegislativeWorkflow):
             "future (BR02.3.5)."
         ),
     )
-    location_city = models.CharField(
-        max_length=100,
+    location_city = models.ForeignKey(
+        "City",
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
+        related_name="delegation_reports",
         help_text="Engagement location – city (BR02.3.6).",
     )
-    location_country = models.CharField(
-        max_length=100,
+    location_country = models.ForeignKey(
+        "Country",
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
+        related_name="delegation_reports",
         help_text="Engagement location – country (BR02.3.6).",
     )
     notes = models.TextField(

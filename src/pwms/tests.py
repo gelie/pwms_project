@@ -1,15 +1,22 @@
+import tempfile
 from datetime import date, timedelta
+from io import StringIO
+from pathlib import Path
 
 from auditlog.context import set_actor
 from auditlog.models import LogEntry
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.management import call_command
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from django_flatpickr.widgets import DatePickerInput, DateTimePickerInput
 
 from .models import (
+    City,
+    Country,
     DelegationParticipant,
     DelegationReport,
     EventType,
@@ -311,6 +318,17 @@ class DelegationReportTests(TestCase):
         )
         cls.wt = WorkflowType.objects.get(name="Delegation Report")
         cls.initial = cls.wt.get_initial_state()
+        cls.switzerland = Country.objects.create(
+            code="CH", iso3="CHE", name="Switzerland", continent="EU"
+        )
+        cls.geneva = City.objects.create(
+            country=cls.switzerland,
+            name="Geneva",
+            ascii_name="Geneva",
+            latitude="46.204391",
+            longitude="6.143158",
+            population=201818,
+        )
 
     def _report(self, **overrides):
         data = {
@@ -322,8 +340,8 @@ class DelegationReportTests(TestCase):
             "engagement_name": "IPU Assembly",
             "engagement_start_date": date(2026, 3, 1),
             "engagement_end_date": date(2026, 3, 5),
-            "location_city": "Geneva",
-            "location_country": "Switzerland",
+            "location_city": self.geneva,
+            "location_country": self.switzerland,
         }
         data.update(overrides)
         return DelegationReport.objects.create(**data)
@@ -780,6 +798,19 @@ class WorkflowCrudViewTests(TestCase):
     def setUp(self):
         self.client.force_login(self.user)
 
+    def _add_extra_users(self, count=11):
+        """Push the user list past the form's search-picker threshold."""
+        User = get_user_model()
+        for number in range(count):
+            User.objects.create_user(
+                username=f"extra{number}", first_name=f"Extra{number}", last_name="User"
+            )
+
+    def _add_extra_groups(self, count=11):
+        """Push the group list past the form's search-picker threshold."""
+        for number in range(count):
+            Group.objects.create(name=f"Extra group {number}")
+
     def _report_payload(self, **overrides):
         payload = {
             "workflow_type": self.report_type.pk,
@@ -1018,6 +1049,204 @@ class WorkflowCrudViewTests(TestCase):
         self.assertIn(self.report_type, offered)
         self.assertNotIn(ungrouped, offered)
 
+    def test_create_forms_use_flatpickr_date_pickers(self):
+        """Date/time fields are flatpickr widgets and the page loads their media."""
+        cases = (
+            ("pwms:delegation_report_create", "deadline", "engagement_start_date"),
+            (
+                "pwms:international_resolution_create",
+                "deadline",
+                "adoption_date",
+            ),
+        )
+        for url_name, datetime_field, date_field in cases:
+            with self.subTest(url_name=url_name):
+                response = self.client.get(reverse(url_name))
+                self.assertEqual(response.status_code, 200)
+                form = response.context["form"]
+                self.assertIsInstance(
+                    form.fields[datetime_field].widget, DateTimePickerInput
+                )
+                self.assertIsInstance(form.fields[date_field].widget, DatePickerInput)
+                # Without the package's media on the page the inputs stay plain text.
+                self.assertContains(response, "flatpickr.min.css")
+                self.assertContains(response, "flatpickr.min.js")
+                self.assertContains(response, "js/django-flatpickr.js")
+                self.assertContains(response, "data-fpconfig")
+
+    def test_group_search_returns_matching_groups_for_htmx(self):
+        """The picker's endpoint returns the results fragment, not a full page."""
+        response = self.client.get(
+            reverse("pwms:group_search"), {"search": "Test Workflow"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "pwms/partials/group_search_results.html")
+        self.assertContains(response, self.group.name)
+        self.assertContains(response, f"selectGroup('{self.group.pk}'")
+
+    def test_short_option_lists_stay_selects(self):
+        """With few options the fields keep their plain <select>."""
+        response = self.client.get(reverse("pwms:international_resolution_create"))
+
+        self.assertEqual(response.context["form"].search_pickers, set())
+        self.assertContains(response, '<select name="owner"')
+        self.assertContains(response, '<select name="assigned_to"')
+        self.assertContains(response, '<select name="responsible_group"')
+        self.assertNotContains(response, 'id="id_owner_search"')
+
+    def test_long_option_lists_become_search_pickers(self):
+        """More options than the threshold switches the fields to search fields."""
+        self._add_extra_users()
+        self._add_extra_groups()
+
+        for url_name in (
+            "pwms:delegation_report_create",
+            "pwms:international_resolution_create",
+        ):
+            with self.subTest(url_name=url_name):
+                response = self.client.get(reverse(url_name))
+                form = response.context["form"]
+
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("owner", form.search_pickers)
+                self.assertIn("assigned_to", form.search_pickers)
+                # A <select> with every active user is not rendered.
+                self.assertNotContains(response, '<select name="owner"')
+                self.assertNotContains(response, '<select name="assigned_to"')
+                self.assertContains(response, 'id="id_owner_search"')
+                self.assertContains(response, 'id="id_assigned_to_search"')
+                self.assertContains(response, f'hx-get="{reverse("pwms:user_search")}"')
+                # create defaults owner to the acting user, and the search box
+                # has to show that name or the pk looks unset.
+                self.assertContains(response, f'value="{self.user.display_name}"')
+
+    def test_group_field_becomes_a_picker_only_when_the_list_is_long(self):
+        """The group picker follows the same threshold as the user fields."""
+        url = reverse("pwms:international_resolution_create")
+        short = self.client.get(url)
+        self.assertNotIn("responsible_group", short.context["form"].search_pickers)
+
+        self._add_extra_groups()
+        long = self.client.get(url)
+        self.assertIn("responsible_group", long.context["form"].search_pickers)
+        self.assertNotContains(long, '<select name="responsible_group"')
+        self.assertContains(long, 'id="id_responsible_group_search"')
+        self.assertContains(long, f'hx-get="{reverse("pwms:group_search")}"')
+        self.assertContains(long, 'hx-target="#id_responsible_group_results"')
+
+    def test_picked_group_round_trips_through_the_form(self):
+        """What the search stores is what the model keeps, and edit shows it."""
+        self._add_extra_groups()
+        self.client.post(
+            reverse("pwms:international_resolution_create"),
+            self._resolution_payload(responsible_group=self.group.pk),
+        )
+        resolution = InternationalResolution.objects.get(title="CRUD resolution")
+        self.assertEqual(resolution.responsible_group, self.group)
+
+        response = self.client.get(
+            reverse("pwms:international_resolution_update", args=[resolution.public_id])
+        )
+        # The hidden input carries the pk; the search box carries the name.
+        self.assertContains(
+            response, f'value="{self.group.pk}" id="id_responsible_group"'
+        )
+        self.assertContains(response, f'value="{self.group.name}"')
+
+    def test_user_search_returns_matching_users_for_htmx(self):
+        """The user picker's endpoint returns the results fragment, not a page."""
+        response = self.client.get(
+            reverse("pwms:user_search"), {"search": self.user.username}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "pwms/partials/user_search_results.html")
+        self.assertContains(response, self.user.display_name)
+        self.assertContains(response, f"selectUser('{self.user.pk}'")
+
+    def test_picked_users_round_trip_through_the_form(self):
+        """Owner and assignee picked in the search are saved and shown again."""
+        self._add_extra_users()
+        assignee = get_user_model().objects.create_user(
+            username="assignee", first_name="Ada", last_name="Assignee"
+        )
+        self.client.post(
+            reverse("pwms:delegation_report_create"),
+            self._report_payload(owner=self.user.pk, assigned_to=assignee.pk),
+        )
+        report = DelegationReport.objects.get(title="CRUD report")
+        self.assertEqual(report.owner, self.user)
+        self.assertEqual(report.assigned_to, assignee)
+
+        response = self.client.get(
+            reverse("pwms:delegation_report_update", args=[report.public_id])
+        )
+        self.assertContains(response, f'value="{assignee.pk}" id="id_assigned_to"')
+        self.assertContains(response, f'value="{assignee.display_name}"')
+
+    def test_location_fields_become_linked_pickers(self):
+        """The location pair follows the threshold and is wired country -> city."""
+        url = reverse("pwms:delegation_report_create")
+        short = self.client.get(url)
+        self.assertNotIn("location_country", short.context["form"].search_pickers)
+        self.assertContains(short, '<select name="location_country"')
+
+        for number in range(11):
+            country = Country.objects.create(
+                code=chr(65 + number), name=f"Test Country {number}"
+            )
+            City.objects.create(
+                country=country,
+                name=f"Test City {number}",
+                latitude="1.5",
+                longitude="2.5",
+                population=1000,
+            )
+
+        response = self.client.get(url)
+        form = response.context["form"]
+        self.assertIn("location_country", form.search_pickers)
+        self.assertIn("location_city", form.search_pickers)
+        self.assertNotContains(response, '<select name="location_country"')
+        self.assertNotContains(response, '<select name="location_city"')
+        self.assertContains(response, 'id="id_location_country_search"')
+        self.assertContains(response, 'id="id_location_city_search"')
+        self.assertContains(response, f'hx-get="{reverse("pwms:country_search")}"')
+        self.assertContains(response, f'hx-get="{reverse("pwms:city_search")}"')
+        # The city search sends the selected country, and the country picker
+        # resets the city when it changes.
+        self.assertContains(
+            response,
+            'hx-vals=\'js:{"country": document.getElementById("id_location_country").value}\'',
+        )
+        self.assertContains(response, 'data-clears="#id_location_city_picker"')
+
+    def test_location_round_trips_through_the_form(self):
+        """A picked country/city is saved and shown again on the edit form."""
+        country = Country.objects.create(code="ZZ", iso3="ZZZ", name="Testland")
+        city = City.objects.create(
+            country=country,
+            name="Testville",
+            latitude="1.5",
+            longitude="2.5",
+            population=42,
+        )
+        self.client.post(
+            reverse("pwms:delegation_report_create"),
+            self._report_payload(location_country=country.pk, location_city=city.pk),
+        )
+        report = DelegationReport.objects.get(title="CRUD report")
+        self.assertEqual(report.location_country, country)
+        self.assertEqual(report.location_city, city)
+
+        response = self.client.get(
+            reverse("pwms:delegation_report_update", args=[report.public_id])
+        )
+        form = response.context["form"]
+        self.assertEqual(str(form["location_country"].value()), str(country.pk))
+        self.assertEqual(form.picker_labels["location_city"], "Testville")
+
     def test_update_and_delete_require_edit_and_delete_permission(self):
         """A non-owner without instance access gets 403 on edit/delete."""
         self.client.post(
@@ -1083,6 +1312,107 @@ class WorkflowCrudViewTests(TestCase):
         response = self.client.get(reverse("pwms:delegation_reports"))
         self.assertContains(response, "Owner only report")
         self.assertContains(response, report.reference_number)
+
+
+class PlaceDataTests(TestCase):
+    """The bundled country/city reference data and the fragments it feeds."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = get_user_model().objects.create_user(
+            username="places", password="pw"
+        )
+        cls.south_africa = Country.objects.create(
+            code="ZA", iso3="ZAF", name="South Africa", continent="AF"
+        )
+        cls.switzerland = Country.objects.create(
+            code="CH", iso3="CHE", name="Switzerland", continent="EU"
+        )
+        # Contains "south" without starting with it, so the ranking rule has
+        # something to place below South Africa.
+        cls.french_southern = Country.objects.create(
+            code="TF",
+            iso3="ATF",
+            name="French Southern Territories",
+            continent="AN",
+        )
+        cls.cape_town = cls._city(cls.south_africa, "Cape Town", 4772846)
+        cls.geneva = cls._city(cls.switzerland, "Geneva", 201818)
+        cls.zurich = cls._city(cls.switzerland, "Zurich", 341730)
+
+    @staticmethod
+    def _city(country, name, population):
+        return City.objects.create(
+            country=country,
+            name=name,
+            ascii_name=name,
+            latitude="1.5",
+            longitude="2.5",
+            population=population,
+        )
+
+    def setUp(self):
+        self.client.force_login(self.user)
+
+    def test_country_search_fragment_matches_name_and_code(self):
+        response = self.client.get(reverse("pwms:country_search"), {"search": "swit"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "pwms/partials/country_search_results.html")
+        self.assertContains(response, "Switzerland")
+        self.assertContains(response, f"selectOption('{self.switzerland.pk}'")
+
+    def test_country_search_ranks_prefix_matches_first(self):
+        response = self.client.get(reverse("pwms:country_search"), {"search": "south"})
+
+        names = [country.name for country in response.context["countries"]]
+        self.assertEqual(names[0], "South Africa")
+        self.assertIn("French Southern Territories", names)
+
+    def test_city_search_is_scoped_to_the_country_it_is_sent(self):
+        response = self.client.get(
+            reverse("pwms:city_search"),
+            {"country": self.switzerland.pk, "search": "z"},
+        )
+
+        self.assertContains(response, "Zurich")
+        self.assertNotContains(response, "Cape Town")
+
+    def test_city_search_ranks_biggest_places_first(self):
+        response = self.client.get(
+            reverse("pwms:city_search"), {"country": self.switzerland.pk}
+        )
+
+        names = [city.name for city in response.context["cities"]]
+        self.assertEqual(names, ["Zurich", "Geneva"])
+
+    def test_city_search_ignores_an_unusable_country_value(self):
+        response = self.client.get(
+            reverse("pwms:city_search"), {"country": "not-an-id", "search": "cap"}
+        )
+
+        self.assertContains(response, "Cape Town")
+
+    def test_place_loader_reads_the_bundled_layout_and_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            data_dir = Path(tmp)
+            (data_dir / "countries.csv").write_text(
+                "code,iso3,name,continent\nZZ,ZZZ,Zedland,AF\n", encoding="utf-8"
+            )
+            (data_dir / "cities.csv").write_text(
+                "name,ascii_name,country_code,latitude,longitude,population\n"
+                "Testville,Testville,ZZ,1.5,2.5,42\n",
+                encoding="utf-8",
+            )
+            first = StringIO()
+            call_command("load_places", data_dir=data_dir, stdout=first)
+            second = StringIO()
+            call_command("load_places", data_dir=data_dir, stdout=second)
+
+        self.assertIn("cities: 1 created, 0 already present", first.getvalue())
+        self.assertIn("cities: 0 created, 1 already present", second.getvalue())
+        self.assertEqual(Country.objects.filter(code="ZZ").count(), 1)
+        self.assertEqual(City.objects.get(name="Testville").country.code, "ZZ")
 
 
 class PermissionResolverTests(TestCase):

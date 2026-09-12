@@ -1,0 +1,10 @@
+{% for country in countries %}
+  <button type="button"
+          class="list-group-item list-group-item-action"
+          onclick="selectOption('{{ country.pk }}', '{{ country.name|escapejs }}')">
+    <span class="fw-medium">{{ country.name }}</span>
+    <span class="d-block small text-body-secondary">{{ country.code }}</span>
+  </button>
+{% empty %}
+  <div class="list-group-item small text-body-secondary">No countries found matching your search</div>
+{% endfor %}

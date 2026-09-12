@@ -232,7 +232,7 @@ and parents many `DelegationParticipant` rows.
 | `reference_number` (unique) | system-generated `DR-<year>-<sequence>` (BR02.6) |
 | `engagement_name` | international engagement / forum (BR02.3.3) |
 | `engagement_start_date`, `engagement_end_date` | validated: not future, end ≥ start (BR02.3.4/5) |
-| `location_city`, `location_country` | engagement location (BR02.3.6) |
+| `location_city`, `location_country` | engagement location (BR02.3.6); FKs to `City` / `Country` |
 | `notes` | additional notes / follow-up action (BR02.3.13) |
 | `report_document_url` | SharePoint link to the delegation report (BR02.3.14) |
 | read-only `atc_reference`, `atc_publication_date`, `atc_page_number`, `atc_document_url` | latest values from the `updates` history (BR03.5.3/5) |
@@ -468,3 +468,39 @@ changes for `referred_to_groups`). Reached via `auditlog.models.LogEntry`
 - **Integer PK is the GFK target** (`object_id` stores `pwms_internationalresolution.id`).
 - **New concrete workflow model checklist:** subclass the abstract base, run
   `makemigrations`, register with `auditlog` in `apps.py`, add an audit API view.
+
+---
+
+## 7. Reference data — countries & cities
+
+`pwms/models/geography.py`. The two tables are reference data: nothing in the
+app creates them, and they are filled by `manage.py load_places` from the bundled
+GeoNames extract (see [the data README](../data/README.md) and
+[Management Commands](./Management%20Commands.md)).
+
+### `Country(BaseModel)`
+
+| Field | Notes |
+| --- | --- |
+| `code` (unique) | ISO 3166-1 alpha-2, e.g. `ZA`; also matched when searching |
+| `iso3` | ISO 3166-1 alpha-3 |
+| `name` (indexed) | display name |
+| `continent` | GeoNames continent code (`AF`, `AS`, `EU`, `NA`, `OC`, `SA`, `AN`) |
+
+### `City(BaseModel)`
+
+| Field | Notes |
+| --- | --- |
+| `country` (FK `Country`, cascade) | `related_name="cities"` |
+| `name` | populated place, as GeoNames spells it |
+| `ascii_name` | diacritic-free spelling; searched alongside `name` |
+| `latitude`, `longitude` | decimal degrees (9,6) |
+| `population` | used to rank search results; `0` when the source has no figure |
+
+Indexed on `(country, name)` and `(country, ascii_name)`, which is what the
+`pwms:city_search` fragment filters on. 47,360 rows: every `cities15000` place
+plus all 13,529 South African populated places.
+
+> Contains data from [GeoNames](https://www.geonames.org/), licensed
+> [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Keep that
+> attribution wherever this data is published.

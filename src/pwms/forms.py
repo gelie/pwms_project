@@ -14,6 +14,7 @@ created with.
 
 from django import forms
 from django.contrib.auth import get_user_model
+from django_flatpickr.widgets import DatePickerInput, DateTimePickerInput
 
 from .models import (
     DelegationReport,
@@ -24,9 +25,9 @@ from .models import (
 
 User = get_user_model()
 
-#: ``datetime-local`` inputs post ``2026-09-11T14:30``; the ISO variants are
-#: accepted too so a value submitted by an older browser (or a script) is not
-#: silently rejected.
+#: The flatpickr datetime widget posts ``2026-09-11 14:30:00`` (its
+#: ``dateFormat`` is ``Y-m-d H:i:S``); the ISO variants are accepted too so a
+#: value submitted by a non-JS browser (or a script) is not silently rejected.
 DATETIME_INPUT_FORMATS = [
     "%Y-%m-%dT%H:%M",
     "%Y-%m-%dT%H:%M:%S",
@@ -53,6 +54,19 @@ class WorkflowInstanceFormMixin:
     #: Workflow type pre-selected when creating a new instance.
     initial_workflow_type = ""
 
+    #: Option lists longer than this are unusable as a <select>, so those fields
+    #: render as HTMX search pickers instead (see ``pwms/_picker_field.html``).
+    search_picker_threshold = 10
+
+    #: Fields that may become search pickers, checked in this order.
+    search_picker_fields = (
+        "owner",
+        "assigned_to",
+        "responsible_group",
+        "location_country",
+        "location_city",
+    )
+
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.user = user
@@ -62,12 +76,25 @@ class WorkflowInstanceFormMixin:
         for name in ("owner", "assigned_to"):
             if name in self.fields:
                 self.fields[name].queryset = users
-                if not self.fields[name].required:
-                    self.fields[name].empty_label = "—"
         if "responsible_group" in self.fields:
             self.fields["responsible_group"].queryset = self.fields[
                 "responsible_group"
             ].queryset.order_by("name")
+
+        # Long option lists become search pickers: the widget then posts only the
+        # chosen pk, and the queryset is left to validate it. Short lists stay a
+        # plain <select> so the choice is visible without any JavaScript.
+        self.search_pickers = set()
+        for name in self.search_picker_fields:
+            field = self.fields.get(name)
+            queryset = getattr(field, "queryset", None)
+            if queryset is None:
+                continue
+            if queryset.count() > self.search_picker_threshold:
+                field.widget = forms.HiddenInput()
+                self.search_pickers.add(name)
+            elif not field.required:
+                field.empty_label = "—"
 
         if self.is_create:
             self.fields.pop("current_state", None)
@@ -92,6 +119,32 @@ class WorkflowInstanceFormMixin:
         if state is None:
             state = workflow_type.states.order_by("order", "name").first()
         return state
+
+    @property
+    def picker_labels(self):
+        """
+        Label of the selected option for each search picker, keyed by field.
+
+        The pickers (see ``pwms/_lookup_field.html``) only post a pk, so the page
+        needs the matching label to prefill the visible search box. It comes from
+        the instance on an update form, or from the form's initial on create
+        (``owner`` defaults to the acting user), which keeps the box and the pk
+        that would be submitted in step.
+        """
+        labels = {}
+        for name in self.search_picker_fields:
+            field = self.fields.get(name)
+            queryset = getattr(field, "queryset", None)
+            if queryset is None:
+                continue
+            selected = getattr(self.instance, name, None)
+            value = selected if selected is not None else self.initial.get(name)
+            if value is None:
+                continue
+            option = queryset.filter(pk=getattr(value, "pk", value)).first()
+            if option is not None:
+                labels[name] = getattr(option, "display_name", None) or str(option)
+        return labels
 
     def clean(self):
         cleaned = super().clean()
@@ -122,18 +175,15 @@ class DelegationReportForm(WorkflowInstanceFormMixin, forms.ModelForm):
 
     engagement_start_date = forms.DateField(
         required=False,
-        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+        widget=DatePickerInput(attrs={"class": "form-control"}),
     )
     engagement_end_date = forms.DateField(
         required=False,
-        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+        widget=DatePickerInput(attrs={"class": "form-control"}),
     )
     deadline = forms.DateTimeField(
         required=False,
-        widget=forms.DateTimeInput(
-            attrs={"class": "form-control", "type": "datetime-local"},
-            format="%Y-%m-%dT%H:%M",
-        ),
+        widget=DateTimePickerInput(attrs={"class": "form-control"}),
         input_formats=DATETIME_INPUT_FORMATS,
     )
 
@@ -161,12 +211,16 @@ class DelegationReportForm(WorkflowInstanceFormMixin, forms.ModelForm):
             "current_state": forms.Select(attrs={"class": "form-select"}),
             "title": forms.TextInput(attrs={"class": "form-control"}),
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            # owner/assigned_to are swapped to search pickers by the mixin when
+            # the user list is long, so they keep their select widget here.
             "owner": forms.Select(attrs={"class": "form-select"}),
             "assigned_to": forms.Select(attrs={"class": "form-select"}),
             "priority": forms.Select(attrs={"class": "form-select"}),
             "engagement_name": forms.TextInput(attrs={"class": "form-control"}),
-            "location_city": forms.TextInput(attrs={"class": "form-control"}),
-            "location_country": forms.TextInput(attrs={"class": "form-control"}),
+            "location_city": forms.Select(attrs={"class": "form-select"}),
+            # Both locations are swapped to search pickers by the mixin when the
+            # place tables are populated (country -> city is a cascade).
+            "location_country": forms.Select(attrs={"class": "form-select"}),
             "notes": forms.Textarea(attrs={"class": "form-control", "rows": 4}),
             "report_document_url": forms.TextInput(
                 attrs={"class": "form-control", "type": "url"}
@@ -181,14 +235,11 @@ class InternationalResolutionForm(WorkflowInstanceFormMixin, forms.ModelForm):
 
     adoption_date = forms.DateField(
         required=False,
-        widget=forms.DateInput(attrs={"class": "form-control", "type": "date"}),
+        widget=DatePickerInput(attrs={"class": "form-control"}),
     )
     deadline = forms.DateTimeField(
         required=False,
-        widget=forms.DateTimeInput(
-            attrs={"class": "form-control", "type": "datetime-local"},
-            format="%Y-%m-%dT%H:%M",
-        ),
+        widget=DateTimePickerInput(attrs={"class": "form-control"}),
         input_formats=DATETIME_INPUT_FORMATS,
     )
 
@@ -214,6 +265,8 @@ class InternationalResolutionForm(WorkflowInstanceFormMixin, forms.ModelForm):
             "current_state": forms.Select(attrs={"class": "form-select"}),
             "title": forms.TextInput(attrs={"class": "form-control"}),
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            # owner/assigned_to are swapped to search pickers by the mixin when
+            # the user list is long, so they keep their select widget here.
             "owner": forms.Select(attrs={"class": "form-select"}),
             "assigned_to": forms.Select(attrs={"class": "form-select"}),
             "priority": forms.Select(attrs={"class": "form-select"}),
@@ -221,6 +274,7 @@ class InternationalResolutionForm(WorkflowInstanceFormMixin, forms.ModelForm):
             "resolution_text": forms.Textarea(
                 attrs={"class": "form-control", "rows": 4}
             ),
+            # Swapped to a search picker by the mixin when there are many groups.
             "responsible_group": forms.Select(attrs={"class": "form-select"}),
             "implementation_progress": forms.Textarea(
                 attrs={"class": "form-control", "rows": 4}
