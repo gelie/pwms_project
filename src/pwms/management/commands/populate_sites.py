@@ -15,9 +15,9 @@ from pwms.models import SharepointDrive, SharepointSite, SharepointSiteMember, U
 from pwms.utils.sharepoint import (
     get_all_sites,
     get_site_drives,
-    get_site_permissions,
     get_token,
-    iter_permission_identities,
+    get_user_list,
+    iter_user_list_members,
 )
 
 # Dedicated logger for this command – writes to logs/populate_sites.log and is
@@ -44,8 +44,10 @@ class Command(BaseCommand):
     (``<LOG_DIR>/populate_sites.log``) in addition to stdout, so a run can be
     audited without trawling the project-wide ``pwms.log``.
 
-    Sites whose ``/sites/{id}/permissions`` call fails are collected into a CSV
-    report (``--failures-file``) suitable for sending to the SharePoint admin.
+    In addition, each site's ``User Information List`` is read to populate the
+    ``SharepointSiteMember`` table (this only needs ``Sites.Read.All``). Sites
+    whose user list cannot be read are collected into a CSV report
+    (``--failures-file``) suitable for sending to the SharePoint admin.
     """
 
     help = "Populate or update the Site and Drive tables with data fetched from SharePoint."
@@ -68,8 +70,8 @@ class Command(BaseCommand):
     _failure_actions: ClassVar[dict[int, str]] = {
         401: "App-only token was rejected – confirm CLIENT_ID/CLIENT_SECRET are "
         "correct and that the app registration still has admin consent.",
-        403: "Grant the calling app the Sites.Manage.All (or Sites.FullControl.All) "
-        "application permission with tenant-wide admin consent, then re-run the sync.",
+        403: "Grant the calling app the Sites.Read.All application permission "
+        "with tenant-wide admin consent, then re-run the sync.",
         404: "Site not found or not visible to the app – confirm the site still "
         "exists and that the app has been granted access to it.",
         429: "Graph throttled the request – re-run the sync later.",
@@ -124,8 +126,8 @@ class Command(BaseCommand):
         logger.log(level, message, stacklevel=2)
         self.stdout.write(style(message))
 
-    def _describe_permission_failure(self, site, exc) -> dict:
-        """Normalise one ``get_site_permissions`` failure into a report row."""
+    def _describe_member_failure(self, site, exc) -> dict:
+        """Normalise one ``get_user_list`` failure into a report row."""
         status = getattr(getattr(exc, "response", None), "status_code", "") or ""
         if status:
             action = self._failure_actions.get(
@@ -144,7 +146,8 @@ class Command(BaseCommand):
             "Site ID": site.site_id,
             "HTTP Status": status,
             "Graph Endpoint": (
-                f"https://graph.microsoft.com/v1.0/sites/{site.site_id}/permissions"
+                f"https://graph.microsoft.com/v1.0/sites/{site.site_id}"
+                "/lists/User Information List/items"
             ),
             "Error": " ".join(str(exc).split()),
             "Recommended Action": action,
@@ -399,16 +402,16 @@ class Command(BaseCommand):
     def _process_site_members(self, token_data, failures_file: str | None = None):
         """Synchronise ``SharepointSiteMember`` rows for every stored site.
 
-        The remote site "members" are obtained from Graph's site permissions
-        (``GET /sites/{id}/permissions``). Identities that resolve to people
-        are matched to local :class:`User` records by email / UPN and stored
-        with a ``(site, user)`` natural key. Members who no longer hold access
-        are deactivated rather than deleted.
+        The remote site "members" are read from each site's ``User Information
+        List`` (``GET /sites/{id}/lists/User Information List/items?expand=fields``).
+        Entries that describe a real person are matched to local :class:`User`
+        records by e-mail / username and stored with a ``(site, user)`` natural
+        key. Members who no longer appear are deactivated rather than deleted.
 
-        Requires the application token to be granted ``Sites.Manage.All`` /
-        ``Sites.FullControl.All``; sites where that call is forbidden are
-        reported and skipped (the site/drive sync is unaffected). Those sites
-        are also written to ``failures_file`` (default
+        This endpoint only needs the ``Sites.Read.All`` application permission
+        (not ``Sites.Manage.All``). Sites where the call fails are reported and
+        skipped (the site/drive sync is unaffected). Those sites are also written
+        to ``failures_file`` (default
         ``<LOG_DIR>/site_member_failures_<timestamp>.csv``) so the failures can
         be handed to a SharePoint admin.
         """
@@ -432,41 +435,29 @@ class Command(BaseCommand):
 
         for site in SharepointSite.objects.all().only("id", "site_id", "name"):
             try:
-                response = asyncio.run(get_site_permissions(token_data, site.site_id))
+                response = asyncio.run(get_user_list(token_data, site.site_id))
             except Exception as e:
                 self._log(
                     self.style.WARNING,
                     f"Site members unavailable for {site.name}: {e!s}",
                     level=logging.WARNING,
                 )
-                failures.append(self._describe_permission_failure(site, e))
+                failures.append(self._describe_member_failure(site, e))
                 total["sites_skipped"] += 1
                 continue
 
-            # People actually granted access (users/site users), lower-cased.
+            # Real people from the User Information List, lower-cased for matching.
             matched_users = {}
             unmatched = 0
-            for permission in response.get("value", []):
-                for identity in iter_permission_identities(permission):
-                    if identity["kind"] != "user":
-                        continue  # groups are not individual people here
-                    key = (
-                        (
-                            identity.get("email")
-                            or identity.get("upn")
-                            or identity.get("display_name")
-                            or ""
-                        )
-                        .strip()
-                        .lower()
-                    )
-                    if not key:
-                        continue
-                    user = user_by_email.get(key) or user_by_username.get(key)
-                    if user is None:
-                        unmatched += 1
-                        continue
-                    matched_users[user.id] = user
+            for member in iter_user_list_members(response):
+                key = member["email"] or member["username"]
+                if not key:
+                    continue
+                user = user_by_email.get(key) or user_by_username.get(key)
+                if user is None:
+                    unmatched += 1
+                    continue
+                matched_users[user.id] = user
 
             with transaction.atomic():
                 existing = SharepointSiteMember.objects.filter(site=site)
@@ -484,7 +475,7 @@ class Command(BaseCommand):
                     SharepointSiteMember.objects.bulk_create(to_create)
                     total["created"] += len(to_create)
 
-                # Deactivate rows for members who no longer have access.
+                # Deactivate rows for members who no longer appear.
                 deactivate = [
                     existing_by_user[uid]
                     for uid in (active_user_ids - set(matched_users.keys()))
@@ -503,11 +494,11 @@ class Command(BaseCommand):
             "Finished processing site members – "
             f"{total['created']} created, {total['deactivated']} deactivated, "
             f"{total['unmatched']} remote principals had no local user, "
-            f"{total['sites_skipped']} site(s) skipped (permissions API unavailable).",
+            f"{total['sites_skipped']} site(s) skipped (user list unavailable).",
         )
 
         # Hand-off report for the SharePoint admin: one row per site whose
-        # ``/sites/{id}/permissions`` call failed.
+        # ``User Information List`` call failed.
         if failures:
             report_path = (
                 Path(failures_file)
@@ -525,5 +516,5 @@ class Command(BaseCommand):
         else:
             self._log(
                 self.style.SUCCESS,
-                "No site-member permission failures – no report written.",
+                "No site-member user-list failures – no report written.",
             )

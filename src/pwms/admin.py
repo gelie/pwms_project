@@ -118,6 +118,20 @@ class GroupMembershipAdmin(admin.ModelAdmin):
     ordering = ("group", "-start_date")
 
 
+class SharepointSiteMemberInline(admin.TabularInline):
+    """Show and edit a site's members directly on the site change page."""
+
+    model = SharepointSiteMember
+    extra = 0
+    fields = ("user", "is_active", "date_added")
+    readonly_fields = ("date_added",)
+    autocomplete_fields = ("user",)
+    ordering = ("user__last_name", "user__first_name")
+    show_change_link = True
+    verbose_name = "member"
+    verbose_name_plural = "members"
+
+
 @admin.register(SharepointSite)
 class SharepointSiteAdmin(admin.ModelAdmin):
     """Admin for the mirrored ``SharepointSite`` rows."""
@@ -132,6 +146,7 @@ class SharepointSiteAdmin(admin.ModelAdmin):
     list_filter = ("is_personal_site",)
     search_fields = ("name", "url", "site_id")
     ordering = ("name",)
+    inlines = (SharepointSiteMemberInline,)
 
 
 @admin.register(SharepointSiteMember)

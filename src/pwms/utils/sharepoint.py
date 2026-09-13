@@ -3,6 +3,7 @@ import logging
 import httpx
 from django.conf import settings
 from django.utils import timezone
+
 from pwms.models import SharepointToken
 
 logger = logging.getLogger(__name__)
@@ -253,6 +254,81 @@ def iter_permission_identities(permission: dict):
                         or ""
                     ),
                 }
+
+
+async def get_user_list(token_data: dict, site_id: str):
+    """List the ``User Information List`` entries for a site, with pagination.
+
+    Unlike ``GET /sites/{site-id}/permissions`` (which only exposes direct role
+    assignments and requires ``Sites.Manage.All``), the User Information List is
+    readable with ``Sites.Read.All`` and contains every principal that has been
+    resolved on the site. Items are returned with their ``fields`` expanded so
+    callers can inspect the display name, e-mail and login name.
+    """
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise Exception("No access_token found in token data")
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+    url = (
+        f"https://graph.microsoft.com/v1.0/sites/{site_id}"
+        "/lists/User%20Information%20List/items?expand=fields&$top=100"
+    )
+    items = []
+
+    async with httpx.AsyncClient() as client:
+        while url:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            items.extend(data.get("value") or [])
+            url = data.get("@odata.nextLink")
+
+    return {"value": items}
+
+
+def _user_list_content_type(item: dict) -> str:
+    """Return the content-type name for a User Information List item."""
+    return (
+        (item.get("contentType") or {}).get("name")
+        or (item.get("fields") or {}).get("ContentType")
+        or ""
+    )
+
+
+def is_human_member(item: dict) -> bool:
+    """Return ``True`` when a User Information List item is a real person.
+
+    Excludes the System Account, service accounts and app principals, which are
+    also typed as ``Person`` but have no mailbox or a non-membership login name.
+    """
+    fields = item.get("fields") or {}
+    return (
+        _user_list_content_type(item) == "Person"
+        and fields.get("Title") != "System Account"
+        and bool(fields.get("EMail"))
+        and str(fields.get("Name", "")).startswith("i:0#.f|membership|")
+    )
+
+
+def iter_user_list_members(response: dict):
+    """Yield the human members from a User Information List response.
+
+    Each yielded dict contains the fields needed to match a member against a
+    local :class:`~pwms.models.User` (``email``/``username`` normalised to lower
+    case) plus ``display_name`` and ``is_site_admin`` for reporting.
+    """
+    for item in response.get("value") or []:
+        if not is_human_member(item):
+            continue
+        fields = item.get("fields") or {}
+        yield {
+            "display_name": fields.get("Title") or "",
+            "name": fields.get("Name") or "",
+            "email": (fields.get("EMail") or "").strip().lower(),
+            "username": (fields.get("UserName") or "").strip().lower(),
+            "is_site_admin": bool(fields.get("IsSiteAdmin")),
+        }
 
 
 async def get_drive_items(token_data: dict, drive_id: str):
