@@ -1,0 +1,344 @@
+{% extends "base.html" %}
+{% block title %}{{ bill.bill_number }}{% endblock title %}
+{% block content %}
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:workflows" %}">Workflows</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:bills" %}">Bills</a>
+      </li>
+      <li class="breadcrumb-item active" aria-current="page">{{ bill.bill_number }}</li>
+    </ol>
+  </nav>
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+      <h1 class="mb-1">{{ bill.title }}</h1>
+      <p class="text-muted mb-0">{{ bill.bill_number }}</p>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <span class="badge text-bg-secondary">{{ bill.current_state.name }}</span>
+      <span class="badge text-bg-info">{{ bill.public_status }}</span>
+      {% if bill.overdue_identifier %}
+        <span class="badge text-bg-danger">{{ bill.overdue_identifier }}</span>
+      {% endif %}
+      <span class="badge text-bg-secondary">{{ bill.get_priority_display }} priority</span>
+      {% if perms.edit %}
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{% url "pwms:bill_update" bill.public_id %}">
+          {% lucide "pencil" size=16 %} Edit
+        </a>
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{% url "pwms:bill_version_create" bill.public_id %}">
+          {% lucide "file-plus" size=16 %} Record version
+        </a>
+      {% endif %}
+      {% if perms.delete %}
+        <a class="btn btn-sm btn-outline-danger"
+           href="{% url "pwms:bill_delete" bill.public_id %}">
+          {% lucide "trash-2" size=16 %} Delete
+        </a>
+      {% endif %}
+    </div>
+  </div>
+  {% if parent %}
+    <p>
+      <span class="text-muted">Parent workflow:</span>
+      {% if parent_url %}
+        <a href="{{ parent_url }}">{{ parent }}</a>
+      {% else %}
+        {{ parent }}
+      {% endif %}
+    </p>
+  {% endif %}
+  <h2 class="h4">Details</h2>
+  <div class="table-responsive mb-4">
+    <table class="table align-middle">
+      <caption class="visually-hidden">Bill details</caption>
+      <tbody>
+        <tr>
+          <th scope="row">Workflow type</th>
+          <td>{{ bill.workflow_type.name }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Current state</th>
+          <td>{{ bill.current_state.name }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Public status</th>
+          <td>{{ bill.public_status }}</td>
+        </tr>
+        <tr>
+          <th scope="row">B-number</th>
+          <td>{{ bill.bill_number }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Short title</th>
+          <td>{{ bill.short_title|default:"—" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Bill type</th>
+          <td>{{ bill.get_bill_type_display|default:"—" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">House of introduction</th>
+          <td>{{ bill.get_house_of_origin_display|default:"—" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Sponsor</th>
+          <td>{{ bill.sponsor|default:"—" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Introduced date</th>
+          <td>{{ bill.introduced_date|date:"Y-m-d"|default:"—" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Responsible committee</th>
+          <td>
+            {% if bill.responsible_committee %}
+              <a href="{% url "pwms:group_detail" bill.responsible_committee.pk %}">{{ bill.responsible_committee.name }}</a>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Current version</th>
+          <td>{{ bill.current_version|default:"—" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">ATC reference</th>
+          <td>{{ bill.atc_reference|default:"—" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Order paper reference</th>
+          <td>{{ bill.order_paper_reference|default:"—" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Bill document</th>
+          <td>
+            {% if bill.bill_document_url %}
+              <a href="{{ bill.bill_document_url }}">Download</a>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Notes</th>
+          <td>{{ bill.notes|linebreaks|default:"—" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Description</th>
+          <td>{{ bill.description|linebreaks|default:"—" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Owner</th>
+          <td>{{ bill.owner.get_full_name|default:bill.owner.get_username }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Assigned to</th>
+          <td>
+            {% if bill.assigned_to %}
+              {{ bill.assigned_to.get_full_name|default:bill.assigned_to.get_username }}
+              {% if bill.assigned_to_email %}<span class="text-muted">({{ bill.assigned_to_email }})</span>{% endif %}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th scope="row">Due date</th>
+          <td>{{ bill.deadline|date:"Y-m-d H:i"|default:"—" }}</td>
+        </tr>
+        <tr>
+          <th scope="row">Created / updated</th>
+          <td>
+            {{ bill.created_at|date:"Y-m-d H:i" }} ·
+            {{ bill.updated_at|date:"Y-m-d H:i" }}
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <h2 class="h4">Version history ({{ versions|length }})</h2>
+  <div class="table-responsive mb-4">
+    <table class="table table-striped table-hover align-middle">
+      <caption class="visually-hidden">Preserved bill versions, newest first</caption>
+      <thead>
+        <tr>
+          <th scope="col">Version</th>
+          <th scope="col">Type</th>
+          <th scope="col">Date</th>
+          <th scope="col">Document</th>
+          <th scope="col">Recorded by</th>
+          <th scope="col">Notes</th>
+          <th scope="col" class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for version in versions %}
+          <tr>
+            <td>
+              {{ version.version_label }}
+              {% if version.is_current %}<span class="badge text-bg-success">Current</span>{% endif %}
+            </td>
+            <td>{{ version.get_version_type_display }}</td>
+            <td>{{ version.version_date|date:"Y-m-d" }}</td>
+            <td>
+              {% if version.document_url %}
+                <a href="{{ version.document_url }}">Download</a>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>
+              {% if version.recorded_by %}
+                {{ version.recorded_by.get_full_name|default:version.recorded_by.get_username }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>{{ version.notes|default:"—" }}</td>
+            <td class="text-end">
+              {% if perms.edit %}
+                <a class="btn btn-sm btn-outline-secondary"
+                   href="{% url "pwms:bill_version_update" bill.public_id version.public_id %}">Edit</a>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="7" class="text-center text-muted py-4">No versions recorded yet.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <h2 class="h4">Referrals ({{ referrals|length }})</h2>
+  <div class="table-responsive mb-4">
+    <table class="table table-striped table-hover align-middle">
+      <caption class="visually-hidden">Groups this bill was referred to</caption>
+      <thead>
+        <tr>
+          <th scope="col">Referred to</th>
+          <th scope="col">Referred by</th>
+          <th scope="col">Due date</th>
+          <th scope="col">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for referral in referrals %}
+          <tr>
+            <td>
+              <a href="{% url "pwms:group_detail" referral.referred_to.pk %}">{{ referral.referred_to.name }}</a>
+            </td>
+            <td>
+              {% if referral.referred_by %}
+                {{ referral.referred_by.get_full_name|default:referral.referred_by.get_username }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>
+              {{ referral.due_date|date:"Y-m-d H:i"|default:"—" }}
+              {% if referral.is_overdue %}<span class="badge text-bg-danger">Overdue</span>{% endif %}
+            </td>
+            <td>
+              {% if referral.status == "open" %}
+                <span class="badge text-bg-warning">{{ referral.get_status_display }}</span>
+              {% elif referral.status == "responded" %}
+                <span class="badge text-bg-success">{{ referral.get_status_display }}</span>
+              {% elif referral.status == "expired" %}
+                <span class="badge text-bg-danger">{{ referral.get_status_display }}</span>
+              {% else %}
+                <span class="badge text-bg-secondary">{{ referral.get_status_display }}</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="text-center text-muted py-4">This bill has not been referred.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <h2 class="h4">Available transitions ({{ transitions|length }})</h2>
+  <div class="table-responsive mb-4">
+    <table class="table table-striped align-middle">
+      <caption class="visually-hidden">Transitions available from the current state</caption>
+      <thead>
+        <tr>
+          <th scope="col">Transition</th>
+          <th scope="col">To state</th>
+          <th scope="col">Comment required</th>
+          <th scope="col">Conditions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for transition in transitions %}
+          <tr>
+            <td>{{ transition.name }}</td>
+            <td>{{ transition.to_state.name }}</td>
+            <td>{{ transition.requires_comment|yesno:"Yes,No" }}</td>
+            <td>
+              {% for condition in transition.conditions.all %}
+                <span class="badge text-bg-secondary">{{ condition.get_condition_type_display }}</span>
+              {% empty %}
+                —
+              {% endfor %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="text-center text-muted py-4">
+              No transitions are defined from “{{ bill.current_state.name }}”.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <h2 class="h4">Audit trail ({{ transition_logs|length }})</h2>
+  <div class="table-responsive">
+    <table class="table table-striped align-middle">
+      <caption class="visually-hidden">Workflow audit trail</caption>
+      <thead>
+        <tr>
+          <th scope="col">When</th>
+          <th scope="col">Action</th>
+          <th scope="col">From → to</th>
+          <th scope="col">Actor</th>
+          <th scope="col">Notes</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in transition_logs %}
+          <tr>
+            <td>{{ entry.timestamp|date:"Y-m-d H:i" }}</td>
+            <td>{{ entry.action }}</td>
+            <td>
+              {{ entry.from_state.name|default:"—" }}
+              {% lucide "arrow-right" size=14 %}
+              {{ entry.to_state.name|default:"—" }}
+            </td>
+            <td>
+              {% if entry.actor %}
+                {{ entry.actor.get_full_name|default:entry.actor.get_username }}
+              {% else %}
+                System
+              {% endif %}
+            </td>
+            <td>{{ entry.notes|default:"—" }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="5" class="text-center text-muted py-4">No audit entries yet.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endblock content %}

@@ -1,10 +1,10 @@
 # PWMS — Parliamentary Workflow Management System
 
 PWMS is a Django-based parliamentary workflow management system that models how
-legislative instruments (delegation reports, international resolutions and
-international agreements today; Bills, Motions, Questions planned) move through
-Parliament — Drafting → Submission → Committee → Gazetting, etc. — while
-enforcing **who** may act at each step.
+legislative instruments (delegation reports, international resolutions,
+international agreements and bills today; Motions, Questions planned) move
+through Parliament — Drafting → Submission → Committee → Gazetting, etc. —
+while enforcing **who** may act at each step.
 
 Every workflow instance shares one schema, one reusable *state machine*, and a
 ContentType-linked RBAC layer, and everything that happens to an instrument is

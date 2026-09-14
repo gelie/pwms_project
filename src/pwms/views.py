@@ -12,11 +12,15 @@ from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from .forms import (
+    BillForm,
+    BillVersionForm,
     DelegationReportForm,
     InternationalAgreementForm,
     InternationalResolutionForm,
 )
 from .models import (
+    Bill,
+    BillVersion,
     City,
     Country,
     DelegationReport,
@@ -71,13 +75,19 @@ def workflows(request):
             "current_state", "owner"
         ).order_by("-created_at"),
     )
+    viewable_bills = visible_instances(
+        request.user,
+        Bill.objects.select_related("current_state", "owner").order_by("-created_at"),
+    )
     context = {
         "report_count": len(viewable_reports),
         "resolution_count": len(viewable_resolutions),
         "agreement_count": len(viewable_agreements),
+        "bill_count": len(viewable_bills),
         "recent_reports": viewable_reports[:5],
         "recent_resolutions": viewable_resolutions[:5],
         "recent_agreements": viewable_agreements[:5],
+        "recent_bills": viewable_bills[:5],
         # The create views redirect away unless the user holds a create role for
         # at least one enabled workflow type, so gate the "New ..." buttons on
         # that same condition instead of offering a dead action.
@@ -151,6 +161,8 @@ def _workflow_detail_url(instance):
             "pwms:international_agreement_detail",
             kwargs={"public_id": instance.public_id},
         )
+    if isinstance(instance, Bill):
+        return reverse("pwms:bill_detail", kwargs={"public_id": instance.public_id})
     return None
 
 
@@ -587,6 +599,186 @@ def international_agreement_delete(request, public_id):
         request,
         "pwms/international-agreement-confirm-delete.html",
         {"agreement": agreement},
+    )
+
+
+# -- Bills -------------------------------------------------------------------
+
+
+def bills(request):
+    """List bills the user may view, with a free-text filter (BRS §7.4)."""
+    query = request.GET.get("q", "").strip()
+    matching = Bill.objects.select_related(
+        "workflow_type",
+        "current_state",
+        "owner",
+        "assigned_to",
+        "responsible_committee",
+    ).order_by("-created_at")
+    if query:
+        matching = matching.filter(
+            Q(bill_number__icontains=query)
+            | Q(title__icontains=query)
+            | Q(short_title__icontains=query)
+            | Q(sponsor__icontains=query)
+        )
+    # View access gates the listing itself, not just the row actions.
+    viewable = visible_instances(request.user, matching)
+    editable_pks = {bill.pk for bill in viewable if resolve(request.user, bill, EDIT)}
+    deletable_pks = {
+        bill.pk for bill in viewable if resolve(request.user, bill, DELETE)
+    }
+    return render(
+        request,
+        "pwms/bill-list.html",
+        {
+            "bills": viewable,
+            "query": query,
+            "editable_pks": editable_pks,
+            "deletable_pks": deletable_pks,
+        },
+    )
+
+
+def bill_detail(request, public_id):
+    """Show one bill: profile, public status, transitions and audit trail."""
+    bill = get_object_or_404(
+        Bill.objects.select_related(
+            "workflow_type",
+            "current_state",
+            "owner",
+            "assigned_to",
+            "responsible_committee",
+        ),
+        public_id=public_id,
+    )
+    require(request.user, bill, VIEW)
+    parent = bill.parent_workflow
+    # The parent is a separate instance: don't reveal or link it unless the user
+    # may view it too.
+    parent_viewable = parent is not None and resolve(request.user, parent, VIEW)
+    context = {
+        "bill": bill,
+        "perms": permissions_for(request.user, bill),
+        "parent": parent if parent_viewable else None,
+        "parent_url": _workflow_detail_url(parent) if parent_viewable else None,
+        "referrals": bill.referrals().select_related("referred_to", "referred_by"),
+        "versions": bill.versions.select_related("recorded_by"),
+        "transitions": bill.get_available_transitions(),
+        "transition_logs": bill.audit_logs().select_related(
+            "from_state", "to_state", "actor"
+        ),
+    }
+    return render(request, "pwms/bill-detail.html", context)
+
+
+def bill_create(request):
+    """Create a bill; the initial state is derived from its type."""
+    if request.method == "POST":
+        _deny_uncreatable_workflow_type(request)
+        form = BillForm(request.POST, user=request.user)
+        if form.is_valid():
+            bill = form.save()
+            messages.success(request, f'Bill "{bill.bill_number}" created.')
+            return redirect("pwms:bill_detail", public_id=bill.public_id)
+    else:
+        if not WorkflowType.creatable_by(request.user).exists():
+            messages.error(request, "You do not have a role that may create bills.")
+            return redirect("pwms:bills")
+        form = BillForm(user=request.user, initial={"owner": request.user})
+    return render(
+        request,
+        "pwms/bill-form.html",
+        {"form": form, "is_create": True},
+    )
+
+
+def bill_update(request, public_id):
+    """Edit a bill."""
+    bill = get_object_or_404(Bill, public_id=public_id)
+    require(request.user, bill, EDIT)
+    if request.method == "POST":
+        form = BillForm(request.POST, instance=bill)
+        if form.is_valid():
+            bill = form.save()
+            messages.success(request, f'Bill "{bill.bill_number}" updated.')
+            return redirect("pwms:bill_detail", public_id=bill.public_id)
+    else:
+        form = BillForm(instance=bill)
+    return render(
+        request,
+        "pwms/bill-form.html",
+        {"form": form, "bill": bill, "is_create": False},
+    )
+
+
+def bill_delete(request, public_id):
+    """Confirm (GET) then delete (POST) a bill."""
+    bill = get_object_or_404(Bill, public_id=public_id)
+    require(request.user, bill, DELETE)
+    if request.method == "POST":
+        label = bill.bill_number or bill.title
+        bill.delete()
+        messages.success(request, f'Bill "{label}" deleted.')
+        return redirect("pwms:bills")
+    return render(
+        request,
+        "pwms/bill-confirm-delete.html",
+        {"bill": bill},
+    )
+
+
+def bill_version_create(request, public_id):
+    """Record a preserved version on a bill from the web UI (BRS §15A).
+
+    Gated on ``edit`` rights on the bill rather than a separate capability:
+    recording a version is an edit of the bill's record, and who recorded it is
+    captured automatically for contributor accountability.
+    """
+    bill = get_object_or_404(Bill, public_id=public_id)
+    require(request.user, bill, EDIT)
+    if request.method == "POST":
+        form = BillVersionForm(request.POST)
+        if form.is_valid():
+            version = form.save(commit=False)
+            version.bill = bill
+            version.recorded_by = request.user
+            version.save()
+            messages.success(request, f'Version "{version.version_label}" recorded.')
+            return redirect("pwms:bill_detail", public_id=bill.public_id)
+    else:
+        # A newly recorded version is normally the one before Parliament now.
+        form = BillVersionForm(initial={"is_current": True})
+    return render(
+        request,
+        "pwms/bill-version-form.html",
+        {"form": form, "bill": bill, "is_create": True},
+    )
+
+
+def bill_version_update(request, public_id, version_public_id):
+    """Edit a recorded bill version (BRS §15A).
+
+    Corrections are made in place rather than by deleting and re-recording: the
+    row keeps its identity and ``recorded_by`` (who recorded it originally),
+    while ``auditlog`` captures the edit as an UPDATE. ``is_current`` still
+    normalises on save, so flagging this version demotes any other current one.
+    """
+    bill = get_object_or_404(Bill, public_id=public_id)
+    version = get_object_or_404(BillVersion, public_id=version_public_id, bill=bill)
+    require(request.user, bill, EDIT)
+    if request.method == "POST":
+        form = BillVersionForm(request.POST, instance=version)
+        if form.is_valid():
+            version = form.save()
+            messages.success(request, f'Version "{version.version_label}" updated.')
+            return redirect("pwms:bill_detail", public_id=bill.public_id)
+    else:
+        form = BillVersionForm(instance=version)
+    return render(
+        request,
+        "pwms/bill-version-form.html",
+        {"form": form, "bill": bill, "version": version, "is_create": False},
     )
 
 

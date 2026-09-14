@@ -5,7 +5,13 @@ from django.test import TestCase
 from django.urls import reverse
 from rest_framework.test import APIClient
 
-from .models import InternationalAgreement, InternationalResolution, State, WorkflowType
+from .models import (
+    Bill,
+    InternationalAgreement,
+    InternationalResolution,
+    State,
+    WorkflowType,
+)
 
 
 class AuditHistoryApiTests(TestCase):
@@ -101,6 +107,11 @@ class AuditHistoryApiTests(TestCase):
         self.assertIn(
             "/api/agreements/{public_id}/audit/",
             payload["endpoints"]["agreement-audit-history"]["url_pattern"],
+        )
+        self.assertIn("bill-audit-history", payload["endpoints"])
+        self.assertIn(
+            "/api/bills/{public_id}/audit/",
+            payload["endpoints"]["bill-audit-history"]["url_pattern"],
         )
         self.assertTrue(payload["login"].startswith("http://"))
 
@@ -202,6 +213,66 @@ class AgreementAuditHistoryApiTests(TestCase):
         stranger = User.objects.create_user(
             username="agreement-stranger", password="pw"
         )
+
+        client = APIClient()
+        client.force_authenticate(user=stranger)
+
+        resp = client.get(self.url)
+        self.assertEqual(resp.status_code, 403)
+
+
+class BillAuditHistoryApiTests(TestCase):
+    """The DRF audit-history endpoint for a Bill."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.user = User.objects.create_user(
+            username="bill-api", email="bill-api@example.com", password="pw"
+        )
+        wt = WorkflowType.objects.create(name="Test Bill Type")
+        introduced = State.objects.create(
+            workflow_type=wt, name="Introduced", is_initial=True
+        )
+        cls.bill = Bill.objects.create(
+            workflow_type=wt,
+            current_state=introduced,
+            bill_number="B 7—2026",
+            title="A test bill",
+            owner=cls.user,
+        )
+        cls.url = reverse("pwms_api:bill-audit-history", args=[cls.bill.public_id])
+
+    def test_endpoint_requires_authentication(self):
+        resp = APIClient().get(self.url)
+        self.assertEqual(resp.status_code, 403)  # DRF: unauthenticated request
+
+    def test_returns_audit_trail_for_instance(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+
+        resp = client.get(self.url)
+        self.assertEqual(resp.status_code, 200)
+
+        payload = resp.json()
+        self.assertIsInstance(payload, list)
+        # Creating the instance in setUpTestData produced an auditlog CREATE entry
+        self.assertTrue(any(entry["action"] == 0 for entry in payload))
+        self.assertTrue(all("actor_email" in e and "changes" in e for e in payload))
+
+    def test_missing_instance_returns_404(self):
+        from uuid import uuid4
+
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        url = reverse("pwms_api:bill-audit-history", args=[uuid4()])
+        resp = client.get(url)
+        self.assertEqual(resp.status_code, 404)
+
+    def test_non_owner_without_access_is_forbidden(self):
+        """An authenticated non-owner with no instance access gets 403."""
+        User = get_user_model()
+        stranger = User.objects.create_user(username="bill-stranger", password="pw")
 
         client = APIClient()
         client.force_authenticate(user=stranger)

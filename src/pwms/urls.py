@@ -86,6 +86,34 @@ urlpatterns = [
         views.international_agreement_delete,
         name="international_agreement_delete",
     ),
+    # Bills
+    path("workflows/bills/", views.bills, name="bills"),
+    path("workflows/bills/new/", views.bill_create, name="bill_create"),
+    path(
+        "workflows/bills/<uuid:public_id>/",
+        views.bill_detail,
+        name="bill_detail",
+    ),
+    path(
+        "workflows/bills/<uuid:public_id>/edit/",
+        views.bill_update,
+        name="bill_update",
+    ),
+    path(
+        "workflows/bills/<uuid:public_id>/versions/new/",
+        views.bill_version_create,
+        name="bill_version_create",
+    ),
+    path(
+        "workflows/bills/<uuid:public_id>/versions/<uuid:version_public_id>/edit/",
+        views.bill_version_update,
+        name="bill_version_update",
+    ),
+    path(
+        "workflows/bills/<uuid:public_id>/delete/",
+        views.bill_delete,
+        name="bill_delete",
+    ),
     # User search
     path("user-search/", views.user_search, name="user_search"),
     # Group search for dynamic lookup

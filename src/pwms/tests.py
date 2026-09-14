@@ -16,6 +16,8 @@ from django.utils import timezone
 from django_flatpickr.widgets import DatePickerInput, DateTimePickerInput
 
 from .models import (
+    Bill,
+    BillVersion,
     City,
     Country,
     DelegationParticipant,
@@ -338,6 +340,101 @@ class SeededWorkflowDefinitionTests(TestCase):
         self.assertEqual(agreement.current_state.name, "Closed – House approved")
         self.assertTrue(agreement.current_state.is_terminal)
 
+    def test_bill_lifecycle_and_public_statuses(self):
+        wt = WorkflowType.objects.get(name="Bill")
+        states = wt.states.order_by("order")
+        self.assertEqual(
+            list(states.values_list("name", flat=True)),
+            [
+                "Introduced",
+                "Referred to Committee",
+                "Public Participation",
+                "Committee Deliberation",
+                "Committee Report",
+                "House Debate and Voting",
+                "NCOP Consideration",
+                "Mediation / Reconsideration",
+                "Awaiting Presidential Assent",
+                "Referred Back / Constitutional Review",
+                "Signed into Law",
+                "Withdrawn",
+            ],
+        )
+        self.assertEqual(wt.get_initial_state().name, "Introduced")
+        self.assertTrue(wt.states.get(name="Signed into Law").is_terminal)
+        self.assertTrue(wt.states.get(name="Withdrawn").is_terminal)
+        self.assertEqual(wt.transitions.count(), 20)
+
+        # Every BRS §12 public status is reachable from the internal machine.
+        public_statuses = set(states.values_list("public_name", flat=True))
+        self.assertTrue(
+            {
+                "introduced",
+                "under_consideration",
+                "ncop",
+                "mediation",
+                "awaiting_assent",
+                "signed_into_law",
+                "constitutional_review",
+            }.issubset(public_statuses)
+        )
+        # The detailed committee stages stay distinct internally while all
+        # publishing as the same simplified status.
+        internal_stages = states.filter(public_name="under_consideration")
+        self.assertEqual(internal_stages.count(), 5)
+
+    def test_bill_mainline_reaches_signed_into_law(self):
+        wt = WorkflowType.objects.get(name="Bill")
+        user = get_user_model().objects.create_user(
+            username="bill-mainline", password="pw"
+        )
+        bill = Bill.objects.create(
+            workflow_type=wt,
+            current_state=wt.get_initial_state(),
+            bill_number="B 1—2026",
+            title="Mainline walk",
+            owner=user,
+        )
+
+        mainline = [
+            "Referred to Committee",
+            "Public Participation",
+            "Committee Deliberation",
+            "Committee Report",
+            "House Debate and Voting",
+            "NCOP Consideration",
+            "Awaiting Presidential Assent",
+            "Signed into Law",
+        ]
+        for target in mainline:
+            transition = bill.get_available_transitions().get(to_state__name=target)
+            bill.perform_transition(transition, comment=f"to {target}")
+
+        self.assertTrue(bill.current_state.is_terminal)
+        self.assertEqual(bill.public_status, "Signed into Law")
+
+    def test_bill_withdrawal_requires_a_reason(self):
+        wt = WorkflowType.objects.get(name="Bill")
+        user = get_user_model().objects.create_user(
+            username="bill-withdraw", password="pw"
+        )
+        bill = Bill.objects.create(
+            workflow_type=wt,
+            current_state=wt.get_initial_state(),
+            bill_number="B 2—2026",
+            title="Withdrawn bill",
+            owner=user,
+        )
+
+        withdrawal = bill.get_available_transitions().get(to_state__name="Withdrawn")
+        self.assertTrue(withdrawal.requires_comment)
+        with self.assertRaises(ValidationError):
+            bill.perform_transition(withdrawal)
+
+        bill.perform_transition(withdrawal, comment="Sponsor withdrew the bill")
+        self.assertEqual(bill.current_state.name, "Withdrawn")
+        self.assertEqual(bill.public_status, "Withdrawn")
+
     def test_seeded_transitions_chain_end_to_end(self):
         wt = WorkflowType.objects.get(name="International Resolution")
         user = get_user_model().objects.create_user(username="seeded", password="pw")
@@ -528,6 +625,258 @@ class InternationalAgreementTests(TestCase):
     def test_assigned_official_email_is_exposed(self):
         agreement = self._agreement()
         self.assertEqual(agreement.assigned_to_email, "agreement@example.com")
+
+
+class BillTests(TestCase):
+    """Bill profile fields and the public-status mapping (Online Bill Tracking BRS)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.user = User.objects.create_user(
+            username="bill", email="bill@example.com", password="pw"
+        )
+        cls.wt = WorkflowType.objects.get(name="Bill")
+        cls.initial = cls.wt.get_initial_state()
+
+    def _bill(self, **overrides):
+        data = {
+            "workflow_type": self.wt,
+            "current_state": self.initial,
+            "bill_number": "B 12—2026",
+            "title": "National Health Amendment Bill",
+            "short_title": "Health Amendment",
+            "bill_type": Bill.SECTION_76,
+            "house_of_origin": Bill.NA,
+            "sponsor": "Minister of Health",
+            "introduced_date": date(2026, 6, 1),
+            "owner": self.user,
+            "assigned_to": self.user,
+        }
+        data.update(overrides)
+        return Bill.objects.create(**data)
+
+    def test_bill_profile_fields_are_captured(self):
+        committee = Group.objects.create(
+            name="Portfolio Committee on Health", group_type="portfolio_committee"
+        )
+        bill = self._bill(responsible_committee=committee)
+        self.assertEqual(bill.short_title, "Health Amendment")
+        self.assertEqual(bill.bill_type, Bill.SECTION_76)
+        self.assertEqual(bill.house_of_origin, Bill.NA)
+        self.assertEqual(bill.sponsor, "Minister of Health")
+        self.assertEqual(bill.responsible_committee, committee)
+        self.assertEqual(bill.__str__(), "B 12—2026 – National Health Amendment Bill")
+
+    def test_public_status_collapses_internal_stages(self):
+        bill = self._bill()
+        self.assertEqual(bill.public_status, "Introduced")
+
+        # Each detailed committee stage publishes as the same status (BRS §12).
+        for stage in (
+            "Referred to Committee",
+            "Committee Deliberation",
+            "House Debate and Voting",
+        ):
+            bill.current_state = self.wt.states.get(name=stage)
+            self.assertEqual(bill.public_status, "Under Parliamentary Consideration")
+
+        bill.current_state = self.wt.states.get(name="NCOP Consideration")
+        self.assertEqual(bill.public_status, "National Council of Provinces")
+
+    def test_public_status_is_empty_without_a_state(self):
+        bill = self._bill()
+        bill.current_state = None
+        self.assertEqual(bill.public_status, "")
+
+    def test_overdue_identifier_when_due_date_expired_and_open(self):
+        bill = self._bill(deadline=timezone.now() - timedelta(days=1))
+        self.assertTrue(bill.is_overdue)
+        self.assertEqual(bill.overdue_identifier, OVERDUE_IDENTIFIER)
+
+        closed = self.wt.states.get(name="Signed into Law")
+        bill.current_state = closed
+        self.assertFalse(bill.is_overdue)
+
+    def test_assigned_official_email_is_exposed(self):
+        bill = self._bill()
+        self.assertEqual(bill.assigned_to_email, "bill@example.com")
+
+
+class BillVersionTests(TestCase):
+    """Preserved bill version history and the derived current version (BRS §15A)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.user = User.objects.create_user(username="bill-version", password="pw")
+        cls.wt = WorkflowType.objects.get(name="Bill")
+        cls.bill = Bill.objects.create(
+            workflow_type=cls.wt,
+            current_state=cls.wt.get_initial_state(),
+            bill_number="B 20—2026",
+            title="Version integrity bill",
+            owner=cls.user,
+        )
+
+    def test_current_version_is_empty_until_versions_exist(self):
+        self.assertEqual(self.bill.current_version, "")
+
+    def test_current_version_falls_back_to_the_latest_version(self):
+        BillVersion.objects.create(
+            bill=self.bill,
+            version_label="B 20—2026",
+            version_type=BillVersion.INTRODUCED,
+            version_date=date(2026, 5, 1),
+            recorded_by=self.user,
+        )
+        latest = BillVersion.objects.create(
+            bill=self.bill,
+            version_label="B 20—2026 (1st amendment)",
+            version_type=BillVersion.AMENDED,
+            version_date=date(2026, 6, 1),
+            recorded_by=self.user,
+        )
+        self.assertEqual(self.bill.current_version, latest.version_label)
+
+    def test_flagging_a_version_current_demotes_the_previous_one(self):
+        introduced = BillVersion.objects.create(
+            bill=self.bill,
+            version_label="B 20—2026",
+            version_type=BillVersion.INTRODUCED,
+            version_date=date(2026, 5, 1),
+            is_current=True,
+        )
+        amended = BillVersion.objects.create(
+            bill=self.bill,
+            version_label="B 20—2026 (1st amendment)",
+            version_type=BillVersion.AMENDED,
+            version_date=date(2026, 6, 1),
+            is_current=True,
+        )
+
+        introduced.refresh_from_db()
+        self.assertFalse(introduced.is_current)
+        self.assertTrue(amended.is_current)
+        self.assertEqual(
+            BillVersion.objects.filter(bill=self.bill, is_current=True).count(), 1
+        )
+        self.assertEqual(self.bill.current_version, amended.version_label)
+
+    def test_amendment_schedule_is_distinguished_from_the_amended_bill(self):
+        schedule = BillVersion.objects.create(
+            bill=self.bill,
+            version_label="B 20—2026 (amendment schedule)",
+            version_type=BillVersion.AMENDMENT_SCHEDULE,
+            version_date=date(2026, 6, 1),
+        )
+        self.assertEqual(schedule.get_version_type_display(), "Amendment schedule")
+        self.assertFalse(schedule.is_current)
+
+    def test_versions_are_listed_newest_first(self):
+        older = BillVersion.objects.create(
+            bill=self.bill, version_label="older", version_date=date(2026, 1, 1)
+        )
+        newer = BillVersion.objects.create(
+            bill=self.bill, version_label="newer", version_date=date(2026, 2, 1)
+        )
+        self.assertEqual(list(self.bill.versions.all()), [newer, older])
+
+
+class ImportBillVersionsCommandTests(TestCase):
+    """The bill-version bulk importer (``import_bill_versions``)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.user = User.objects.create_user(username="version-import", password="pw")
+        cls.wt = WorkflowType.objects.get(name="Bill")
+        cls.bill = Bill.objects.create(
+            workflow_type=cls.wt,
+            current_state=cls.wt.get_initial_state(),
+            bill_number="B 40—2026",
+            title="Imported versions",
+            owner=cls.user,
+        )
+
+    def _csv(self, text):
+        handle = tempfile.NamedTemporaryFile(
+            "w", suffix=".csv", delete=False, encoding="utf-8", newline=""
+        )
+        handle.write(text)
+        handle.close()
+        self.addCleanup(Path(handle.name).unlink)
+        return handle.name
+
+    def _rows(self):
+        return BillVersion.objects.filter(bill=self.bill)
+
+    def test_import_creates_versions_and_honours_is_current(self):
+        path = self._csv(
+            "bill_number,version_label,version_type,version_date,document_url,notes,is_current\n"
+            "B 40—2026,B 40—2026,introduced,2026-05-01,,Introduced,yes\n"
+            "B 40—2026,B 40—2026 (1st amendment),amended,2026-06-01,"
+            "https://example.com/v2,Amended clause 4,yes\n"
+        )
+        out = StringIO()
+        call_command("import_bill_versions", path, stdout=out)
+
+        self.assertEqual(self._rows().count(), 2)
+        # The model normalises is_current, so only the last row stays current.
+        self.assertEqual(self._rows().filter(is_current=True).count(), 1)
+        self.assertEqual(
+            self._rows().get(is_current=True).version_label,
+            "B 40—2026 (1st amendment)",
+        )
+        self.assertEqual(self.bill.current_version, "B 40—2026 (1st amendment)")
+        self.assertIn("Created:", out.getvalue())
+
+    def test_accepts_version_type_labels_and_blank_date(self):
+        path = self._csv(
+            "bill_number,version_label,version_type,version_date\n"
+            "B 40—2026,B 40—2026 (schedule),Amendment schedule,\n"
+        )
+        call_command("import_bill_versions", path, stdout=StringIO())
+
+        version = self._rows().get()
+        self.assertEqual(version.version_type, BillVersion.AMENDMENT_SCHEDULE)
+        self.assertEqual(version.version_date, timezone.localdate())
+
+    def test_reimport_is_idempotent(self):
+        path = self._csv(
+            "bill_number,version_label,version_date\nB 40—2026,B 40—2026,2026-05-01\n"
+        )
+        call_command("import_bill_versions", path, stdout=StringIO())
+        call_command("import_bill_versions", path, stdout=StringIO())
+        self.assertEqual(self._rows().count(), 1)
+
+    def test_dry_run_writes_nothing(self):
+        path = self._csv("bill_number,version_label\nB 40—2026,B 40—2026\n")
+        out = StringIO()
+        call_command("import_bill_versions", path, "--dry-run", stdout=out)
+        self.assertEqual(self._rows().count(), 0)
+        self.assertIn("DRY RUN", out.getvalue())
+
+    def test_unknown_bill_number_is_reported_and_skipped(self):
+        path = self._csv("bill_number,version_label\nB 999—2026,Nope\n")
+        out = StringIO()
+        call_command("import_bill_versions", path, stdout=out)
+        self.assertEqual(BillVersion.objects.count(), 0)
+        self.assertIn("no bill with number", out.getvalue())
+
+    def test_invalid_version_type_is_reported(self):
+        path = self._csv(
+            "bill_number,version_label,version_type\nB 40—2026,B 40—2026,sideways\n"
+        )
+        out = StringIO()
+        call_command("import_bill_versions", path, stdout=out)
+        self.assertEqual(self._rows().count(), 0)
+        self.assertIn("unknown version type", out.getvalue())
+
+    def test_missing_required_column_is_rejected(self):
+        path = self._csv("version_label\nOnly a label\n")
+        with self.assertRaises(CommandError):
+            call_command("import_bill_versions", path, stdout=StringIO())
 
 
 class WorkflowEventTests(TestCase):
@@ -911,10 +1260,12 @@ class WorkflowCrudViewTests(TestCase):
         cls.report_type = WorkflowType.objects.get(name="Delegation Report")
         cls.resolution_type = WorkflowType.objects.get(name="International Resolution")
         cls.agreement_type = WorkflowType.objects.get(name="International Agreement")
+        cls.bill_type = WorkflowType.objects.get(name="Bill")
         for workflow_type in (
             cls.report_type,
             cls.resolution_type,
             cls.agreement_type,
+            cls.bill_type,
         ):
             workflow_type.group = cls.group
             workflow_type.save(update_fields=["group"])
@@ -996,12 +1347,37 @@ class WorkflowCrudViewTests(TestCase):
         payload.update(overrides)
         return payload
 
+    def _bill_payload(self, **overrides):
+        payload = {
+            "workflow_type": self.bill_type.pk,
+            "title": "CRUD bill",
+            "description": "",
+            "owner": self.user.pk,
+            "assigned_to": "",
+            "deadline": "",
+            "priority": "medium",
+            "bill_number": "B 99—2026",
+            "short_title": "CRUD",
+            "bill_type": Bill.SECTION_75,
+            "house_of_origin": Bill.NA,
+            "sponsor": "Minister of Justice",
+            "introduced_date": "",
+            "responsible_committee": "",
+            "atc_reference": "",
+            "order_paper_reference": "",
+            "bill_document_url": "",
+            "notes": "",
+        }
+        payload.update(overrides)
+        return payload
+
     def test_pages_require_login(self):
         self.client.logout()
         for name in (
             "delegation_reports",
             "international_resolutions",
             "international_agreements",
+            "bills",
         ):
             response = self.client.get(reverse(f"pwms:{name}"))
             self.assertEqual(response.status_code, 302)
@@ -1178,6 +1554,237 @@ class WorkflowCrudViewTests(TestCase):
             InternationalAgreement.objects.filter(pk=agreement.pk).exists()
         )
 
+    def test_bill_crud_cycle(self):
+        # Create: the initial state is derived from the chosen workflow type.
+        response = self.client.post(
+            reverse("pwms:bill_create"),
+            self._bill_payload(),
+        )
+        bill = Bill.objects.get(bill_number="B 99—2026")
+        self.assertRedirects(
+            response,
+            reverse("pwms:bill_detail", args=[bill.public_id]),
+        )
+        self.assertEqual(bill.current_state, self.bill_type.get_initial_state())
+        self.assertEqual(bill.public_status, "Introduced")
+
+        # List and detail render the bill and its simplified public status.
+        listing = self.client.get(reverse("pwms:bills"))
+        self.assertEqual(listing.status_code, 200)
+        self.assertContains(listing, "B 99—2026")
+
+        detail = self.client.get(reverse("pwms:bill_detail", args=[bill.public_id]))
+        self.assertEqual(detail.status_code, 200)
+        self.assertContains(detail, "Public status")
+        self.assertContains(detail, "Introduced")
+
+        # Version history renders on the bill page (BRS §15A).
+        BillVersion.objects.create(
+            bill=bill,
+            version_label="B 99—2026 (1st amendment)",
+            version_type=BillVersion.AMENDED,
+            version_date=timezone.localdate(),
+            is_current=True,
+            recorded_by=self.user,
+        )
+        detail = self.client.get(reverse("pwms:bill_detail", args=[bill.public_id]))
+        self.assertContains(detail, "Version history")
+        self.assertContains(detail, "B 99—2026 (1st amendment)")
+
+        # Update: workflow_type is fixed, current_state is editable instead.
+        edit = self.client.get(reverse("pwms:bill_update", args=[bill.public_id]))
+        self.assertContains(edit, "current_state")
+        self.assertNotContains(edit, 'name="workflow_type"')
+        response = self.client.post(
+            reverse("pwms:bill_update", args=[bill.public_id]),
+            {
+                "title": "CRUD bill (edited)",
+                "description": "",
+                "current_state": bill.current_state.pk,
+                "owner": self.user.pk,
+                "assigned_to": "",
+                "deadline": "",
+                "priority": "high",
+                "bill_number": "B 99—2026",
+                "short_title": "CRUD",
+                "bill_type": Bill.SECTION_75,
+                "house_of_origin": Bill.NA,
+                "sponsor": "Minister of Justice",
+                "introduced_date": "",
+                "responsible_committee": "",
+                "atc_reference": "",
+                "order_paper_reference": "",
+                "bill_document_url": "",
+                "notes": "",
+            },
+        )
+        self.assertRedirects(
+            response,
+            reverse("pwms:bill_detail", args=[bill.public_id]),
+        )
+        bill.refresh_from_db()
+        self.assertEqual(bill.title, "CRUD bill (edited)")
+        self.assertEqual(bill.priority, "high")
+
+        # Delete: POST removes the row.
+        response = self.client.post(reverse("pwms:bill_delete", args=[bill.public_id]))
+        self.assertRedirects(response, reverse("pwms:bills"))
+        self.assertFalse(Bill.objects.filter(pk=bill.pk).exists())
+
+    def test_bill_version_capture_from_the_web_ui(self):
+        self.client.post(reverse("pwms:bill_create"), self._bill_payload())
+        bill = Bill.objects.get(bill_number="B 99—2026")
+
+        response = self.client.post(
+            reverse("pwms:bill_version_create", args=[bill.public_id]),
+            {
+                "version_label": "B 99—2026 (1st amendment)",
+                "version_type": BillVersion.AMENDED,
+                "version_date": "2026-07-01",
+                "is_current": "on",
+                "document_url": "",
+                "notes": "Amended clause 4",
+            },
+        )
+        self.assertRedirects(
+            response, reverse("pwms:bill_detail", args=[bill.public_id])
+        )
+
+        version = BillVersion.objects.get(bill=bill)
+        self.assertEqual(version.recorded_by, self.user)
+        self.assertTrue(version.is_current)
+        self.assertEqual(bill.current_version, "B 99—2026 (1st amendment)")
+
+        detail = self.client.get(reverse("pwms:bill_detail", args=[bill.public_id]))
+        self.assertContains(detail, "Record version")
+        self.assertContains(detail, "B 99—2026 (1st amendment)")
+        self.assertContains(
+            detail,
+            reverse(
+                "pwms:bill_version_update", args=[bill.public_id, version.public_id]
+            ),
+        )
+
+    def test_bill_version_edit_from_the_web_ui(self):
+        self.client.post(reverse("pwms:bill_create"), self._bill_payload())
+        bill = Bill.objects.get(bill_number="B 99—2026")
+        version = BillVersion.objects.create(
+            bill=bill,
+            version_label="B 99—2026",
+            version_type=BillVersion.INTRODUCED,
+            version_date=date(2026, 5, 1),
+            recorded_by=self.user,
+        )
+
+        response = self.client.post(
+            reverse(
+                "pwms:bill_version_update", args=[bill.public_id, version.public_id]
+            ),
+            {
+                "version_label": "B 99—2026 (corrected)",
+                "version_type": BillVersion.AMENDED,
+                "version_date": "2026-05-02",
+                "is_current": "on",
+                "document_url": "https://example.com/v1",
+                "notes": "Corrected label",
+            },
+        )
+        self.assertRedirects(
+            response, reverse("pwms:bill_detail", args=[bill.public_id])
+        )
+
+        version.refresh_from_db()
+        self.assertEqual(version.version_label, "B 99—2026 (corrected)")
+        self.assertEqual(version.version_type, BillVersion.AMENDED)
+        self.assertEqual(version.version_date, date(2026, 5, 2))
+        self.assertTrue(version.is_current)
+        self.assertEqual(version.notes, "Corrected label")
+        # The correction is in place: identity and recorder are preserved.
+        self.assertEqual(version.recorded_by, self.user)
+        self.assertEqual(BillVersion.objects.filter(bill=bill).count(), 1)
+
+    def test_bill_version_edit_can_move_the_current_flag(self):
+        self.client.post(reverse("pwms:bill_create"), self._bill_payload())
+        bill = Bill.objects.get(bill_number="B 99—2026")
+        older = BillVersion.objects.create(
+            bill=bill,
+            version_label="B 99—2026",
+            version_date=date(2026, 5, 1),
+        )
+        newer = BillVersion.objects.create(
+            bill=bill,
+            version_label="B 99—2026 (1st amendment)",
+            version_date=date(2026, 6, 1),
+            is_current=True,
+        )
+
+        response = self.client.post(
+            reverse("pwms:bill_version_update", args=[bill.public_id, older.public_id]),
+            {
+                "version_label": older.version_label,
+                "version_type": BillVersion.INTRODUCED,
+                "version_date": "2026-05-01",
+                "is_current": "on",
+                "document_url": "",
+                "notes": "",
+            },
+        )
+        self.assertRedirects(
+            response, reverse("pwms:bill_detail", args=[bill.public_id])
+        )
+
+        older.refresh_from_db()
+        newer.refresh_from_db()
+        self.assertTrue(older.is_current)
+        self.assertFalse(newer.is_current)
+        self.assertEqual(bill.current_version, "B 99—2026")
+
+    def test_bill_version_edit_requires_edit_permission(self):
+        self.client.post(reverse("pwms:bill_create"), self._bill_payload())
+        bill = Bill.objects.get(bill_number="B 99—2026")
+        version = BillVersion.objects.create(
+            bill=bill,
+            version_label="B 99—2026",
+            version_date=date(2026, 5, 1),
+        )
+
+        outsider = get_user_model().objects.create_user(
+            username="version-editor-outsider", password="pw"
+        )
+        self.client.force_login(outsider)
+        response = self.client.post(
+            reverse(
+                "pwms:bill_version_update", args=[bill.public_id, version.public_id]
+            ),
+            {
+                "version_label": "Hijacked",
+                "version_type": BillVersion.INTRODUCED,
+                "version_date": "2026-05-01",
+            },
+        )
+        self.assertEqual(response.status_code, 403)
+        version.refresh_from_db()
+        self.assertEqual(version.version_label, "B 99—2026")
+
+    def test_bill_version_capture_requires_edit_permission(self):
+        self.client.post(reverse("pwms:bill_create"), self._bill_payload())
+        bill = Bill.objects.get(bill_number="B 99—2026")
+
+        outsider = get_user_model().objects.create_user(
+            username="version-outsider", password="pw"
+        )
+        self.client.force_login(outsider)
+        response = self.client.post(
+            reverse("pwms:bill_version_create", args=[bill.public_id]),
+            {
+                "version_label": "Sneaky version",
+                "version_type": BillVersion.INTRODUCED,
+                "version_date": "2026-07-01",
+            },
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(BillVersion.objects.filter(bill=bill).exists())
+
     def test_create_requires_a_type_with_states(self):
         empty_type = WorkflowType.objects.create(
             name="Test Empty Workflow Type", group=self.group
@@ -1211,6 +1818,7 @@ class WorkflowCrudViewTests(TestCase):
             "delegation_reports",
             "international_resolutions",
             "international_agreements",
+            "bills",
         ):
             self.assertContains(response, reverse(f"pwms:{name}"))
 
@@ -1221,9 +1829,11 @@ class WorkflowCrudViewTests(TestCase):
             "Delegation Reports",
             "International Resolutions",
             "International Agreements",
+            "Bills",
         ):
             self.assertContains(response, label)
         self.assertContains(response, "Recent international agreements")
+        self.assertContains(response, "Recent bills")
 
     def test_create_requires_a_role_from_the_type_group(self):
         """No create role in the type's group -> no creation (403 on POST)."""

@@ -42,7 +42,8 @@ and the typical flows. It complements the structural documents
 ### 3.1 Definitions (the machine)
 
 An administrator defines a **WorkflowType** and its **States** and **Transitions**.
-Three state machines are seeded from the BRS (migrations `0005` and `0016`):
+Four state machines are seeded from the BRS (migrations `0005`, `0016` and
+`0019`):
 
 - **Delegation Report** — `Awaiting PGIR approval → Submitted for tabling →
   Tabled and referred to Committee → Closed – House approved` (BR02.8);
@@ -51,14 +52,39 @@ Three state machines are seeded from the BRS (migrations `0005` and `0016`):
 - **International Agreement** — `Submitted for tabling → Agreement Tabled –
   referred to Committee → Committee considering and processing → Committee
   submitted report for tabling → House adopted – referred to Department →
-  Closed – House approved` (International Agreements BRS).
+  Closed – House approved` (International Agreements BRS);
+- **Bill** — `Introduced → Referred to Committee → Public Participation →
+  Committee Deliberation → Committee Report → House Debate and Voting → NCOP
+  Consideration → Awaiting Presidential Assent → Signed into Law`, with
+  mediation, presidential referral-back and withdrawal branches (Online Bill
+  Tracking BRS).
 
 Each type is **owned by a Group** (`WorkflowType.group`) that scopes its RBAC:
 creation is limited to the type's `create_roles`, and those roles must be roles
-held by members of that group. All three seeded types belong to group 98
-(*IRP: MR: Man And Gen*, the Multilateral Relations unit). Creation roles are
-configured per environment; while `create_roles` is empty only superusers may
-create instances of that type.
+held by members of that group. The three international types belong to group 98
+(*IRP: MR: Man And Gen*, the Multilateral Relations unit) and the Bill type to
+*LSO: Legal Services: Man And Gen* (the Legal Services Office's Management &
+General section). Creation roles are configured per environment; while
+`create_roles` is empty only superusers may create instances of that type.
+
+**Public status.** Every state carries a `public_name` — the simplified,
+citizen-facing status it maps to. The Bill machine uses the BRS §12 vocabulary
+(*Introduced*, *Under Parliamentary Consideration*, *National Council of
+Provinces*, *Mediation / Reconsideration*, *Awaiting Presidential Assent*,
+*Signed into Law*, *Referred Back / Constitutional Review*), so the detailed
+committee stages stay distinct internally while publishing as *Under
+Parliamentary Consideration*. `Bill.public_status` exposes the current value.
+
+**Version integrity.** A bill's versions are preserved as `BillVersion` rows —
+newest first, never overwritten — distinguishing the introduced version,
+amendment schedules and the amended bill. Exactly one row per bill is flagged
+`is_current`, and `Bill.current_version` is derived from it (falling back to the
+most recent row), so the current and previous versions are always identifiable.
+Versions are recorded from the bill's page (**Record version**), corrected in
+place from each row's **Edit** action — the row keeps its identity and original
+recorder, the change lands in the audit trail, and no version is ever removed —
+listed in the bill's detail page, editable through the Django admin, and can be
+bulk-loaded with `manage.py import_bill_versions`.
 
 Definitions are customisable in the admin, including:
 
@@ -200,10 +226,11 @@ Consumers:
 
 - **Server-rendered pages** (Bootstrap 5 + lucide icons): home/about,
   login/logout, groups (all/mine/detail), and full CRUD for the concrete workflow
-  instances — Delegation Reports, International Resolutions and International
-  Agreements — reached from the navbar *Workflows* dropdown. List pages carry a
-  free-text filter; detail pages show the workflow metadata, participants,
-  resolutions, agreement details, BR03 updates, referrals and the audit trail.
+  instances — Delegation Reports, International Resolutions, International
+  Agreements and Bills — reached from the navbar *Workflows* dropdown. List pages
+  carry a free-text filter; detail pages show the workflow metadata, participants,
+  resolutions, agreement details, the bill profile and public status, BR03
+  updates, referrals and the audit trail.
 - **Django Admin** for administration (users, groups, roles, memberships,
   workflow definitions).
 - **REST API (DRF)** exposing audit history; browsable, plus Swagger/ReDoc docs.

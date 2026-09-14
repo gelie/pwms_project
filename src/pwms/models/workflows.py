@@ -1,7 +1,7 @@
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django_extensions.db.fields import AutoSlugField
@@ -924,9 +924,16 @@ class WorkflowStatePermission(BaseModel):
 class State(BaseModel):
     """
     Workflow states: Draft, Submitted, Under Review, Approved, Rejected, etc.
+
+    ``public_name`` is the simplified, citizen-facing status a state maps to.
+    Internal machines keep their detailed procedural states while the public
+    view collapses them onto this vocabulary — the Online Bill Tracking BRS, for
+    example, tracks each committee stage separately but publishes all of them
+    as *Under Parliamentary Consideration*.
     """
 
     PUBLIC_NAME_CHOICES = [
+        # Generic buckets, shared by every workflow type.
         ("new", _("New")),
         ("in_progress", _("In Progress")),
         ("referred", _("Referred")),
@@ -935,6 +942,14 @@ class State(BaseModel):
         ("cancelled", _("Cancelled")),
         ("implemented", _("Implemented")),
         ("closed", _("Closed")),
+        # High-level public statuses proposed for bill tracking (BRS §12).
+        ("introduced", _("Introduced")),
+        ("under_consideration", _("Under Parliamentary Consideration")),
+        ("ncop", _("National Council of Provinces")),
+        ("mediation", _("Mediation / Reconsideration")),
+        ("awaiting_assent", _("Awaiting Presidential Assent")),
+        ("signed_into_law", _("Signed into Law")),
+        ("constitutional_review", _("Referred Back / Constitutional Review")),
     ]
 
     workflow_type = models.ForeignKey(
@@ -2166,3 +2181,259 @@ class InternationalAgreement(AbstractLegislativeWorkflow):
     def overdue_identifier(self):
         """BR12 flag text; empty string when the agreement is not overdue."""
         return OVERDUE_IDENTIFIER if self.is_overdue else ""
+
+
+class Bill(AbstractLegislativeWorkflow):
+    """
+    A Parliamentary bill tracked through its legislative lifecycle (BRS
+    *Online Bill Tracking*).
+
+    The BRS separates detailed internal procedural tracking from a simplified
+    public view: every internal state maps to one of the seven high-level
+    public statuses through ``State.public_name`` (BRS §12), so the same record
+    can be published at ``public_status`` without exposing internal
+    granularity.
+
+    System behaviour:
+
+    * ``bill_number`` is Parliament's B-number (unique), including the version
+      suffix where one applies (BRS §13.1);
+    * the bill profile carries the long and short title, bill type (s74–s77),
+      House of introduction, sponsor or originating authority, responsible
+      committee, latest version and associated documents (BRS §7A);
+    * the ATC and order-paper references are recorded per bill (BRS §7B);
+    * ``notes`` captures sub-events under a main stage, so exceptional or
+      explanatory steps need not complicate the public lifecycle (BRS §15A).
+
+    Documents live in SharePoint; this model keeps the bill document link.
+    """
+
+    SECTION_74 = "section-74"
+    SECTION_75 = "section-75"
+    SECTION_76 = "section-76"
+    SECTION_77 = "section-77"
+    BILL_TYPE_CHOICES = [
+        (SECTION_74, _("Section 74 bill (constitutional amendment)")),
+        (SECTION_75, _("Section 75 bill (ordinary)")),
+        (SECTION_76, _("Section 76 bill (affecting provinces)")),
+        (SECTION_77, _("Section 77 bill (money)")),
+    ]
+
+    NA = "na"
+    NCOP = "ncop"
+    HOUSE_CHOICES = [
+        (NA, _("National Assembly")),
+        (NCOP, _("National Council of Provinces")),
+    ]
+
+    bill_number = models.CharField(
+        max_length=50,
+        unique=True,
+        help_text=("Parliamentary B-number, including any version suffix (BRS §13.1)."),
+    )
+    short_title = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Short title of the bill (BRS §7A).",
+    )
+    bill_type = models.CharField(
+        max_length=20,
+        choices=BILL_TYPE_CHOICES,
+        blank=True,
+        help_text=(
+            "Constitutional classification: Section 74, 75, 76 or 77 (BRS §13.1)."
+        ),
+    )
+    house_of_origin = models.CharField(
+        max_length=10,
+        choices=HOUSE_CHOICES,
+        blank=True,
+        help_text="House of introduction (BRS §7A).",
+    )
+    sponsor = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Sponsor or originating authority (BRS §7A).",
+    )
+    introduced_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date the bill was introduced (BRS §13.1).",
+    )
+    responsible_committee = models.ForeignKey(
+        "Group",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bills_responsible",
+        help_text="Committee responsible for the bill (BRS §13.2).",
+    )
+    atc_reference = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="ATC reference for the bill's movements (BRS §7B).",
+    )
+    order_paper_reference = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Order paper reference, where available (BRS §7B).",
+    )
+    bill_document_url = models.URLField(
+        blank=True,
+        help_text="SharePoint link to the bill document (BRS §7B).",
+    )
+    notes = models.TextField(
+        blank=True,
+        help_text=(
+            "Sub-events or explanatory notes under the current stage (BRS §15A)."
+        ),
+    )
+
+    class Meta:
+        verbose_name = "Bill"
+        verbose_name_plural = "Bills"
+
+    def __str__(self):
+        return (
+            f"{self.bill_number} – {self.title}"
+            if self.title
+            else str(self.bill_number)
+        )
+
+    @property
+    def public_status(self):
+        """
+        The simplified public status for the current state (BRS §12).
+
+        Empty string when the bill has no state yet.
+        """
+        if self.current_state_id is None:
+            return ""
+        return self.current_state.get_public_name_display()
+
+    @property
+    def current_version(self):
+        """
+        Label of the bill's current version (BRS §15A).
+
+        Read-only: the :class:`BillVersion` history is the record, so the label
+        is derived rather than typed. Prefers the row flagged ``is_current`` and
+        falls back to the most recent version; empty string when the bill has no
+        versions recorded yet.
+        """
+        if self.pk is None:
+            return ""
+        current = self.versions.filter(is_current=True).first()
+        if current is not None:
+            return current.version_label
+        latest = self.versions.first()  # Meta.ordering: newest first
+        return latest.version_label if latest is not None else ""
+
+    # -- overdue handling (shared indicator) --------------------------------
+    @property
+    def is_overdue(self):
+        """True when the due date has expired and the bill is not closed."""
+        if not self.deadline or not self.current_state_id:
+            return False
+        return self.deadline < timezone.now() and not self.current_state.is_terminal
+
+    @property
+    def overdue_identifier(self):
+        """Flag text; empty string when the bill is not overdue."""
+        return OVERDUE_IDENTIFIER if self.is_overdue else ""
+
+
+class BillVersion(BaseModel):
+    """
+    A preserved version of a bill (BRS *Online Bill Tracking* §15A).
+
+    Version integrity: rows are append-only history — historical versions may
+    not be overwritten — and ``version_type`` distinguishes the introduced
+    bill, amendment schedules and the resulting amended bill from one another,
+    so an amendment and its schedule stay recorded together. The B-number
+    suffix carried by ``version_label`` records where the number changed.
+
+    Exactly one row per bill may be flagged ``is_current`` (a partial unique
+    constraint, normalised in :meth:`save`), which is the version
+    ``Bill.current_version`` reports; the rest are the previous versions.
+    """
+
+    INTRODUCED = "introduced"
+    AMENDED = "amended"
+    AMENDMENT_SCHEDULE = "amendment_schedule"
+    VERSION_TYPE_CHOICES = [
+        (INTRODUCED, _("Introduced version")),
+        (AMENDED, _("Amended bill")),
+        (AMENDMENT_SCHEDULE, _("Amendment schedule")),
+    ]
+
+    bill = models.ForeignKey(
+        Bill,
+        on_delete=models.CASCADE,
+        related_name="versions",
+        help_text="Bill this version belongs to.",
+    )
+    version_label = models.CharField(
+        max_length=100,
+        help_text=(
+            "Version label, including the B-number suffix where it changed "
+            "(e.g. 'B 12—2026 (1st amendment)')."
+        ),
+    )
+    version_type = models.CharField(
+        max_length=20,
+        choices=VERSION_TYPE_CHOICES,
+        default=INTRODUCED,
+        help_text=("Introduced bill, amended bill or amendment schedule (BRS §15A)."),
+    )
+    version_date = models.DateField(
+        default=timezone.localdate,
+        help_text="Date this version was tabled / published.",
+    )
+    document_url = models.URLField(
+        blank=True,
+        help_text="SharePoint link to this version's document (BRS §7B).",
+    )
+    notes = models.TextField(
+        blank=True,
+        help_text="What changed in this version.",
+    )
+    recorded_by = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bill_versions",
+        help_text="Who recorded this version (BRS §7A contributor accountability).",
+    )
+    is_current = models.BooleanField(
+        default=False,
+        help_text="Mark the version currently before Parliament.",
+    )
+
+    class Meta:
+        ordering = ["-version_date", "-id"]
+        indexes = [
+            models.Index(fields=["bill", "-version_date"]),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["bill"],
+                condition=models.Q(is_current=True),
+                name="workflows_billversion_one_current_per_bill_uniq",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.bill} — {self.version_label}"
+
+    def save(self, *args, **kwargs):
+        if not self.is_current or not self.bill_id:
+            return super().save(*args, **kwargs)
+        with transaction.atomic():
+            # Only one version per bill may be current, so demote the others
+            # before writing this row and the partial unique constraint holds.
+            BillVersion.objects.filter(bill_id=self.bill_id, is_current=True).exclude(
+                pk=self.pk
+            ).update(is_current=False)
+            return super().save(*args, **kwargs)

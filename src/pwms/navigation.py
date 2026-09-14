@@ -20,6 +20,7 @@ CREATE_URL_NAMES = {
     "delegation-report": "pwms:delegation_report_create",
     "international-resolution": "pwms:international_resolution_create",
     "international-agreement": "pwms:international_agreement_create",
+    "bill": "pwms:bill_create",
 }
 
 

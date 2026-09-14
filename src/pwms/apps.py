@@ -28,6 +28,7 @@ class PwmsConfig(AppConfig):
         from auditlog.registry import auditlog
 
         from .models import (
+            Bill,
             DelegationReport,
             InternationalAgreement,
             InternationalResolution,
@@ -45,6 +46,10 @@ class PwmsConfig(AppConfig):
         )
         auditlog.register(
             InternationalAgreement,
+            exclude_fields=["updated_at"],
+        )
+        auditlog.register(
+            Bill,
             exclude_fields=["updated_at"],
         )
 

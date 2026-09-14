@@ -16,4 +16,9 @@ urlpatterns = [
         views.AgreementAuditHistoryView.as_view(),
         name="agreement-audit-history",
     ),
+    path(
+        "bills/<uuid:public_id>/audit/",
+        views.BillAuditHistoryView.as_view(),
+        name="bill-audit-history",
+    ),
 ]

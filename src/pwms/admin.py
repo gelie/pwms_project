@@ -7,6 +7,8 @@ from django.db.models import Q
 from mptt.admin import MPTTModelAdmin
 
 from .models import (
+    Bill,
+    BillVersion,
     City,
     Country,
     DelegationParticipant,
@@ -599,6 +601,92 @@ class InternationalAgreementAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description="Overdue")
     def is_overdue(self, obj):
         return obj.is_overdue
+
+
+class BillVersionInline(admin.TabularInline):
+    """Preserved bill versions, edited on the bill page (BRS §15A)."""
+
+    model = BillVersion
+    extra = 0
+    fields = (
+        "version_label",
+        "version_type",
+        "version_date",
+        "is_current",
+        "document_url",
+        "notes",
+        "recorded_by",
+    )
+    autocomplete_fields = ("recorded_by",)
+    ordering = ("-version_date",)
+    verbose_name_plural = "Versions (preserved history)"
+
+
+@admin.register(Bill)
+class BillAdmin(admin.ModelAdmin):
+    """Admin for bill workflow instances (Online Bill Tracking BRS)."""
+
+    list_display = (
+        "bill_number",
+        "title",
+        "bill_type",
+        "house_of_origin",
+        "current_state",
+        "public_status_column",
+        "responsible_committee",
+        "owner",
+        "deadline",
+        "is_overdue",
+    )
+    list_filter = (
+        "workflow_type",
+        "current_state",
+        "bill_type",
+        "house_of_origin",
+        "priority",
+    )
+    search_fields = ("bill_number", "title", "short_title", "sponsor")
+    autocomplete_fields = (
+        "workflow_type",
+        "current_state",
+        "responsible_committee",
+        "owner",
+        "assigned_to",
+    )
+    ordering = ("bill_number",)
+    inlines: ClassVar[list[type[admin.InlineModelAdmin]]] = [
+        BillVersionInline,
+        WorkflowEventInline,
+        WorkflowReferralInline,
+        WorkflowGroupAccessInline,
+    ]
+
+    @admin.display(description="Public status")
+    def public_status_column(self, obj):
+        """Simplified citizen-facing status the internal state maps to."""
+        return obj.public_status
+
+    @admin.display(boolean=True, description="Overdue")
+    def is_overdue(self, obj):
+        return obj.is_overdue
+
+
+@admin.register(BillVersion)
+class BillVersionAdmin(admin.ModelAdmin):
+    """Admin for the preserved bill version history (BRS §15A)."""
+
+    list_display = (
+        "bill",
+        "version_label",
+        "version_type",
+        "version_date",
+        "is_current",
+        "recorded_by",
+    )
+    list_filter = ("version_type", "is_current")
+    search_fields = ("bill__bill_number", "bill__title", "version_label")
+    autocomplete_fields = ("bill", "recorded_by")
+    ordering = ("-version_date", "-id")
 
 
 class DelegationParticipantInline(admin.TabularInline):

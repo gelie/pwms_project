@@ -54,7 +54,8 @@ erDiagram
 
 > The abstract `AbstractLegislativeWorkflow` is shown for clarity; it has no
 > table. Its fields are copied onto each concrete subclass
-> (`InternationalResolution`, `DelegationReport`, `InternationalAgreement` today).
+> (`InternationalResolution`, `DelegationReport`, `InternationalAgreement` and
+> `Bill` today).
 
 ---
 
@@ -295,6 +296,59 @@ Agreements Tracking and Monitoring*, BR02/BR03).
 Helpers: `is_overdue` / `overdue_identifier` implement BR12 ("Due date expired
 – pending follow up" when the deadline is past and the state is not terminal).
 
+### `Bill(AbstractLegislativeWorkflow)`
+
+A Parliamentary bill tracked through its legislative lifecycle (BRS *Online Bill
+Tracking*). Internal procedural states map to the seven high-level public
+statuses through `State.public_name`, exposed on the model as `public_status`.
+
+| Field | Notes |
+| --- | --- |
+| `bill_number` (unique) | Parliament's B-number, including any version suffix (BRS §13.1) |
+| `short_title` | short title (BRS §7A) |
+| `bill_type` | `section-74` / `section-75` / `section-76` / `section-77` (BRS §13.1) |
+| `house_of_origin` | `na` / `ncop` — House of introduction (BRS §7A) |
+| `sponsor` | sponsor or originating authority (BRS §7A) |
+| `introduced_date` | date introduced (BRS §13.1) |
+| `responsible_committee` (FK `Group`, related `bills_responsible`) | committee responsible (BRS §13.2) |
+| `atc_reference`, `order_paper_reference` | authoritative-source references (BRS §7B) |
+| `bill_document_url` | SharePoint link to the bill document (BRS §7B) |
+| `notes` | sub-events / explanatory notes under the current stage (BRS §15A) |
+
+Properties: `public_status` returns the current state's `public_name` display
+value (empty string when the bill has no state); `current_version` is **derived**
+from the version history (the row flagged `is_current`, else the most recent
+version, else `""`) rather than typed — see `BillVersion` below. `is_overdue` /
+`overdue_identifier` behave as on the other concrete workflows.
+
+### `BillVersion(BaseModel)`
+
+A preserved version of a bill (BRS §15A, *version integrity*). Rows are
+append-only history — historical versions may not be overwritten — and the
+version type distinguishes the introduced bill, amendment schedules and the
+resulting amended bill so an amendment and its schedule stay recorded together.
+
+| Field | Notes |
+| --- | --- |
+| `bill` (FK, related `versions`) | owning bill |
+| `version_label` | label including the B-number suffix where it changed (BRS §15A) |
+| `version_type` | `introduced` / `amended` / `amendment_schedule` (BRS §15A) |
+| `version_date` | date this version was tabled / published |
+| `document_url` | SharePoint link to this version's document (BRS §7B) |
+| `notes` | what changed in this version |
+| `recorded_by` (FK `User`, optional) | contributor accountability (BRS §7A) |
+| `is_current` | the version before Parliament; one per bill (partial unique constraint) |
+
+Ordered newest first and indexed on `(bill, -version_date)`. `save()` demotes any
+other current row for the bill inside a transaction, so the partial unique
+constraint on `(bill) WHERE is_current` holds and `Bill.current_version` stays
+unambiguous. Versions are recorded from the bill's page (`bill_version_create`)
+and corrected in place (`bill_version_update`) via `BillVersionForm` — the bill
+and `recorded_by` come from the request, and an edit keeps the row's identity
+and original recorder while `auditlog` captures the change. They are also
+editable through the Django admin (an inline on the bill page plus a standalone
+`BillVersionAdmin`) and bulk-loaded with `import_bill_versions`.
+
 ### `DelegationParticipant(BaseModel)`
 
 Delegation members and support officials (BR02.3.7/8).
@@ -313,16 +367,21 @@ Property `full_name`. Indexed on `(delegation_report, participant_type)`.
 
 Migration `0005_seed_workflow_definitions` creates (idempotently, matched by
 natural key) the seeded BRS machines; migration
-`0016_seed_international_agreement_workflow` adds the third:
+`0016_seed_international_agreement_workflow` adds the third and
+`0019_seed_bill_workflow` the Bill lifecycle:
 
 | Type | States |
 | --- | --- |
 | **Delegation Report** | Awaiting PGIR approval *(initial)* → Submitted for tabling → Tabled and referred to Committee → Closed – House approved *(terminal)* |
 | **International Resolution** | Captured *(initial)* → Assigned → In Progress → Implemented → Closed *(terminal)*; `parent_type` = Delegation Report |
 | **International Agreement** | Submitted for tabling → Agreement Tabled – referred to Committee *(initial)* → Committee considering and processing → Committee submitted report for tabling → House adopted – referred to Department → Closed – House approved *(terminal)* |
+| **Bill** | Introduced *(initial)* → Referred to Committee → Public Participation → Committee Deliberation → Committee Report → House Debate and Voting → NCOP Consideration → Awaiting Presidential Assent → Signed into Law *(terminal)*, with mediation, presidential referral-back and withdrawal branches; each state carries a BRS §12 public status in `public_name` |
 
 Each step has a single onward transition; roles are **not** attached to these
-transitions (assign `allowed_roles` / `notify_roles` per environment).
+transitions (assign `allowed_roles` / `notify_roles` per environment). The Bill
+machine is the exception to "a single onward transition" at its branching
+states (NCOP consideration and presidential assent) and its withdrawal edges,
+which require a comment.
 
 Migration `0012_assign_workflow_type_rbac_group` points the delegation-report
 and international-resolution types at group 98 — *IRP: MR: Man And Gen*, the
@@ -333,6 +392,12 @@ yet exist (a fresh or test database), because the types are seeded before the
 group, which only arrives with the Oracle organisational sync. `create_roles`
 is intentionally left empty: assign the creating roles per environment in the
 WorkflowType admin (only roles held by members of the type's group are offered).
+
+Migration `0021_assign_bill_workflow_type_group` gives the **Bill** type its
+owning group — *LSO: Legal Services: Man And Gen*, the Legal Services Office's
+Management & General section. Like `0012`/`0016` it is a no-op where the group
+does not exist, and it never overwrites an existing assignment. `create_roles`
+stays empty until an administrator assigns the creating roles.
 
 Migration `0007_seed_event_types` adds the standard event types
 (`report-document-attached`, `atc-update-published`, `implementation-reported`,

@@ -12,6 +12,8 @@ from .sharepoint import (
 from .users import User
 from .workflows import (
     AbstractLegislativeWorkflow,
+    Bill,
+    BillVersion,
     DelegationParticipant,
     DelegationReport,
     DelegationReportUpdate,
@@ -34,6 +36,8 @@ from .workflows import (
 __all__ = [
     "AbstractLegislativeWorkflow",
     "BaseModel",
+    "Bill",
+    "BillVersion",
     "City",
     "Country",
     "DelegationParticipant",

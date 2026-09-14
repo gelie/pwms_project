@@ -2,10 +2,10 @@
 
 Only the concrete workflow subclasses are covered here
 (:class:`~pwms.models.DelegationReport`,
-:class:`~pwms.models.InternationalResolution` and
-:class:`~pwms.models.InternationalAgreement`); the reusable machine itself
-(``WorkflowType`` / ``State`` / ``Transition``) is curated through the Django
-admin.
+:class:`~pwms.models.InternationalResolution`,
+:class:`~pwms.models.InternationalAgreement` and :class:`~pwms.models.Bill`);
+the reusable machine itself (``WorkflowType`` / ``State`` / ``Transition``) is
+curated through the Django admin.
 
 The forms implement one rule that the abstract base cannot express directly:
 a new instance always starts in its workflow type's initial state, while an
@@ -18,6 +18,8 @@ from django.contrib.auth import get_user_model
 from django_flatpickr.widgets import DatePickerInput, DateTimePickerInput
 
 from .models import (
+    Bill,
+    BillVersion,
     DelegationReport,
     InternationalAgreement,
     InternationalResolution,
@@ -65,6 +67,7 @@ class WorkflowInstanceFormMixin:
         "owner",
         "assigned_to",
         "responsible_group",
+        "responsible_committee",
         "location_country",
         "location_city",
     )
@@ -81,6 +84,10 @@ class WorkflowInstanceFormMixin:
         if "responsible_group" in self.fields:
             self.fields["responsible_group"].queryset = self.fields[
                 "responsible_group"
+            ].queryset.order_by("name")
+        if "responsible_committee" in self.fields:
+            self.fields["responsible_committee"].queryset = self.fields[
+                "responsible_committee"
             ].queryset.order_by("name")
 
         # Long option lists become search pickers: the widget then posts only the
@@ -344,4 +351,98 @@ class InternationalAgreementForm(WorkflowInstanceFormMixin, forms.ModelForm):
             "explanatory_memorandum_url": forms.TextInput(
                 attrs={"class": "form-control", "type": "url"}
             ),
+        }
+
+
+class BillForm(WorkflowInstanceFormMixin, forms.ModelForm):
+    """Create/update form for a :class:`Bill` (Online Bill Tracking BRS)."""
+
+    initial_workflow_type = "Bill"
+
+    introduced_date = forms.DateField(
+        required=False,
+        widget=DatePickerInput(attrs={"class": "form-control"}),
+    )
+    deadline = forms.DateTimeField(
+        required=False,
+        widget=DateTimePickerInput(attrs={"class": "form-control"}),
+        input_formats=DATETIME_INPUT_FORMATS,
+    )
+
+    class Meta:
+        model = Bill
+        fields = [
+            "workflow_type",
+            "title",
+            "description",
+            "current_state",
+            "owner",
+            "assigned_to",
+            "deadline",
+            "priority",
+            "bill_number",
+            "short_title",
+            "bill_type",
+            "house_of_origin",
+            "sponsor",
+            "introduced_date",
+            "responsible_committee",
+            "atc_reference",
+            "order_paper_reference",
+            "bill_document_url",
+            "notes",
+        ]
+        widgets = {
+            "workflow_type": forms.Select(attrs={"class": "form-select"}),
+            "current_state": forms.Select(attrs={"class": "form-select"}),
+            "title": forms.TextInput(attrs={"class": "form-control"}),
+            "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            # owner/assigned_to are swapped to search pickers by the mixin when
+            # the user list is long, so they keep their select widget here.
+            "owner": forms.Select(attrs={"class": "form-select"}),
+            "assigned_to": forms.Select(attrs={"class": "form-select"}),
+            "priority": forms.Select(attrs={"class": "form-select"}),
+            "bill_number": forms.TextInput(attrs={"class": "form-control"}),
+            "short_title": forms.TextInput(attrs={"class": "form-control"}),
+            "bill_type": forms.Select(attrs={"class": "form-select"}),
+            "house_of_origin": forms.Select(attrs={"class": "form-select"}),
+            "sponsor": forms.TextInput(attrs={"class": "form-control"}),
+            # Swapped to a search picker by the mixin when there are many groups.
+            "responsible_committee": forms.Select(attrs={"class": "form-select"}),
+            "atc_reference": forms.TextInput(attrs={"class": "form-control"}),
+            "order_paper_reference": forms.TextInput(attrs={"class": "form-control"}),
+            "bill_document_url": forms.TextInput(
+                attrs={"class": "form-control", "type": "url"}
+            ),
+            "notes": forms.Textarea(attrs={"class": "form-control", "rows": 4}),
+        }
+
+
+class BillVersionForm(forms.ModelForm):
+    """Record a preserved bill version from the web UI (BRS §15A).
+
+    The owning bill and the recording user are set by the view, not chosen
+    here: a version always belongs to the bill it is recorded on, and
+    ``recorded_by`` is the signed-in user (contributor accountability).
+    """
+
+    class Meta:
+        model = BillVersion
+        fields = [
+            "version_label",
+            "version_type",
+            "version_date",
+            "is_current",
+            "document_url",
+            "notes",
+        ]
+        widgets = {
+            "version_label": forms.TextInput(attrs={"class": "form-control"}),
+            "version_type": forms.Select(attrs={"class": "form-select"}),
+            "version_date": DatePickerInput(attrs={"class": "form-control"}),
+            "is_current": forms.CheckboxInput(attrs={"class": "form-check-input"}),
+            "document_url": forms.TextInput(
+                attrs={"class": "form-control", "type": "url"}
+            ),
+            "notes": forms.Textarea(attrs={"class": "form-control", "rows": 4}),
         }

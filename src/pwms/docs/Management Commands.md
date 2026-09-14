@@ -104,6 +104,29 @@ palette; transitions that require a comment render as amber dashed arrows.
 Mermaid exports are plain ` ```mermaid ` blocks, so GitHub and VS Code render
 them inline with no build step.
 
+## Bills
+
+| Command | Purpose | Status |
+| --- | --- | --- |
+| `import_bill_versions` | bulk-import preserved bill versions (BRS §15A) from a CSV into `BillVersion` | ✅ live |
+
+Bulk-imports the version history for bills that already exist in PWMS. Required
+columns are `bill_number` and `version_label`; the optional columns are
+`version_type` (slug or label), `version_date` (ISO, blank = today),
+`document_url`, `notes` and `is_current` (`1`/`true`/`t`/`yes`/`y`):
+
+```csv
+bill_number,version_label,version_type,version_date,document_url,notes,is_current
+B 12—2026,B 12—2026,introduced,2026-05-01,,Introduced version,no
+B 12—2026,B 12—2026 (1st amendment),amended,2026-06-01,https://docs/v2,Amended clause 4,yes
+```
+
+Rows are upserted on `(bill, version_label)`, so re-running after fixing the file
+is safe — matching rows are skipped, changed rows are updated, and **nothing is
+ever deleted** (version integrity). Rows with an unknown bill number, version
+type or date are reported and skipped, and the command ends with a summary.
+`--dry-run` previews the changes without writing.
+
 ## Notifications & deadlines
 
 | Command | Purpose | Status |

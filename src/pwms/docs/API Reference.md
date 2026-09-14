@@ -33,6 +33,7 @@ OpenAPI schema and interactive docs are generated from the **DRF** stack via
 | GET | `/api/` | ✓ | API root: lists endpoints + login/logout + documentation links |
 | GET | `/api/resolutions/{public_id}/audit/` | ✓ | auditlog CRUD trail for one `InternationalResolution` |
 | GET | `/api/agreements/{public_id}/audit/` | ✓ | auditlog CRUD trail for one `InternationalAgreement` |
+| GET | `/api/bills/{public_id}/audit/` | ✓ | auditlog CRUD trail for one `Bill` |
 | – | `/api/auth/login/` `/api/auth/logout/` | – | browsable-API auth |
 
 ### OpenAPI / docs (public)
@@ -70,8 +71,9 @@ They are session-authenticated like every other site route. See
 
 ## 3. Response shape — audit history
 
-`GET /api/resolutions/{public_id}/audit/` (and the equivalent
-`GET /api/agreements/{public_id}/audit/`) returns a JSON array of
+`GET /api/resolutions/{public_id}/audit/` (and the equivalents
+`GET /api/agreements/{public_id}/audit/` and
+`GET /api/bills/{public_id}/audit/`) returns a JSON array of
 `auditlog.LogEntry` entries (oldest→newest order is newest-first by default):
 
 ```json
