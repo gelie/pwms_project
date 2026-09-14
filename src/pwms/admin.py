@@ -474,6 +474,41 @@ class WorkflowReferralInline(GenericTabularInline):
     verbose_name_plural = "Referrals"
 
 
+class WorkflowGroupAccessInline(GenericTabularInline):
+    """Read-only view of the group grants materialised on a workflow instance.
+
+    Rows come from the type's owning group (``is_primary``) and its viewer
+    groups; edit or add grants through the WorkflowGroupAccess admin, not here,
+    so the instance page stays a faithful view of what was materialised.
+    """
+
+    model = WorkflowGroupAccess
+    ct_field = "content_type"
+    fk_field = "object_id"
+    extra = 0
+    can_delete = False
+    fields = (
+        "group",
+        "is_primary",
+        "can_view",
+        "can_edit",
+        "can_delete",
+        "can_share",
+        "can_comment",
+        "can_manage",
+        "can_transition",
+        "granted_by",
+        "granted_at",
+    )
+    readonly_fields = fields
+    ordering = ("-is_primary", "group__name")
+    verbose_name_plural = "Group access (owner + viewer groups)"
+    show_change_link = True
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
 class DelegationReportUpdateInline(admin.TabularInline):
     """BR03 report updates (ATC publication details) appended to a report."""
 
@@ -521,6 +556,7 @@ class InternationalResolutionAdmin(admin.ModelAdmin):
     inlines: ClassVar[list[type[admin.InlineModelAdmin]]] = [
         WorkflowEventInline,
         WorkflowReferralInline,
+        WorkflowGroupAccessInline,
     ]
 
 
@@ -557,6 +593,7 @@ class InternationalAgreementAdmin(admin.ModelAdmin):
     inlines: ClassVar[list[type[admin.InlineModelAdmin]]] = [
         WorkflowEventInline,
         WorkflowReferralInline,
+        WorkflowGroupAccessInline,
     ]
 
     @admin.display(boolean=True, description="Overdue")
@@ -618,6 +655,7 @@ class DelegationReportAdmin(admin.ModelAdmin):
         DelegationReportUpdateInline,
         WorkflowEventInline,
         WorkflowReferralInline,
+        WorkflowGroupAccessInline,
     ]
 
     @admin.display(boolean=True, description="Overdue")

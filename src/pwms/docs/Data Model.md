@@ -153,12 +153,17 @@ pairing is enforced by `WorkflowTypeAdminForm`.
 
 Type-level **viewer groups** (`viewer_groups`) are read-only stakeholders —
 groups with an interest in every instance of the type but no active role in
-producing it. On creation each instance materialises a read-only
-`WorkflowGroupAccess` row per viewer group (`can_view` on, everything else off)
-via `AbstractLegislativeWorkflow.share_with_viewer_groups()`, so "who can see
-this instance" stays answerable from the instance's own access table, with a
-`granted_at` timestamp per grant. This happens only at creation: existing
-instances are not backfilled when the policy changes.
+producing it. On creation each instance materialises its `WorkflowGroupAccess`
+rows from the type via `AbstractLegislativeWorkflow.materialize_group_access()`:
+
+* the type's owning `group`, flagged `is_primary`;
+* one row per `viewer_groups` entry.
+
+Every materialised row starts read-only (`can_view` on, all other capabilities
+off), so "who can see this instance" stays answerable from the instance's own
+access table with a `granted_at` timestamp per grant. Materialisation runs only
+at creation; run the `sync_type_group_access` command to backfill instances that
+predate a policy change.
 
 ### `State`
 

@@ -155,12 +155,14 @@ view / edit / delete / share / comment / manage / transition on existing rows.
 
 A type may also declare **viewer groups** (`viewer_groups`): read-only
 stakeholders with an interest in every instance but no active role in producing
-it. When an instance is created, it materialises a read-only
-`WorkflowGroupAccess` row for each viewer group (view on, every other capability
-off), so members of those groups can see it and the grant appears in the
-instance's own access table with a `granted_at` timestamp. This is a
-creation-time materialisation only — editing the type's viewer groups does not
-backfill existing instances.
+it. When an instance is created it materialises its `WorkflowGroupAccess` rows
+from the type — the type's owning `group` (flagged `is_primary`) and one
+read-only row per viewer group (view on, every other capability off) — so
+members of those groups can see it and each grant appears in the instance's own
+access table with a `granted_at` timestamp. Raise individual capabilities per
+instance or through `WorkflowRolePermission` as needed. This is creation-time
+materialisation only; run `manage.py sync_type_group_access` to backfill
+instances that predate a configuration change.
 
 All of this is exposed through one **`PermissionResolver` service**
 (`pwms/services/permissions.py`), the single source of truth the web UI and the

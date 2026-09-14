@@ -118,9 +118,24 @@ them inline with no build step.
 
 | Command | Purpose | Status |
 | --- | --- | --- |
-| `fix_missing_group_access` | create `WorkflowGroupAccess` for instances missing it | legacy |
+| `fix_missing_group_access` | create `WorkflowGroupAccess` for instances missing it — **superseded by `sync_type_group_access`** | legacy |
+| `sync_type_group_access` | backfill `WorkflowGroupAccess` (owning group + viewer groups) from each instance's `WorkflowType` | ✅ live |
 | `show_workflow_hierarchy` | print group/workflow hierarchy trees | legacy |
 | `validate_memberships` | integrity-check group memberships | pending repoint |
+
+### Type-level group access
+
+Configuring a `WorkflowType` — its owning `group` and its `viewer_groups` —
+materialises `WorkflowGroupAccess` rows on **new** instances only
+(`AbstractLegislativeWorkflow.materialize_group_access()`).
+`sync_type_group_access` applies the current configuration to instances that
+predate it: the owning group flagged `is_primary`, each viewer group read-only.
+It is idempotent and never overwrites an existing row, so it is safe to re-run.
+
+| Option | Effect |
+| --- | --- |
+| `--workflow-type NAME_OR_SLUG` | restrict the backfill to one workflow type |
+| `--dry-run` | report what would be created without writing anything |
 
 ## Roadmap hooks
 

@@ -236,40 +236,68 @@ class AbstractLegislativeWorkflow(BaseModel):
     # -- lifecycle / RBAC helpers -------------------------------------------
     def save(self, *args, **kwargs):
         """
-        Persist the instance, then materialise its type's viewer sharing.
+        Persist the instance, then materialise its type's group access.
 
         ``super().save()`` runs first so the row has a primary key, which the
-        generic access rows need. Only the initial insert triggers sharing;
-        later saves are updates and are left alone, so per-instance access an
-        administrator has since edited is never overwritten.
+        generic access rows need. Only the initial insert triggers
+        materialisation; later saves are updates and are left alone, so
+        per-instance access an administrator has since edited is never
+        overwritten.
         """
         adding = self._state.adding
         super().save(*args, **kwargs)
         if adding:
-            self.share_with_viewer_groups()
+            self.materialize_group_access()
 
-    def share_with_viewer_groups(self):
+    def materialize_group_access(self):
         """
-        Create read-only :class:`WorkflowGroupAccess` rows for the workflow
-        type's ``viewer_groups``.
+        Create this instance's :class:`WorkflowGroupAccess` rows from its
+        workflow type, and return the rows that were created.
 
-        Viewers are shared stakeholders: groups with an interest in every
-        instance of a type but no active role in producing it. Materialising
-        the rows (rather than resolving the type at read time) keeps "who can
-        see this instance" answerable from the instance's own access table and
-        gives each grant a ``granted_at`` timestamp. Idempotent: an existing
-        row for a group is left as configured.
+        Two kinds are materialised:
+
+        * the type's owning ``group``, flagged ``is_primary`` — the unit that
+          governs the type;
+        * each of the type's ``viewer_groups`` — read-only shared stakeholders
+          (an interest in every instance but no active role in producing it).
+
+        Both start read-only (``can_view`` only); raise individual capabilities
+        per instance or through ``WorkflowRolePermission`` as needed. Runs on
+        creation (see :meth:`save`) and is reused by the ``sync_type_group_access``
+        backfill command. Idempotent: an existing row for a group is left as
+        configured, so an administrator's edits are never overwritten.
         """
         if self.pk is None or self.workflow_type_id is None:
-            return
+            return []
         content_type = self._instance_ct()
-        for group in self.workflow_type.viewer_groups.all():
-            WorkflowGroupAccess.objects.get_or_create(
+        workflow_type = self.workflow_type
+        owner_group_id = workflow_type.group_id
+        created = []
+
+        if owner_group_id is not None:
+            access, was_created = WorkflowGroupAccess.objects.get_or_create(
+                content_type=content_type,
+                object_id=self.pk,
+                group_id=owner_group_id,
+                defaults={"is_primary": True, "can_view": True},
+            )
+            if was_created:
+                created.append(access)
+
+        for group in workflow_type.viewer_groups.all():
+            if group.pk == owner_group_id:
+                # The owning group keeps its primary grant; don't downgrade it.
+                continue
+            access, was_created = WorkflowGroupAccess.objects.get_or_create(
                 content_type=content_type,
                 object_id=self.pk,
                 group=group,
                 defaults={"can_view": True},
             )
+            if was_created:
+                created.append(access)
+
+        return created
 
     def clean(self):
         super().clean()

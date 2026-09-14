@@ -9,6 +9,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.management import call_command
+from django.core.management.base import CommandError
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -1667,6 +1668,138 @@ class ViewerGroupAccessTests(TestCase):
             ).count(),
             1,
         )
+
+    def test_creation_materialises_primary_access_for_owner_group(self):
+        owner_group = Group.objects.create(name="Owning Unit", group_type="division")
+        wt = WorkflowType.objects.create(name="Test Owned Type", group=owner_group)
+        state = State.objects.create(workflow_type=wt, name="Open", is_initial=True)
+        resolution = InternationalResolution.objects.create(
+            workflow_type=wt,
+            current_state=state,
+            resolution_number="IR-OWN-1",
+            title="Owned",
+            owner=self.creator,
+        )
+
+        access = WorkflowGroupAccess.objects.get(
+            content_type=ContentType.objects.get_for_model(InternationalResolution),
+            object_id=resolution.pk,
+            group=owner_group,
+        )
+        self.assertTrue(access.is_primary)
+        self.assertTrue(access.can_view)
+        for flag in (
+            "can_edit",
+            "can_delete",
+            "can_share",
+            "can_comment",
+            "can_manage",
+            "can_transition",
+        ):
+            self.assertFalse(getattr(access, flag))
+
+    def test_owner_group_also_listed_as_viewer_is_not_downgraded(self):
+        owner_group = Group.objects.create(name="Dual Role Unit", group_type="division")
+        wt = WorkflowType.objects.create(name="Test Dual Type", group=owner_group)
+        wt.viewer_groups.add(owner_group)
+        state = State.objects.create(workflow_type=wt, name="Open", is_initial=True)
+        resolution = InternationalResolution.objects.create(
+            workflow_type=wt,
+            current_state=state,
+            resolution_number="IR-DUAL-1",
+            title="Dual role",
+            owner=self.creator,
+        )
+
+        rows = WorkflowGroupAccess.objects.filter(
+            content_type=ContentType.objects.get_for_model(InternationalResolution),
+            object_id=resolution.pk,
+            group=owner_group,
+        )
+        self.assertEqual(rows.count(), 1)
+        self.assertTrue(rows.first().is_primary)
+
+
+class SyncTypeGroupAccessCommandTests(TestCase):
+    """The backfill command re-materialises type access for existing instances."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.owner = User.objects.create_user(username="sync-owner", password="pw")
+        cls.owner_group = Group.objects.create(
+            name="Sync Owning Unit", group_type="division"
+        )
+        cls.viewer_group = Group.objects.create(
+            name="Sync Viewer Committee", group_type="portfolio_committee"
+        )
+        cls.wt = WorkflowType.objects.create(
+            name="Test Sync Type", group=cls.owner_group
+        )
+        cls.wt.viewer_groups.add(cls.viewer_group)
+        cls.state = State.objects.create(
+            workflow_type=cls.wt, name="Open", is_initial=True
+        )
+        cls.resolution = InternationalResolution.objects.create(
+            workflow_type=cls.wt,
+            current_state=cls.state,
+            resolution_number="IR-SYNC-1",
+            title="Backfill me",
+            owner=cls.owner,
+        )
+
+    def _rows(self):
+        return WorkflowGroupAccess.objects.filter(
+            content_type=ContentType.objects.get_for_model(InternationalResolution),
+            object_id=self.resolution.pk,
+        )
+
+    def test_creation_materialised_both_owner_and_viewer_rows(self):
+        self.assertEqual(self._rows().count(), 2)
+        self.assertTrue(self._rows().get(group=self.owner_group).is_primary)
+
+    def test_command_restores_missing_rows(self):
+        self._rows().delete()
+
+        out = StringIO()
+        call_command("sync_type_group_access", stdout=out)
+
+        groups = set(self._rows().values_list("group__name", flat=True))
+        self.assertEqual(groups, {self.owner_group.name, self.viewer_group.name})
+        self.assertTrue(self._rows().get(group=self.owner_group).is_primary)
+        self.assertIn("added 2 row(s)", out.getvalue())
+
+    def test_dry_run_creates_nothing(self):
+        self._rows().delete()
+
+        out = StringIO()
+        call_command("sync_type_group_access", "--dry-run", stdout=out)
+
+        self.assertEqual(self._rows().count(), 0)
+        self.assertIn("DRY RUN", out.getvalue())
+
+    def test_command_is_idempotent(self):
+        original = self._rows().count()
+
+        out = StringIO()
+        call_command("sync_type_group_access", stdout=out)
+
+        self.assertEqual(self._rows().count(), original)
+        self.assertIn("added 0 row(s)", out.getvalue())
+
+    def test_command_scopes_to_one_workflow_type(self):
+        out = StringIO()
+        call_command(
+            "sync_type_group_access",
+            "--workflow-type",
+            "Test Sync Type",
+            stdout=out,
+        )
+        self.assertIn("Test Sync Type", out.getvalue())
+
+    def test_unknown_workflow_type_raises(self):
+        with self.assertRaises(CommandError):
+            call_command("sync_type_group_access", "--workflow-type", "Nope")
 
 
 class PlaceDataTests(TestCase):
