@@ -59,10 +59,10 @@ html[data-theme="light"],
     --object-tools-bg: #1f4a2d;
     --object-tools-hover-bg: #275937;
 
-    --font-family-primary: "ff-dax-pro", "Helvetica Neue", Helvetica, Arial,
+    --font-family-primary: "Helvetica Neue", Helvetica, Arial,
         "Segoe UI", sans-serif;
 
-    --pwms-hdr-top: #2d663f;
+        --pwms-hdr-top: #2d663f;
     --pwms-hdr-bottom: #1f4a2d;
     --pwms-gold: #b3995d;
     --pwms-gold-bright: #efbd47;
@@ -253,6 +253,12 @@ html[data-theme="dark"] {
     color: var(--header-branding-color);
 }
 
+h1, h2, h3, h4, h5, h6, table>caption>a {
+    font-family: ff-dax-pro;
+    text-transform: uppercase;
+    font-weight: 600;
+}
+
 /* User tools (welcome / links / theme toggle) */
 #user-tools {
     font-size: 0.78rem;
@@ -272,8 +278,9 @@ html[data-theme="dark"] {
 }
 
 /* Body chrome */
-body {
+body, td, tr, a, li {
     font-family: var(--font-family-primary);
+    font-size: 1rem !important;
 }
 
 #content {
@@ -306,6 +313,8 @@ div.breadcrumbs {
     color: #ffffff;
     padding: 10px 14px;
     font-weight: 600;
+    font-family: ff-dax-pro;
+    text-transform: uppercase;
 }
 
 #changelist {
@@ -348,7 +357,7 @@ a:hover {
 /* Nav sidebar */
 #nav-sidebar .current-model,
 #nav-sidebar .current-app .section {
-    background: var(--selected-bg);
+    /*background: var(--selected-bg);*/
     border-radius: 6px;
 }
 

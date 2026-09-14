@@ -59,6 +59,17 @@ class WorkflowType(BaseModel):
         ),
     )
 
+    viewer_groups = models.ManyToManyField(
+        "Group",
+        blank=True,
+        related_name="viewer_workflow_types",
+        help_text=(
+            "Read-only stakeholder groups (an interest in the workflow but no "
+            "active role). Every new instance of this type is shared with these "
+            "groups at view level when it is created."
+        ),
+    )
+
     # Type-level hierarchy: lets the registry declare container relationships,
     # e.g. "International Resolution" nests under "Delegation Report".
     parent_type = models.ForeignKey(
@@ -223,6 +234,43 @@ class AbstractLegislativeWorkflow(BaseModel):
     )
 
     # -- lifecycle / RBAC helpers -------------------------------------------
+    def save(self, *args, **kwargs):
+        """
+        Persist the instance, then materialise its type's viewer sharing.
+
+        ``super().save()`` runs first so the row has a primary key, which the
+        generic access rows need. Only the initial insert triggers sharing;
+        later saves are updates and are left alone, so per-instance access an
+        administrator has since edited is never overwritten.
+        """
+        adding = self._state.adding
+        super().save(*args, **kwargs)
+        if adding:
+            self.share_with_viewer_groups()
+
+    def share_with_viewer_groups(self):
+        """
+        Create read-only :class:`WorkflowGroupAccess` rows for the workflow
+        type's ``viewer_groups``.
+
+        Viewers are shared stakeholders: groups with an interest in every
+        instance of a type but no active role in producing it. Materialising
+        the rows (rather than resolving the type at read time) keeps "who can
+        see this instance" answerable from the instance's own access table and
+        gives each grant a ``granted_at`` timestamp. Idempotent: an existing
+        row for a group is left as configured.
+        """
+        if self.pk is None or self.workflow_type_id is None:
+            return
+        content_type = self._instance_ct()
+        for group in self.workflow_type.viewer_groups.all():
+            WorkflowGroupAccess.objects.get_or_create(
+                content_type=content_type,
+                object_id=self.pk,
+                group=group,
+                defaults={"can_view": True},
+            )
+
     def clean(self):
         super().clean()
         if (
@@ -1950,3 +1998,143 @@ class InternationalResolution(AbstractLegislativeWorkflow):
 
     def __str__(self):
         return f"Resolution {self.resolution_number} - {self.title}"
+
+
+class InternationalAgreement(AbstractLegislativeWorkflow):
+    """
+    A government international agreement tabled in Parliament and tracked
+    through referral, committee consideration and House adoption (BRS
+    *International Agreements Tracking and Monitoring*, BR02/BR03).
+
+    System behaviour:
+
+    * a unique ``reference_number`` is generated on creation (BR02);
+    * newly created agreements start in the seeded *Agreement Tabled –
+      referred to Committee* state, the BRS's automatic initial status (BR02);
+    * the agreement type is Section 231(2) or Section 231(3) (BR02);
+    * referral committees are captured as a many-to-many link to
+      :class:`Group` (BR02);
+    * the implementation due date (BR02) is the inherited ``deadline``, and the
+      BR12 overdue identifier is exposed by ``is_overdue`` /
+      ``overdue_identifier``.
+
+    Documents (BR02, BR04, BR11) are held in SharePoint; this model keeps the
+    agreement and explanatory-memorandum links.
+    """
+
+    SECTION_231_2 = "section-231-2"
+    SECTION_231_3 = "section-231-3"
+    AGREEMENT_TYPE_CHOICES = [
+        (SECTION_231_2, _("Section 231(2) agreement")),
+        (SECTION_231_3, _("Section 231(3) agreement")),
+    ]
+
+    reference_number = models.CharField(
+        max_length=30,
+        unique=True,
+        null=True,
+        blank=True,
+        editable=False,
+        help_text="System-generated unique reference number (BR02).",
+    )
+    agreement_type = models.CharField(
+        max_length=20,
+        choices=AGREEMENT_TYPE_CHOICES,
+        blank=True,
+        help_text="Constitutional basis of the agreement (BR02).",
+    )
+    submitting_department = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Government department that submitted the agreement (BR02).",
+    )
+    responsible_minister = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text=(
+            "Responsible Member of the Executive (Minister) submitting the "
+            "agreement (BR02)."
+        ),
+    )
+    atc_tabling_date = models.DateField(
+        null=True,
+        blank=True,
+        help_text="Date the agreement was tabled in the ATC (BR02).",
+    )
+    atc_reference = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text=(
+            "Reference details of the ATC and any other relevant documents (BR02)."
+        ),
+    )
+    referral_committees = models.ManyToManyField(
+        "Group",
+        blank=True,
+        related_name="international_agreements_referred",
+        help_text="Committee(s) to which the agreement is referred (BR02).",
+    )
+    notes = models.TextField(
+        blank=True,
+        help_text=(
+            "Additional notes / follow-up action by Presiding Officer(s) or "
+            "Parliamentarian(s) (BR02)."
+        ),
+    )
+    agreement_document_url = models.URLField(
+        blank=True,
+        help_text="SharePoint link to the uploaded agreement document (BR02).",
+    )
+    explanatory_memorandum_url = models.URLField(
+        blank=True,
+        help_text="SharePoint link to the explanatory memorandum (BR02).",
+    )
+
+    class Meta:
+        verbose_name = "International Agreement"
+        verbose_name_plural = "International Agreements"
+
+    def __str__(self):
+        label = self.reference_number or "unsaved"
+        return f"{label} – {self.title}" if self.title else str(label)
+
+    # -- system-generated reference number (BR02) ---------------------------
+    def save(self, *args, **kwargs):
+        if self._state.adding and not self.reference_number:
+            self.reference_number = self._next_reference_number()
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def _next_reference_number(cls):
+        """
+        ``IA-<year>-<sequence>``, sequential per calendar year.
+
+        The unique constraint backstops the small race window between the
+        lookup and the insert.
+        """
+        year = timezone.now().year
+        prefix = f"IA-{year}-"
+        last = (
+            cls.objects.filter(reference_number__startswith=prefix)
+            .order_by("-reference_number")
+            .values_list("reference_number", flat=True)
+            .first()
+        )
+        try:
+            sequence = int(last.rsplit("-", 1)[1]) + 1
+        except AttributeError, IndexError, ValueError:
+            sequence = 1
+        return f"{prefix}{sequence:04d}"
+
+    # -- overdue handling (BR12) -------------------------------------------
+    @property
+    def is_overdue(self):
+        """True when the due date has expired and the agreement is not closed."""
+        if not self.deadline or not self.current_state_id:
+            return False
+        return self.deadline < timezone.now() and not self.current_state.is_terminal
+
+    @property
+    def overdue_identifier(self):
+        """BR12 flag text; empty string when the agreement is not overdue."""
+        return OVERDUE_IDENTIFIER if self.is_overdue else ""

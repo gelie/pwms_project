@@ -42,16 +42,20 @@ and the typical flows. It complements the structural documents
 ### 3.1 Definitions (the machine)
 
 An administrator defines a **WorkflowType** and its **States** and **Transitions**.
-Two state machines are seeded from the BRS (migration `0005`):
+Three state machines are seeded from the BRS (migrations `0005` and `0016`):
 
 - **Delegation Report** — `Awaiting PGIR approval → Submitted for tabling →
   Tabled and referred to Committee → Closed – House approved` (BR02.8);
 - **International Resolution** — `Captured → Assigned → In Progress →
-  Implemented → Closed`, nested under the Delegation Report type.
+  Implemented → Closed`, nested under the Delegation Report type;
+- **International Agreement** — `Submitted for tabling → Agreement Tabled –
+  referred to Committee → Committee considering and processing → Committee
+  submitted report for tabling → House adopted – referred to Department →
+  Closed – House approved` (International Agreements BRS).
 
 Each type is **owned by a Group** (`WorkflowType.group`) that scopes its RBAC:
 creation is limited to the type's `create_roles`, and those roles must be roles
-held by members of that group. Both seeded types belong to group 98
+held by members of that group. All three seeded types belong to group 98
 (*IRP: MR: Man And Gen*, the Multilateral Relations unit). Creation roles are
 configured per environment; while `create_roles` is empty only superusers may
 create instances of that type.
@@ -149,6 +153,15 @@ that group) allowed to create instances — `WorkflowType.can_create(user)` and
 `creatable_by(user)`. The instance `can()` chain above continues to govern
 view / edit / delete / share / comment / manage / transition on existing rows.
 
+A type may also declare **viewer groups** (`viewer_groups`): read-only
+stakeholders with an interest in every instance but no active role in producing
+it. When an instance is created, it materialises a read-only
+`WorkflowGroupAccess` row for each viewer group (view on, every other capability
+off), so members of those groups can see it and the grant appears in the
+instance's own access table with a `granted_at` timestamp. This is a
+creation-time materialisation only — editing the type's viewer groups does not
+backfill existing instances.
+
 All of this is exposed through one **`PermissionResolver` service**
 (`pwms/services/permissions.py`), the single source of truth the web UI and the
 API share: `resolve(user, resource, action)`, `permissions_for(user, resource)`
@@ -185,10 +198,10 @@ Consumers:
 
 - **Server-rendered pages** (Bootstrap 5 + lucide icons): home/about,
   login/logout, groups (all/mine/detail), and full CRUD for the concrete workflow
-  instances — Delegation Reports and International Resolutions — reached from the
-  navbar *Workflows* dropdown. List pages carry a free-text filter; detail pages
-  show the workflow metadata, participants, resolutions, BR03 updates, referrals
-  and the audit trail.
+  instances — Delegation Reports, International Resolutions and International
+  Agreements — reached from the navbar *Workflows* dropdown. List pages carry a
+  free-text filter; detail pages show the workflow metadata, participants,
+  resolutions, agreement details, BR03 updates, referrals and the audit trail.
 - **Django Admin** for administration (users, groups, roles, memberships,
   workflow definitions).
 - **REST API (DRF)** exposing audit history; browsable, plus Swagger/ReDoc docs.

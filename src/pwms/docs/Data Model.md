@@ -54,7 +54,7 @@ erDiagram
 
 > The abstract `AbstractLegislativeWorkflow` is shown for clarity; it has no
 > table. Its fields are copied onto each concrete subclass
-> (`InternationalResolution`, `DelegationReport` today).
+> (`InternationalResolution`, `DelegationReport`, `InternationalAgreement` today).
 
 ---
 
@@ -135,6 +135,7 @@ Unique on `(user, group, role, start_date)`; `clean()` validates dates.
 | `name` (unique), `slug`, `description`, `enabled` | registry entry |
 | `group` (FK, related `workflow_types`) | RBAC scope: the group whose members/roles govern this type |
 | `create_roles` (M2M to `Role`, related `creatable_workflow_types`) | roles **from that group** allowed to create instances; empty means superusers only |
+| `viewer_groups` (M2M to `Group`, related `viewer_workflow_types`) | read-only stakeholder groups; every new instance is shared with them (a read-only `WorkflowGroupAccess` row) at creation |
 | `parent_type` (self-FK, related `child_types`) | optional type hierarchy; declaring child types opts the parent into type-restricted instance links |
 
 Reverse relations: `states`, `transitions`, `child_types`, `%(class)s_instances`.
@@ -149,6 +150,15 @@ the classmethod `creatable_by(user)` returning the enabled types a user may
 create in. `group` is nullable in the database because the seeded types exist
 before their group does, but it is **required in the admin**; the role/group
 pairing is enforced by `WorkflowTypeAdminForm`.
+
+Type-level **viewer groups** (`viewer_groups`) are read-only stakeholders —
+groups with an interest in every instance of the type but no active role in
+producing it. On creation each instance materialises a read-only
+`WorkflowGroupAccess` row per viewer group (`can_view` on, everything else off)
+via `AbstractLegislativeWorkflow.share_with_viewer_groups()`, so "who can see
+this instance" stays answerable from the instance's own access table, with a
+`granted_at` timestamp per grant. This happens only at creation: existing
+instances are not backfilled when the policy changes.
 
 ### `State`
 
@@ -257,6 +267,29 @@ recommendations (BR02.3.9).
 | `responsible_group` (FK `Group`) | committee/group responsible for implementation |
 | `implementation_progress` | latest implementation narrative |
 
+### `InternationalAgreement(AbstractLegislativeWorkflow)`
+
+A government international agreement tabled in Parliament and tracked through
+referral, committee consideration and House adoption (BRS *International
+Agreements Tracking and Monitoring*, BR02/BR03).
+
+| Field | Notes |
+| --- | --- |
+| `reference_number` (unique) | system-generated `IA-<year>-<sequence>` (BR02) |
+| `agreement_type` | `section-231-2` / `section-231-3` (BR02) |
+| `submitting_department` | department that submitted the agreement (BR02) |
+| `responsible_minister` | responsible Member of the Executive (BR02) |
+| `atc_tabling_date` | date the agreement was tabled in the ATC (BR02) |
+| `atc_reference` | reference details of the ATC / relevant documents (BR02) |
+| `referral_committees` (M2M `Group`, related `international_agreements_referred`) | committees the agreement is referred to (BR02) |
+| `notes` | additional notes / follow-up action (BR02) |
+| `agreement_document_url`, `explanatory_memorandum_url` | SharePoint links to the agreement and its explanatory memorandum (BR02/BR04/BR11) |
+| inherited `deadline` | due date for implementation (BR02) |
+| inherited `assigned_to` + `assigned_to_email` | assigned official + email (BR02) |
+
+Helpers: `is_overdue` / `overdue_identifier` implement BR12 ("Due date expired
+– pending follow up" when the deadline is past and the state is not terminal).
+
 ### `DelegationParticipant(BaseModel)`
 
 Delegation members and support officials (BR02.3.7/8).
@@ -274,21 +307,25 @@ Property `full_name`. Indexed on `(delegation_report, participant_type)`.
 ### Seeded workflow definitions
 
 Migration `0005_seed_workflow_definitions` creates (idempotently, matched by
-natural key) the two BRS machines:
+natural key) the seeded BRS machines; migration
+`0016_seed_international_agreement_workflow` adds the third:
 
 | Type | States |
 | --- | --- |
 | **Delegation Report** | Awaiting PGIR approval *(initial)* → Submitted for tabling → Tabled and referred to Committee → Closed – House approved *(terminal)* |
 | **International Resolution** | Captured *(initial)* → Assigned → In Progress → Implemented → Closed *(terminal)*; `parent_type` = Delegation Report |
+| **International Agreement** | Submitted for tabling → Agreement Tabled – referred to Committee *(initial)* → Committee considering and processing → Committee submitted report for tabling → House adopted – referred to Department → Closed – House approved *(terminal)* |
 
 Each step has a single onward transition; roles are **not** attached to these
 transitions (assign `allowed_roles` / `notify_roles` per environment).
 
-Migration `0012_assign_workflow_type_rbac_group` points both seeded types at
-group 98 — *IRP: MR: Man And Gen*, the Multilateral Relations unit that handles
-international engagements. That migration is a no-op where the group does not
-yet exist (a fresh or test database), because the types are seeded by `0005`
-while group 98 only arrives with the Oracle organisational sync. `create_roles`
+Migration `0012_assign_workflow_type_rbac_group` points the delegation-report
+and international-resolution types at group 98 — *IRP: MR: Man And Gen*, the
+Multilateral Relations unit that handles international engagements — and
+`0016_seed_international_agreement_workflow` owns the international-agreement
+type with the same group. Those migrations are no-ops where the group does not
+yet exist (a fresh or test database), because the types are seeded before the
+group, which only arrives with the Oracle organisational sync. `create_roles`
 is intentionally left empty: assign the creating roles per environment in the
 WorkflowType admin (only roles held by members of the type's group are offered).
 

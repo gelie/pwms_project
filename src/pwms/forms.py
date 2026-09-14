@@ -1,8 +1,9 @@
 """ModelForms backing the workflow-instance CRUD views.
 
-Only the two concrete workflow subclasses are covered here
-(:class:`~pwms.models.DelegationReport` and
-:class:`~pwms.models.InternationalResolution`); the reusable machine itself
+Only the concrete workflow subclasses are covered here
+(:class:`~pwms.models.DelegationReport`,
+:class:`~pwms.models.InternationalResolution` and
+:class:`~pwms.models.InternationalAgreement`); the reusable machine itself
 (``WorkflowType`` / ``State`` / ``Transition``) is curated through the Django
 admin.
 
@@ -18,6 +19,7 @@ from django_flatpickr.widgets import DatePickerInput, DateTimePickerInput
 
 from .models import (
     DelegationReport,
+    InternationalAgreement,
     InternationalResolution,
     State,
     WorkflowType,
@@ -278,5 +280,68 @@ class InternationalResolutionForm(WorkflowInstanceFormMixin, forms.ModelForm):
             "responsible_group": forms.Select(attrs={"class": "form-select"}),
             "implementation_progress": forms.Textarea(
                 attrs={"class": "form-control", "rows": 4}
+            ),
+        }
+
+
+class InternationalAgreementForm(WorkflowInstanceFormMixin, forms.ModelForm):
+    """Create/update form for an :class:`InternationalAgreement` (BRS BR02)."""
+
+    initial_workflow_type = "International Agreement"
+
+    atc_tabling_date = forms.DateField(
+        required=False,
+        widget=DatePickerInput(attrs={"class": "form-control"}),
+    )
+    deadline = forms.DateTimeField(
+        required=False,
+        widget=DateTimePickerInput(attrs={"class": "form-control"}),
+        input_formats=DATETIME_INPUT_FORMATS,
+    )
+
+    class Meta:
+        model = InternationalAgreement
+        fields = [
+            "workflow_type",
+            "title",
+            "description",
+            "current_state",
+            "owner",
+            "assigned_to",
+            "deadline",
+            "priority",
+            "agreement_type",
+            "submitting_department",
+            "responsible_minister",
+            "atc_tabling_date",
+            "atc_reference",
+            "referral_committees",
+            "notes",
+            "agreement_document_url",
+            "explanatory_memorandum_url",
+        ]
+        widgets = {
+            "workflow_type": forms.Select(attrs={"class": "form-select"}),
+            "current_state": forms.Select(attrs={"class": "form-select"}),
+            "title": forms.TextInput(attrs={"class": "form-control"}),
+            "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
+            # owner/assigned_to are swapped to search pickers by the mixin when
+            # the user list is long, so they keep their select widget here.
+            "owner": forms.Select(attrs={"class": "form-select"}),
+            "assigned_to": forms.Select(attrs={"class": "form-select"}),
+            "priority": forms.Select(attrs={"class": "form-select"}),
+            "agreement_type": forms.Select(attrs={"class": "form-select"}),
+            "submitting_department": forms.TextInput(attrs={"class": "form-control"}),
+            "responsible_minister": forms.TextInput(attrs={"class": "form-control"}),
+            "referral_committees": forms.SelectMultiple(
+                attrs={"class": "form-select", "size": 6}
+            ),
+            "atc_reference": forms.TextInput(attrs={"class": "form-control"}),
+            "notes": forms.Textarea(attrs={"class": "form-control", "rows": 4}),
+            "agreement_document_url": forms.TextInput(
+                attrs={"class": "form-control", "type": "url"}
+            ),
+            "explanatory_memorandum_url": forms.TextInput(
+                attrs={"class": "form-control", "type": "url"}
             ),
         }

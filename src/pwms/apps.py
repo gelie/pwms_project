@@ -27,7 +27,11 @@ class PwmsConfig(AppConfig):
 
         from auditlog.registry import auditlog
 
-        from .models import DelegationReport, InternationalResolution
+        from .models import (
+            DelegationReport,
+            InternationalAgreement,
+            InternationalResolution,
+        )
 
         # Referrals are typed WorkflowReferral rows whose lifecycle is recorded
         # as domain events, so there are no M2M fields left to track here.
@@ -37,6 +41,10 @@ class PwmsConfig(AppConfig):
         )
         auditlog.register(
             DelegationReport,
+            exclude_fields=["updated_at"],
+        )
+        auditlog.register(
+            InternationalAgreement,
             exclude_fields=["updated_at"],
         )
 

@@ -11,12 +11,17 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
-from .forms import DelegationReportForm, InternationalResolutionForm
+from .forms import (
+    DelegationReportForm,
+    InternationalAgreementForm,
+    InternationalResolutionForm,
+)
 from .models import (
     City,
     Country,
     DelegationReport,
     Group,
+    InternationalAgreement,
     InternationalResolution,
     User,
     WorkflowType,
@@ -60,11 +65,19 @@ def workflows(request):
             "current_state", "owner"
         ).order_by("-created_at"),
     )
+    viewable_agreements = visible_instances(
+        request.user,
+        InternationalAgreement.objects.select_related(
+            "current_state", "owner"
+        ).order_by("-created_at"),
+    )
     context = {
         "report_count": len(viewable_reports),
         "resolution_count": len(viewable_resolutions),
+        "agreement_count": len(viewable_agreements),
         "recent_reports": viewable_reports[:5],
         "recent_resolutions": viewable_resolutions[:5],
+        "recent_agreements": viewable_agreements[:5],
         # The create views redirect away unless the user holds a create role for
         # at least one enabled workflow type, so gate the "New ..." buttons on
         # that same condition instead of offering a dead action.
@@ -131,6 +144,11 @@ def _workflow_detail_url(instance):
     if isinstance(instance, InternationalResolution):
         return reverse(
             "pwms:international_resolution_detail",
+            kwargs={"public_id": instance.public_id},
+        )
+    if isinstance(instance, InternationalAgreement):
+        return reverse(
+            "pwms:international_agreement_detail",
             kwargs={"public_id": instance.public_id},
         )
     return None
@@ -427,6 +445,148 @@ def international_resolution_delete(request, public_id):
         request,
         "pwms/international-resolution-confirm-delete.html",
         {"resolution": resolution},
+    )
+
+
+# -- International agreements ------------------------------------------------
+
+
+def international_agreements(request):
+    """List agreements the user may view, with a free-text filter (BR09)."""
+    query = request.GET.get("q", "").strip()
+    matching = InternationalAgreement.objects.select_related(
+        "workflow_type", "current_state", "owner", "assigned_to"
+    ).order_by("-created_at")
+    if query:
+        matching = matching.filter(
+            Q(reference_number__icontains=query)
+            | Q(title__icontains=query)
+            | Q(submitting_department__icontains=query)
+        )
+    # View access gates the listing itself, not just the row actions.
+    agreements = visible_instances(request.user, matching)
+    editable_pks = {
+        agreement.pk
+        for agreement in agreements
+        if resolve(request.user, agreement, EDIT)
+    }
+    deletable_pks = {
+        agreement.pk
+        for agreement in agreements
+        if resolve(request.user, agreement, DELETE)
+    }
+    return render(
+        request,
+        "pwms/international-agreement-list.html",
+        {
+            "agreements": agreements,
+            "query": query,
+            "editable_pks": editable_pks,
+            "deletable_pks": deletable_pks,
+        },
+    )
+
+
+def international_agreement_detail(request, public_id):
+    """Show one international agreement, its parent and its audit trail."""
+    agreement = get_object_or_404(
+        InternationalAgreement.objects.select_related(
+            "workflow_type",
+            "current_state",
+            "owner",
+            "assigned_to",
+        ).prefetch_related("referral_committees"),
+        public_id=public_id,
+    )
+    require(request.user, agreement, VIEW)
+    parent = agreement.parent_workflow
+    # The parent is a separate instance: don't reveal or link it unless the user
+    # may view it too.
+    parent_viewable = parent is not None and resolve(request.user, parent, VIEW)
+    context = {
+        "agreement": agreement,
+        "perms": permissions_for(request.user, agreement),
+        "parent": parent if parent_viewable else None,
+        "parent_url": _workflow_detail_url(parent) if parent_viewable else None,
+        "referrals": agreement.referrals().select_related("referred_to", "referred_by"),
+        "transitions": agreement.get_available_transitions(),
+        "transition_logs": agreement.audit_logs().select_related(
+            "from_state", "to_state", "actor"
+        ),
+    }
+    return render(request, "pwms/international-agreement-detail.html", context)
+
+
+def international_agreement_create(request):
+    """Create an agreement; the initial state is derived from its type."""
+    if request.method == "POST":
+        _deny_uncreatable_workflow_type(request)
+        form = InternationalAgreementForm(request.POST, user=request.user)
+        if form.is_valid():
+            agreement = form.save()
+            messages.success(
+                request,
+                f'International agreement "{agreement.reference_number}" created.',
+            )
+            return redirect(
+                "pwms:international_agreement_detail",
+                public_id=agreement.public_id,
+            )
+    else:
+        if not WorkflowType.creatable_by(request.user).exists():
+            messages.error(
+                request,
+                "You do not have a role that may create international agreements.",
+            )
+            return redirect("pwms:international_agreements")
+        form = InternationalAgreementForm(
+            user=request.user, initial={"owner": request.user}
+        )
+    return render(
+        request,
+        "pwms/international-agreement-form.html",
+        {"form": form, "is_create": True},
+    )
+
+
+def international_agreement_update(request, public_id):
+    """Edit an international agreement."""
+    agreement = get_object_or_404(InternationalAgreement, public_id=public_id)
+    require(request.user, agreement, EDIT)
+    if request.method == "POST":
+        form = InternationalAgreementForm(request.POST, instance=agreement)
+        if form.is_valid():
+            agreement = form.save()
+            messages.success(
+                request,
+                f'International agreement "{agreement.reference_number}" updated.',
+            )
+            return redirect(
+                "pwms:international_agreement_detail",
+                public_id=agreement.public_id,
+            )
+    else:
+        form = InternationalAgreementForm(instance=agreement)
+    return render(
+        request,
+        "pwms/international-agreement-form.html",
+        {"form": form, "agreement": agreement, "is_create": False},
+    )
+
+
+def international_agreement_delete(request, public_id):
+    """Confirm (GET) then delete (POST) an international agreement."""
+    agreement = get_object_or_404(InternationalAgreement, public_id=public_id)
+    require(request.user, agreement, DELETE)
+    if request.method == "POST":
+        label = agreement.reference_number or agreement.title
+        agreement.delete()
+        messages.success(request, f'International agreement "{label}" deleted.')
+        return redirect("pwms:international_agreements")
+    return render(
+        request,
+        "pwms/international-agreement-confirm-delete.html",
+        {"agreement": agreement},
     )
 
 

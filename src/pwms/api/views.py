@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.reverse import reverse
 from rest_framework.views import APIView
 
-from ..models import InternationalResolution
+from ..models import InternationalAgreement, InternationalResolution
 from ..utils.audit_helpers import get_audit_trail_by_public_id
 from .permissions import WorkflowViewPermission
 from .serializers import AuditLogEntrySerializer
@@ -35,6 +35,10 @@ def api_root(request):
         request.build_absolute_uri("/").rstrip("/")
         + "/api/resolutions/{public_id}/audit/"
     )
+    agreement_audit_pattern = (
+        request.build_absolute_uri("/").rstrip("/")
+        + "/api/agreements/{public_id}/audit/"
+    )
     return Response(
         {
             "api": "PWMS workflow audit API",
@@ -46,6 +50,14 @@ def api_root(request):
                         "(replace {public_id} with the instance's UUID)"
                     ),
                     "url_pattern": audit_pattern,
+                },
+                "agreement-audit-history": {
+                    "method": "GET",
+                    "description": (
+                        "auditlog CRUD trail for an InternationalAgreement "
+                        "(replace {public_id} with the instance's UUID)"
+                    ),
+                    "url_pattern": agreement_audit_pattern,
                 },
             },
             "documentation": {
@@ -94,6 +106,12 @@ class ResolutionAuditHistoryView(WorkflowAuditHistoryView):
     """Audit trail for an :class:`InternationalResolution` by public_id."""
 
     model_class = InternationalResolution
+
+
+class AgreementAuditHistoryView(WorkflowAuditHistoryView):
+    """Audit trail for an :class:`InternationalAgreement` by public_id."""
+
+    model_class = InternationalAgreement
 
 
 # When Bill/Motion/Question are added, register them the same way:

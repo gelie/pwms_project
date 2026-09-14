@@ -22,6 +22,7 @@ from .models import (
     EventType,
     Group,
     GroupMembership,
+    InternationalAgreement,
     InternationalResolution,
     Role,
     State,
@@ -42,6 +43,7 @@ from .services.permissions import (
     MANAGE,
     RESOURCE_ACTIONS,
     SHARE,
+    TRANSITION,
     VIEW,
     permissions_for,
     require,
@@ -287,6 +289,54 @@ class SeededWorkflowDefinitionTests(TestCase):
         # Type-level hierarchy: resolutions nest under delegation reports.
         self.assertEqual(wt.parent_type.name, "Delegation Report")
 
+    def test_international_agreement_lifecycle_matches_brs(self):
+        wt = WorkflowType.objects.get(name="International Agreement")
+        states = list(wt.states.order_by("order").values_list("name", flat=True))
+        self.assertEqual(
+            states,
+            [
+                "Submitted for tabling",
+                "Agreement Tabled – referred to Committee",
+                "Committee considering and processing",
+                "Committee submitted report for tabling",
+                "House adopted – referred to Department",
+                "Closed – House approved",
+            ],
+        )
+        # BR02: a newly created agreement starts "Agreement Tabled – referred
+        # to Committee".
+        self.assertEqual(
+            wt.get_initial_state().name,
+            "Agreement Tabled – referred to Committee",
+        )
+        self.assertTrue(wt.states.get(name="Closed – House approved").is_terminal)
+        self.assertEqual(wt.transitions.count(), 5)
+
+    def test_international_agreement_transitions_chain_end_to_end(self):
+        wt = WorkflowType.objects.get(name="International Agreement")
+        user = get_user_model().objects.create_user(
+            username="agreement-seed", password="pw"
+        )
+        agreement = InternationalAgreement.objects.create(
+            workflow_type=wt,
+            current_state=wt.get_initial_state(),
+            title="Seeded agreement lifecycle",
+            owner=user,
+        )
+
+        for step in [
+            "Committee considering and processing",
+            "Committee submitted report for tabling",
+            "House adopted – referred to Department",
+            "Closed – House approved",
+        ]:
+            transitions = list(agreement.get_available_transitions())
+            self.assertEqual(len(transitions), 1)
+            agreement.perform_transition(transitions[0], comment=f"to {step}")
+
+        self.assertEqual(agreement.current_state.name, "Closed – House approved")
+        self.assertTrue(agreement.current_state.is_terminal)
+
     def test_seeded_transitions_chain_end_to_end(self):
         wt = WorkflowType.objects.get(name="International Resolution")
         user = get_user_model().objects.create_user(username="seeded", password="pw")
@@ -408,6 +458,75 @@ class DelegationReportTests(TestCase):
     def test_assigned_official_email_is_exposed(self):
         report = self._report()
         self.assertEqual(report.assigned_to_email, "irpd@example.com")
+
+
+class InternationalAgreementTests(TestCase):
+    """BRS attributes for international agreements (BR02/BR12)."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.user = User.objects.create_user(
+            username="agreement", email="agreement@example.com", password="pw"
+        )
+        cls.wt = WorkflowType.objects.get(name="International Agreement")
+        cls.initial = cls.wt.get_initial_state()
+
+    def _agreement(self, **overrides):
+        data = {
+            "workflow_type": self.wt,
+            "current_state": self.initial,
+            "title": "SADC Trade Protocol",
+            "owner": self.user,
+            "assigned_to": self.user,
+            "agreement_type": InternationalAgreement.SECTION_231_2,
+            "submitting_department": "Department of International Relations",
+            "responsible_minister": "Minister of International Relations",
+        }
+        data.update(overrides)
+        return InternationalAgreement.objects.create(**data)
+
+    def test_reference_number_is_generated_sequentially(self):
+        first = self._agreement()
+        second = self._agreement(title="Second agreement")
+        year = timezone.now().year
+        self.assertEqual(first.reference_number, f"IA-{year}-0001")
+        self.assertEqual(second.reference_number, f"IA-{year}-0002")
+
+    def test_new_agreement_starts_agreement_tabled(self):
+        agreement = self._agreement()
+        self.assertEqual(
+            agreement.current_state.name,
+            "Agreement Tabled – referred to Committee",
+        )
+
+    def test_overdue_identifier_when_due_date_expired_and_open(self):
+        agreement = self._agreement(deadline=timezone.now() - timedelta(days=1))
+        self.assertTrue(agreement.is_overdue)
+        self.assertEqual(agreement.overdue_identifier, OVERDUE_IDENTIFIER)
+
+        agreement.deadline = timezone.now() + timedelta(days=1)
+        self.assertFalse(agreement.is_overdue)
+        self.assertEqual(agreement.overdue_identifier, "")
+
+    def test_closed_agreement_is_not_overdue(self):
+        closed = self.wt.states.get(name="Closed – House approved")
+        agreement = self._agreement(
+            current_state=closed, deadline=timezone.now() - timedelta(days=10)
+        )
+        self.assertFalse(agreement.is_overdue)
+
+    def test_referral_committees_attach_to_agreement(self):
+        committee = Group.objects.create(
+            name="Portfolio Committee on Trade", group_type="portfolio_committee"
+        )
+        agreement = self._agreement()
+        agreement.referral_committees.add(committee)
+        self.assertEqual(list(agreement.referral_committees.all()), [committee])
+
+    def test_assigned_official_email_is_exposed(self):
+        agreement = self._agreement()
+        self.assertEqual(agreement.assigned_to_email, "agreement@example.com")
 
 
 class WorkflowEventTests(TestCase):
@@ -790,7 +909,12 @@ class WorkflowCrudViewTests(TestCase):
         )
         cls.report_type = WorkflowType.objects.get(name="Delegation Report")
         cls.resolution_type = WorkflowType.objects.get(name="International Resolution")
-        for workflow_type in (cls.report_type, cls.resolution_type):
+        cls.agreement_type = WorkflowType.objects.get(name="International Agreement")
+        for workflow_type in (
+            cls.report_type,
+            cls.resolution_type,
+            cls.agreement_type,
+        ):
             workflow_type.group = cls.group
             workflow_type.save(update_fields=["group"])
             workflow_type.create_roles.add(cls.creator_role)
@@ -849,9 +973,35 @@ class WorkflowCrudViewTests(TestCase):
         payload.update(overrides)
         return payload
 
+    def _agreement_payload(self, **overrides):
+        payload = {
+            "workflow_type": self.agreement_type.pk,
+            "title": "CRUD agreement",
+            "description": "",
+            "owner": self.user.pk,
+            "assigned_to": "",
+            "deadline": "",
+            "priority": "medium",
+            "agreement_type": InternationalAgreement.SECTION_231_3,
+            "submitting_department": "Department of Justice",
+            "responsible_minister": "Minister of Justice",
+            "atc_tabling_date": "",
+            "atc_reference": "",
+            "referral_committees": [],
+            "notes": "",
+            "agreement_document_url": "",
+            "explanatory_memorandum_url": "",
+        }
+        payload.update(overrides)
+        return payload
+
     def test_pages_require_login(self):
         self.client.logout()
-        for name in ("delegation_reports", "international_resolutions"):
+        for name in (
+            "delegation_reports",
+            "international_resolutions",
+            "international_agreements",
+        ):
             response = self.client.get(reverse(f"pwms:{name}"))
             self.assertEqual(response.status_code, 302)
             self.assertIn("/pwms/login/", response["Location"])
@@ -950,6 +1100,83 @@ class WorkflowCrudViewTests(TestCase):
             InternationalResolution.objects.filter(pk=resolution.pk).exists()
         )
 
+    def test_international_agreement_crud_cycle(self):
+        # Create: the initial state is derived from the chosen workflow type.
+        committee = Group.objects.create(
+            name="CRUD Committee", group_type="portfolio_committee"
+        )
+        response = self.client.post(
+            reverse("pwms:international_agreement_create"),
+            self._agreement_payload(referral_committees=[committee.pk]),
+        )
+        agreement = InternationalAgreement.objects.get(title="CRUD agreement")
+        self.assertRedirects(
+            response,
+            reverse("pwms:international_agreement_detail", args=[agreement.public_id]),
+        )
+        self.assertEqual(
+            agreement.current_state, self.agreement_type.get_initial_state()
+        )
+        self.assertTrue(agreement.reference_number.startswith("IA-"))
+        self.assertEqual(list(agreement.referral_committees.all()), [committee])
+
+        # The list page renders the new row.
+        listing = self.client.get(reverse("pwms:international_agreements"))
+        self.assertEqual(listing.status_code, 200)
+        self.assertContains(listing, agreement.reference_number)
+
+        # Detail page renders the agreement and its BRS attributes.
+        response = self.client.get(
+            reverse("pwms:international_agreement_detail", args=[agreement.public_id])
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, agreement.reference_number)
+        self.assertContains(response, "Department of Justice")
+
+        # Update: workflow_type is fixed, current_state is editable instead.
+        edit = self.client.get(
+            reverse("pwms:international_agreement_update", args=[agreement.public_id])
+        )
+        self.assertContains(edit, "current_state")
+        self.assertNotContains(edit, 'name="workflow_type"')
+        response = self.client.post(
+            reverse("pwms:international_agreement_update", args=[agreement.public_id]),
+            {
+                "title": "CRUD agreement (edited)",
+                "description": "",
+                "current_state": agreement.current_state.pk,
+                "owner": self.user.pk,
+                "assigned_to": "",
+                "deadline": "",
+                "priority": "high",
+                "agreement_type": InternationalAgreement.SECTION_231_2,
+                "submitting_department": "Department of Justice",
+                "responsible_minister": "Minister of Justice",
+                "atc_tabling_date": "",
+                "atc_reference": "",
+                "referral_committees": [],
+                "notes": "",
+                "agreement_document_url": "",
+                "explanatory_memorandum_url": "",
+            },
+        )
+        self.assertRedirects(
+            response,
+            reverse("pwms:international_agreement_detail", args=[agreement.public_id]),
+        )
+        agreement.refresh_from_db()
+        self.assertEqual(agreement.title, "CRUD agreement (edited)")
+        self.assertEqual(agreement.priority, "high")
+
+        # Delete: POST removes the row.
+        response = self.client.post(
+            reverse("pwms:international_agreement_delete", args=[agreement.public_id])
+        )
+        self.assertRedirects(response, reverse("pwms:international_agreements"))
+        self.assertFalse(
+            InternationalAgreement.objects.filter(pk=agreement.pk).exists()
+        )
+
     def test_create_requires_a_type_with_states(self):
         empty_type = WorkflowType.objects.create(
             name="Test Empty Workflow Type", group=self.group
@@ -978,8 +1205,24 @@ class WorkflowCrudViewTests(TestCase):
 
     def test_navbar_links_to_workflow_views(self):
         response = self.client.get(reverse("pwms:home"))
-        for name in ("workflows", "delegation_reports", "international_resolutions"):
+        for name in (
+            "workflows",
+            "delegation_reports",
+            "international_resolutions",
+            "international_agreements",
+        ):
             self.assertContains(response, reverse(f"pwms:{name}"))
+
+    def test_workflows_dashboard_lists_every_register(self):
+        response = self.client.get(reverse("pwms:workflows"))
+        self.assertEqual(response.status_code, 200)
+        for label in (
+            "Delegation Reports",
+            "International Resolutions",
+            "International Agreements",
+        ):
+            self.assertContains(response, label)
+        self.assertContains(response, "Recent international agreements")
 
     def test_create_requires_a_role_from_the_type_group(self):
         """No create role in the type's group -> no creation (403 on POST)."""
@@ -1312,6 +1555,118 @@ class WorkflowCrudViewTests(TestCase):
         response = self.client.get(reverse("pwms:delegation_reports"))
         self.assertContains(response, "Owner only report")
         self.assertContains(response, report.reference_number)
+
+
+class ViewerGroupAccessTests(TestCase):
+    """Type-level viewer groups become read-only access rows on creation."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.creator = User.objects.create_user(username="viewer-creator", password="pw")
+        cls.viewer = User.objects.create_user(username="viewer-member", password="pw")
+        cls.viewer_group = Group.objects.create(
+            name="Interested Portfolio Committee", group_type="portfolio_committee"
+        )
+        cls.viewer_role = Role.objects.create(name="Interested Viewer")
+        GroupMembership.objects.create(
+            user=cls.viewer, group=cls.viewer_group, role=cls.viewer_role
+        )
+        cls.wt = WorkflowType.objects.create(name="Test Viewer Type")
+        cls.wt.viewer_groups.add(cls.viewer_group)
+        cls.state = State.objects.create(
+            workflow_type=cls.wt, name="Open", is_initial=True
+        )
+
+    def _resolution(self, **overrides):
+        data = {
+            "workflow_type": self.wt,
+            "current_state": self.state,
+            "resolution_number": "IR-VIEW-1",
+            "title": "Viewer access",
+            "owner": self.creator,
+        }
+        data.update(overrides)
+        return InternationalResolution.objects.create(**data)
+
+    def _access(self, instance):
+        return WorkflowGroupAccess.objects.get(
+            content_type=ContentType.objects.get_for_model(instance),
+            object_id=instance.pk,
+            group=self.viewer_group,
+        )
+
+    def test_creation_materialises_readonly_access_for_viewer_groups(self):
+        access = self._access(self._resolution())
+        self.assertTrue(access.can_view)
+        for flag in (
+            "can_edit",
+            "can_delete",
+            "can_share",
+            "can_comment",
+            "can_manage",
+            "can_transition",
+        ):
+            self.assertFalse(getattr(access, flag))
+
+    def test_viewer_group_member_can_view_but_nothing_else(self):
+        resolution = self._resolution()
+        self.assertTrue(resolve(self.viewer, resolution, VIEW))
+        self.assertFalse(resolve(self.viewer, resolution, EDIT))
+        self.assertFalse(resolve(self.viewer, resolution, DELETE))
+        self.assertFalse(resolve(self.viewer, resolution, TRANSITION))
+
+    def test_type_without_viewer_groups_creates_no_access_rows(self):
+        plain_type = WorkflowType.objects.create(name="Test Plain Type")
+        plain_state = State.objects.create(
+            workflow_type=plain_type, name="Open", is_initial=True
+        )
+        resolution = InternationalResolution.objects.create(
+            workflow_type=plain_type,
+            current_state=plain_state,
+            resolution_number="IR-PLAIN-1",
+            title="No viewers",
+            owner=self.creator,
+        )
+        self.assertFalse(
+            WorkflowGroupAccess.objects.filter(
+                content_type=ContentType.objects.get_for_model(InternationalResolution),
+                object_id=resolution.pk,
+            ).exists()
+        )
+
+    def test_subclass_save_override_still_materialises_access(self):
+        # InternationalAgreement overrides save(); the hook must still run via
+        # super() so viewer sharing is not lost on subclasses.
+        agreement = InternationalAgreement.objects.create(
+            workflow_type=self.wt,
+            current_state=self.state,
+            title="Overridden save",
+            owner=self.creator,
+        )
+        self.assertTrue(self._access(agreement).can_view)
+
+    def test_later_save_does_not_duplicate_or_reset_access(self):
+        resolution = self._resolution()
+        access = self._access(resolution)
+        # An administrator upgrades the materialised grant; a later save of the
+        # instance must neither duplicate the row nor reset the edited flags.
+        access.can_comment = True
+        access.save()
+
+        resolution.title = "Updated"
+        resolution.save()
+
+        access.refresh_from_db()
+        self.assertTrue(access.can_comment)
+        self.assertEqual(
+            WorkflowGroupAccess.objects.filter(
+                content_type=ContentType.objects.get_for_model(InternationalResolution),
+                object_id=resolution.pk,
+                group=self.viewer_group,
+            ).count(),
+            1,
+        )
 
 
 class PlaceDataTests(TestCase):

@@ -15,6 +15,7 @@ from .models import (
     EventType,
     Group,
     GroupMembership,
+    InternationalAgreement,
     InternationalResolution,
     Role,
     SharepointDrive,
@@ -277,7 +278,7 @@ class WorkflowTypeAdmin(admin.ModelAdmin):
     list_filter = ("enabled",)
     search_fields = ("name", "group__name")
     autocomplete_fields = ("group",)
-    filter_horizontal = ("create_roles",)
+    filter_horizontal = ("create_roles", "viewer_groups")
     ordering = ("name",)
     inlines: ClassVar[list[type[admin.TabularInline]]] = [
         StateInline,
@@ -521,6 +522,46 @@ class InternationalResolutionAdmin(admin.ModelAdmin):
         WorkflowEventInline,
         WorkflowReferralInline,
     ]
+
+
+@admin.register(InternationalAgreement)
+class InternationalAgreementAdmin(admin.ModelAdmin):
+    """Admin for international-agreement workflow instances (BRS BR02/BR03)."""
+
+    list_display = (
+        "reference_number",
+        "title",
+        "agreement_type",
+        "workflow_type",
+        "current_state",
+        "owner",
+        "assigned_to",
+        "deadline",
+        "is_overdue",
+    )
+    list_filter = ("workflow_type", "current_state", "agreement_type", "priority")
+    search_fields = (
+        "reference_number",
+        "title",
+        "submitting_department",
+        "responsible_minister",
+    )
+    autocomplete_fields = (
+        "workflow_type",
+        "current_state",
+        "owner",
+        "assigned_to",
+    )
+    readonly_fields = ("reference_number",)
+    filter_horizontal = ("referral_committees",)
+    inlines: ClassVar[list[type[admin.InlineModelAdmin]]] = [
+        WorkflowEventInline,
+        WorkflowReferralInline,
+    ]
+
+    @admin.display(boolean=True, description="Overdue")
+    def is_overdue(self, obj):
+        return obj.is_overdue
 
 
 class DelegationParticipantInline(admin.TabularInline):

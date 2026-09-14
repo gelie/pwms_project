@@ -60,6 +60,32 @@ urlpatterns = [
         views.international_resolution_delete,
         name="international_resolution_delete",
     ),
+    # International agreements
+    path(
+        "workflows/international-agreements/",
+        views.international_agreements,
+        name="international_agreements",
+    ),
+    path(
+        "workflows/international-agreements/new/",
+        views.international_agreement_create,
+        name="international_agreement_create",
+    ),
+    path(
+        "workflows/international-agreements/<uuid:public_id>/",
+        views.international_agreement_detail,
+        name="international_agreement_detail",
+    ),
+    path(
+        "workflows/international-agreements/<uuid:public_id>/edit/",
+        views.international_agreement_update,
+        name="international_agreement_update",
+    ),
+    path(
+        "workflows/international-agreements/<uuid:public_id>/delete/",
+        views.international_agreement_delete,
+        name="international_agreement_delete",
+    ),
     # User search
     path("user-search/", views.user_search, name="user_search"),
     # Group search for dynamic lookup
