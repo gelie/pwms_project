@@ -53,6 +53,20 @@ on their ISO code and cities are matched on
 `(country, name, latitude, longitude)`, so existing primary keys (and the reports
 pointing at them) survive.
 
+## Group & organisation data
+
+| Command | Purpose | Status |
+| --- | --- | --- |
+| `import_groups` | import group names from a CSV/text list as `Group` records under a parent group | ✅ live |
+
+Key options: `--parent NAME_OR_SLUG` (required) is the group the names hang
+under; `--type GROUP_TYPE` (required) must be one of `Group.GROUP_TYPE_CHOICES`
+(e.g. `ministry`). The file is parsed as blank-line-separated sections — each
+section's first line is a heading and the rest are names — and `--section NAME`
+imports a single section only. Names are whitespace-normalised and matched on
+the `(name, parent)` natural key, so re-running is safe. `--dry-run` previews the
+changes.
+
 ## Committee scraping
 
 | Command | Purpose | Status |
