@@ -579,7 +579,7 @@ class InternationalAgreementTests(TestCase):
             "assigned_to": self.user,
             "agreement_type": InternationalAgreement.SECTION_231_2,
             "submitting_department": "Department of International Relations",
-            "responsible_minister": "Minister of International Relations",
+            "responsible_minister_name": "Minister of International Relations",
         }
         data.update(overrides)
         return InternationalAgreement.objects.create(**data)
@@ -648,7 +648,7 @@ class BillTests(TestCase):
             "short_title": "Health Amendment",
             "bill_type": Bill.SECTION_76,
             "house_of_origin": Bill.NA,
-            "sponsor": "Minister of Health",
+            "sponsor_name": "Minister of Health",
             "introduced_date": date(2026, 6, 1),
             "owner": self.user,
             "assigned_to": self.user,
@@ -664,7 +664,7 @@ class BillTests(TestCase):
         self.assertEqual(bill.short_title, "Health Amendment")
         self.assertEqual(bill.bill_type, Bill.SECTION_76)
         self.assertEqual(bill.house_of_origin, Bill.NA)
-        self.assertEqual(bill.sponsor, "Minister of Health")
+        self.assertEqual(bill.sponsor_name, "Minister of Health")
         self.assertEqual(bill.responsible_committee, committee)
         self.assertEqual(bill.__str__(), "B 12—2026 – National Health Amendment Bill")
 
@@ -1270,6 +1270,10 @@ class WorkflowCrudViewTests(TestCase):
             workflow_type.group = cls.group
             workflow_type.save(update_fields=["group"])
             workflow_type.create_roles.add(cls.creator_role)
+        # Option-list lengths are asserted below, so the shared group table must
+        # hold only this class's group: seeded groups (e.g. the Government of
+        # RSA ministries branch) would flip the group field to a search picker.
+        Group.objects.exclude(pk=cls.group.pk).delete()
 
     def setUp(self):
         self.client.force_login(self.user)
@@ -1336,7 +1340,7 @@ class WorkflowCrudViewTests(TestCase):
             "priority": "medium",
             "agreement_type": InternationalAgreement.SECTION_231_3,
             "submitting_department": "Department of Justice",
-            "responsible_minister": "Minister of Justice",
+            "responsible_minister_name": "Minister of Justice",
             "atc_tabling_date": "",
             "atc_reference": "",
             "referral_committees": [],
@@ -1360,7 +1364,7 @@ class WorkflowCrudViewTests(TestCase):
             "short_title": "CRUD",
             "bill_type": Bill.SECTION_75,
             "house_of_origin": Bill.NA,
-            "sponsor": "Minister of Justice",
+            "sponsor_name": "Minister of Justice",
             "introduced_date": "",
             "responsible_committee": "",
             "atc_reference": "",
@@ -1528,7 +1532,7 @@ class WorkflowCrudViewTests(TestCase):
                 "priority": "high",
                 "agreement_type": InternationalAgreement.SECTION_231_2,
                 "submitting_department": "Department of Justice",
-                "responsible_minister": "Minister of Justice",
+                "responsible_minister_name": "Minister of Justice",
                 "atc_tabling_date": "",
                 "atc_reference": "",
                 "referral_committees": [],
@@ -1553,6 +1557,32 @@ class WorkflowCrudViewTests(TestCase):
         self.assertFalse(
             InternationalAgreement.objects.filter(pk=agreement.pk).exists()
         )
+
+    def test_agreement_create_links_a_serving_minister(self):
+        """The responsible-minister picker round-trips the linked account."""
+        ministry = Group.objects.create(
+            name="Ministry of Testing", group_type="ministry"
+        )
+        minister = get_user_model().objects.create_user(
+            username="linked-minister", password="pw"
+        )
+        GroupMembership.objects.create(
+            user=minister,
+            group=ministry,
+            role=Role.objects.get_or_create(name="Minister")[0],
+        )
+
+        response = self.client.post(
+            reverse("pwms:international_agreement_create"),
+            self._agreement_payload(responsible_minister=minister.pk),
+        )
+
+        agreement = InternationalAgreement.objects.get()
+        self.assertRedirects(
+            response,
+            reverse("pwms:international_agreement_detail", args=[agreement.public_id]),
+        )
+        self.assertEqual(agreement.responsible_minister, minister)
 
     def test_bill_crud_cycle(self):
         # Create: the initial state is derived from the chosen workflow type.
@@ -1609,7 +1639,7 @@ class WorkflowCrudViewTests(TestCase):
                 "short_title": "CRUD",
                 "bill_type": Bill.SECTION_75,
                 "house_of_origin": Bill.NA,
-                "sponsor": "Minister of Justice",
+                "sponsor_name": "Minister of Justice",
                 "introduced_date": "",
                 "responsible_committee": "",
                 "atc_reference": "",

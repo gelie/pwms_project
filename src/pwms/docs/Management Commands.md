@@ -25,6 +25,13 @@ All commands live in `pwms/management/commands/` and run as:
 | `sync_roles_oracle` | create/update standard parliamentary roles (deduped, case/acronym normalised) | legacy |
 | `sync_users_oracle` | import users & group memberships from Oracle via `pwms/membership/sync_service.py` | legacy |
 
+> **Identity ownership.** `sync_users_oracle` owns only users whose
+> `identity_source` is `erp`: locally managed users (`identity_source="local"`,
+> e.g. Ministers appointed from outside the ERP) are skipped with a warning
+> rather than overwritten, and memberships in executive groups (`executive` /
+> `presidency` / `ministry`) are never ended by the sync — losing an ERP payroll
+> record does not end a political appointment.
+
 ## SharePoint (Graph) sync
 
 | Command | Purpose | Status |

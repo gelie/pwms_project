@@ -474,6 +474,9 @@ def international_agreements(request):
             Q(reference_number__icontains=query)
             | Q(title__icontains=query)
             | Q(submitting_department__icontains=query)
+            | Q(responsible_minister_name__icontains=query)
+            | Q(responsible_minister__first_name__icontains=query)
+            | Q(responsible_minister__last_name__icontains=query)
         )
     # View access gates the listing itself, not just the row actions.
     agreements = visible_instances(request.user, matching)
@@ -620,7 +623,9 @@ def bills(request):
             Q(bill_number__icontains=query)
             | Q(title__icontains=query)
             | Q(short_title__icontains=query)
-            | Q(sponsor__icontains=query)
+            | Q(sponsor_name__icontains=query)
+            | Q(sponsor__first_name__icontains=query)
+            | Q(sponsor__last_name__icontains=query)
         )
     # View access gates the listing itself, not just the row actions.
     viewable = visible_instances(request.user, matching)

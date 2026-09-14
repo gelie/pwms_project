@@ -2091,12 +2091,23 @@ class InternationalAgreement(AbstractLegislativeWorkflow):
         blank=True,
         help_text="Government department that submitted the agreement (BR02).",
     )
-    responsible_minister = models.CharField(
-        max_length=255,
+    responsible_minister = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
         blank=True,
+        related_name="responsible_agreements",
         help_text=(
             "Responsible Member of the Executive (Minister) submitting the "
             "agreement (BR02)."
+        ),
+    )
+    responsible_minister_name = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text=(
+            "Minister as recorded on the tabled document - for a former "
+            "office holder or one without a PWMS account (BR02)."
         ),
     )
     atc_tabling_date = models.DateField(
@@ -2140,6 +2151,36 @@ class InternationalAgreement(AbstractLegislativeWorkflow):
     def __str__(self):
         label = self.reference_number or "unsaved"
         return f"{label} – {self.title}" if self.title else str(label)
+
+    # -- responsible minister (BR02) ----------------------------------------
+    @property
+    def responsible_minister_display(self):
+        """The linked minister, or the name recorded on the tabled document."""
+        return self.responsible_minister or self.responsible_minister_name
+
+    def clean(self):
+        """
+        Only an executive office holder may be linked as responsible minister.
+
+        Checked on ``full_clean()``, so every form-driven entry point (web form,
+        admin) and any explicit validation is covered. An office holder who has
+        since left the post stays valid: the agreement already on file named the
+        minister who served at the time, and a reshuffle must not invalidate it.
+        """
+        super().clean()
+        if self.responsible_minister_id is None:
+            return
+        if self.responsible_minister.executive_memberships().exists():
+            return
+        raise ValidationError(
+            {
+                "responsible_minister": (
+                    f"{self.responsible_minister} holds no executive appointment: "
+                    "link a Minister or Deputy Minister, or record the name in "
+                    "the responsible-minister name field instead."
+                )
+            }
+        )
 
     # -- system-generated reference number (BR02) ---------------------------
     def save(self, *args, **kwargs):
@@ -2250,10 +2291,21 @@ class Bill(AbstractLegislativeWorkflow):
         blank=True,
         help_text="House of introduction (BRS §7A).",
     )
-    sponsor = models.CharField(
+    sponsor = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sponsored_bills",
+        help_text="Sponsor or originating authority with a PWMS account (BRS §7A).",
+    )
+    sponsor_name = models.CharField(
         max_length=255,
         blank=True,
-        help_text="Sponsor or originating authority (BRS §7A).",
+        help_text=(
+            "Sponsor or originating authority as recorded on the bill (BRS "
+            "§7A) - e.g. a committee or department with no PWMS account."
+        ),
     )
     introduced_date = models.DateField(
         null=True,
@@ -2299,6 +2351,11 @@ class Bill(AbstractLegislativeWorkflow):
             if self.title
             else str(self.bill_number)
         )
+
+    @property
+    def sponsor_display(self):
+        """The linked sponsor, or the sponsor/authority named on the bill."""
+        return self.sponsor or self.sponsor_name
 
     @property
     def public_status(self):

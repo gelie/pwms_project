@@ -54,7 +54,8 @@
       {% include "pwms/_form_field.html" with field=form.bill_type wrapper_class="col-12 col-md-4" %}
       {% include "pwms/_form_field.html" with field=form.house_of_origin wrapper_class="col-12 col-md-4" %}
       {% include "pwms/_form_field.html" with field=form.introduced_date wrapper_class="col-12 col-md-4" %}
-      {% include "pwms/_form_field.html" with field=form.sponsor wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_picker_field.html" with field=form.sponsor search_url="pwms:user_search" placeholder="Type to search users..." selected_name=form.picker_labels.sponsor wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_form_field.html" with field=form.sponsor_name wrapper_class="col-12 col-md-6" %}
       {% include "pwms/_picker_field.html" with field=form.responsible_committee search_url="pwms:group_search" placeholder="Type to search groups..." selected_name=form.picker_labels.responsible_committee wrapper_class="col-12 col-md-6" %}
       {% include "pwms/_form_field.html" with field=form.atc_reference wrapper_class="col-12 col-md-6" %}
       {% include "pwms/_form_field.html" with field=form.order_paper_reference wrapper_class="col-12 col-md-6" %}

@@ -68,6 +68,8 @@ class WorkflowInstanceFormMixin:
         "assigned_to",
         "responsible_group",
         "responsible_committee",
+        "responsible_minister",
+        "sponsor",
         "location_country",
         "location_city",
     )
@@ -78,9 +80,13 @@ class WorkflowInstanceFormMixin:
         self.is_create = self.instance.pk is None
 
         users = User.objects.filter(is_active=True).order_by("username")
-        for name in ("owner", "assigned_to"):
+        for name in ("owner", "assigned_to", "sponsor"):
             if name in self.fields:
                 self.fields[name].queryset = users
+        if "responsible_minister" in self.fields:
+            # Only serving office holders are offered: a former minister, or one
+            # without a PWMS account, is recorded on the document name instead.
+            self.fields["responsible_minister"].queryset = User.ministers()
         if "responsible_group" in self.fields:
             self.fields["responsible_group"].queryset = self.fields[
                 "responsible_group"
@@ -320,6 +326,7 @@ class InternationalAgreementForm(WorkflowInstanceFormMixin, forms.ModelForm):
             "agreement_type",
             "submitting_department",
             "responsible_minister",
+            "responsible_minister_name",
             "atc_tabling_date",
             "atc_reference",
             "referral_committees",
@@ -339,7 +346,12 @@ class InternationalAgreementForm(WorkflowInstanceFormMixin, forms.ModelForm):
             "priority": forms.Select(attrs={"class": "form-select"}),
             "agreement_type": forms.Select(attrs={"class": "form-select"}),
             "submitting_department": forms.TextInput(attrs={"class": "form-control"}),
-            "responsible_minister": forms.TextInput(attrs={"class": "form-control"}),
+            # Swapped to a search picker by the mixin when there are many
+            # serving ministers; the name below covers everyone else.
+            "responsible_minister": forms.Select(attrs={"class": "form-select"}),
+            "responsible_minister_name": forms.TextInput(
+                attrs={"class": "form-control"}
+            ),
             "referral_committees": forms.SelectMultiple(
                 attrs={"class": "form-select", "size": 6}
             ),
@@ -385,6 +397,7 @@ class BillForm(WorkflowInstanceFormMixin, forms.ModelForm):
             "bill_type",
             "house_of_origin",
             "sponsor",
+            "sponsor_name",
             "introduced_date",
             "responsible_committee",
             "atc_reference",
@@ -406,7 +419,10 @@ class BillForm(WorkflowInstanceFormMixin, forms.ModelForm):
             "short_title": forms.TextInput(attrs={"class": "form-control"}),
             "bill_type": forms.Select(attrs={"class": "form-select"}),
             "house_of_origin": forms.Select(attrs={"class": "form-select"}),
-            "sponsor": forms.TextInput(attrs={"class": "form-control"}),
+            # Swapped to a search picker by the mixin when the user list is
+            # long; the name below covers authorities with no account.
+            "sponsor": forms.Select(attrs={"class": "form-select"}),
+            "sponsor_name": forms.TextInput(attrs={"class": "form-control"}),
             # Swapped to a search picker by the mixin when there are many groups.
             "responsible_committee": forms.Select(attrs={"class": "form-select"}),
             "atc_reference": forms.TextInput(attrs={"class": "form-control"}),

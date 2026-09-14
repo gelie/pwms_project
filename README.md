@@ -125,7 +125,7 @@ Then open:
 ## Running tests
 
 ```bash
-.venv/bin/python manage.py test pwms.tests pwms.tests_api pwms.tests_ninja
+.venv/bin/python manage.py test pwms.tests pwms.tests_api pwms.tests_ninja pwms.tests_executive
 ```
 
 Run from the repo root; `pwms.*` test modules are importable via the editable

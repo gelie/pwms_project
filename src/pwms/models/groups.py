@@ -38,6 +38,12 @@ class Group(MPTTModel, BaseModel):
         ("delegation", _("Delegation")),
     ]
 
+    #: Group types that carry political office rather than employment: an
+    #: appointment in one of these groups outlives an ERP payroll record.
+    #: ``sync_users_oracle`` never ends such memberships, and ``User.ministers()``
+    #: looks for appointments here.
+    EXECUTIVE_GROUP_TYPES = ("executive", "presidency", "ministry")
+
     name = models.CharField(max_length=255)
     slug = AutoSlugField(populate_from="name", unique=True, editable=False)
     short_name = models.CharField(max_length=50, blank=True)

@@ -82,6 +82,7 @@ Django user with parliamentary profile fields:
 | --- | --- |
 | `title`, `middle_name`, `gender`, `phone`, `bio`, `avatar` | profile |
 | `employee_type` | staff / member / graduate |
+| `identity_source` | `erp` (owned by `sync_users_oracle`) or `local` (owned by PWMS — e.g. Ministers appointed from outside the ERP) |
 | `positiondesc`, `supervisor` (self FK) | reporting |
 | `department` (FK `Group`) | home department |
 | `date_of_birth`, `date_joined_parliament`, `termination_date` | lifecycle |
@@ -89,7 +90,7 @@ Django user with parliamentary profile fields:
 | `is_mp`, `is_staff_member`, `is_active` | flags |
 | `constituency`, `party_affiliation` | political attributes |
 
-Methods include membership/role helpers and `can_transition_workflow(...)`.
+Methods include membership/role helpers (`User.ministers()`, `current_portfolio`) and `can_transition_workflow(...)`.
 
 ### `Group(MPTTModel, BaseModel)` — `pwms.Group`
 
@@ -103,6 +104,13 @@ Hierarchical organisational unit:
 | `description`, `is_active`, `contact_email`, `contact_phone`, `location`, `start_date`, `end_date` | metadata |
 
 Helpers: `get_full_path()`, `get_active_members()`.
+
+Migration `0023_seed_executive_groups_and_roles` seeds the executive branch:
+`Government of RSA` (type `executive`) with one child per Cabinet ministry (type
+`ministry`, except *The Presidency*, which is `presidency`), plus the `Minister`
+and `Deputy Minister` roles. A Minister is a `GroupMembership` linking their
+`User` to a ministry group with that role — office is held over time, so no
+separate "executive user" model is needed.
 
 ### `Role(BaseModel)` — `pwms.Role`
 
@@ -284,7 +292,7 @@ Agreements Tracking and Monitoring*, BR02/BR03).
 | `reference_number` (unique) | system-generated `IA-<year>-<sequence>` (BR02) |
 | `agreement_type` | `section-231-2` / `section-231-3` (BR02) |
 | `submitting_department` | department that submitted the agreement (BR02) |
-| `responsible_minister` | responsible Member of the Executive (BR02) |
+| `responsible_minister` (FK `User`, related `responsible_agreements`) | responsible Member of the Executive (BR02); `clean()` accepts only a current or former office holder, and `responsible_minister_name` records the minister as tabled (former minister, or one without an account) |
 | `atc_tabling_date` | date the agreement was tabled in the ATC (BR02) |
 | `atc_reference` | reference details of the ATC / relevant documents (BR02) |
 | `referral_committees` (M2M `Group`, related `international_agreements_referred`) | committees the agreement is referred to (BR02) |
@@ -308,7 +316,7 @@ statuses through `State.public_name`, exposed on the model as `public_status`.
 | `short_title` | short title (BRS §7A) |
 | `bill_type` | `section-74` / `section-75` / `section-76` / `section-77` (BRS §13.1) |
 | `house_of_origin` | `na` / `ncop` — House of introduction (BRS §7A) |
-| `sponsor` | sponsor or originating authority (BRS §7A) |
+| `sponsor` (FK `User`, related `sponsored_bills`) | sponsor (BRS §7A); `sponsor_name` keeps an originating authority or a historical name |
 | `introduced_date` | date introduced (BRS §13.1) |
 | `responsible_committee` (FK `Group`, related `bills_responsible`) | committee responsible (BRS §13.2) |
 | `atc_reference`, `order_paper_reference` | authoritative-source references (BRS §7B) |

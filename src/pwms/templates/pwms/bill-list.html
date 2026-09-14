@@ -62,7 +62,7 @@
             <td>
               <span class="badge text-bg-info">{{ bill.public_status }}</span>
             </td>
-            <td>{{ bill.sponsor|default:"—" }}</td>
+            <td>{{ bill.sponsor_display|default:"—" }}</td>
             <td class="text-end">
               {% if bill.pk in editable_pks %}
                 <a class="btn btn-sm btn-outline-secondary"

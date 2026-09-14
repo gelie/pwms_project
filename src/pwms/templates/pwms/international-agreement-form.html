@@ -52,7 +52,8 @@
       {% include "pwms/_form_field.html" with field=form.agreement_type wrapper_class="col-12 col-md-4" %}
       {% include "pwms/_form_field.html" with field=form.atc_tabling_date wrapper_class="col-12 col-md-4" %}
       {% include "pwms/_form_field.html" with field=form.submitting_department wrapper_class="col-12 col-md-6" %}
-      {% include "pwms/_form_field.html" with field=form.responsible_minister wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_picker_field.html" with field=form.responsible_minister search_url="pwms:user_search" placeholder="Type to search ministers..." selected_name=form.picker_labels.responsible_minister wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_form_field.html" with field=form.responsible_minister_name wrapper_class="col-12 col-md-6" %}
       {% include "pwms/_form_field.html" with field=form.referral_committees wrapper_class="col-12" %}
       {% include "pwms/_form_field.html" with field=form.atc_reference wrapper_class="col-12" %}
       {% include "pwms/_form_field.html" with field=form.notes wrapper_class="col-12" %}

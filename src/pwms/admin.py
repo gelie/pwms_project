@@ -56,10 +56,17 @@ class UserAdmin(admin.ModelAdmin):
         "first_name",
         "email",
         "employee_type",
+        "identity_source",
         "is_mp",
         "is_active",
     )
-    list_filter = ("is_active", "is_mp", "is_staff", "employee_type")
+    list_filter = (
+        "is_active",
+        "is_mp",
+        "is_staff",
+        "employee_type",
+        "identity_source",
+    )
     search_fields = ("username", "first_name", "last_name", "email")
     ordering = ("last_name", "first_name")
     filter_horizontal = ("groups", "user_permissions")
@@ -582,13 +589,16 @@ class InternationalAgreementAdmin(admin.ModelAdmin):
         "reference_number",
         "title",
         "submitting_department",
-        "responsible_minister",
+        "responsible_minister_name",
+        "responsible_minister__first_name",
+        "responsible_minister__last_name",
     )
     autocomplete_fields = (
         "workflow_type",
         "current_state",
         "owner",
         "assigned_to",
+        "responsible_minister",
     )
     readonly_fields = ("reference_number",)
     filter_horizontal = ("referral_committees",)
@@ -645,13 +655,21 @@ class BillAdmin(admin.ModelAdmin):
         "house_of_origin",
         "priority",
     )
-    search_fields = ("bill_number", "title", "short_title", "sponsor")
+    search_fields = (
+        "bill_number",
+        "title",
+        "short_title",
+        "sponsor_name",
+        "sponsor__first_name",
+        "sponsor__last_name",
+    )
     autocomplete_fields = (
         "workflow_type",
         "current_state",
         "responsible_committee",
         "owner",
         "assigned_to",
+        "sponsor",
     )
     ordering = ("bill_number",)
     inlines: ClassVar[list[type[admin.InlineModelAdmin]]] = [

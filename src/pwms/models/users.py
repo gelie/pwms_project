@@ -3,7 +3,6 @@ import datetime
 import hashlib
 import hmac
 import logging
-from typing import Optional
 
 from django.conf import settings
 from django.contrib.auth.models import AbstractUser
@@ -39,6 +38,14 @@ class User(AbstractUser, BaseModel):
         ("graduate", _("Graduate")),
     ]
 
+    IDENTITY_SOURCE_CHOICES = [
+        ("erp", _("ERP (Oracle)")),
+        ("local", _("Locally managed")),
+    ]
+
+    #: Roles that carry an executive office (see ``ministers()``).
+    EXECUTIVE_ROLE_NAMES = ("Minister", "Deputy Minister")
+
     GENDER_CHOICES = [
         ("male", _("Male")),
         ("female", _("Female")),
@@ -49,6 +56,17 @@ class User(AbstractUser, BaseModel):
     middle_name = models.CharField(max_length=100, blank=True)
     employee_type = models.CharField(
         max_length=10, choices=EMPLOYEE_TYPE_CHOICES, blank=True
+    )
+    identity_source = models.CharField(
+        max_length=10,
+        choices=IDENTITY_SOURCE_CHOICES,
+        default="erp",
+        help_text=_(
+            "Which system owns this identity. 'erp' (the default) leaves the "
+            "user to sync_users_oracle; set 'local' for identities managed in "
+            "PWMS only - e.g. a Minister appointed from outside the ERP, who "
+            "must not be deactivated when Oracle does not know them."
+        ),
     )
     positiondesc = models.CharField(max_length=100, blank=True)
     supervisor = models.ForeignKey(
@@ -82,7 +100,7 @@ class User(AbstractUser, BaseModel):
         ordering = ["last_name", "first_name"]
 
     @staticmethod
-    def _compute_idno_hmac(plain_id: str) -> Optional[str]:
+    def _compute_idno_hmac(plain_id: str) -> str | None:
         """Return hex-encoded HMAC-SHA256 of the ID using settings.IDNO_HMAC_KEY."""
         key = getattr(settings, "IDNO_HMAC_KEY", None)
         if not plain_id or not key:
@@ -91,7 +109,7 @@ class User(AbstractUser, BaseModel):
         return hmac.new(key_bytes, plain_id.encode("utf-8"), hashlib.sha256).hexdigest()
 
     @staticmethod
-    def _encrypt_idno(plain_id: str) -> Optional[str]:
+    def _encrypt_idno(plain_id: str) -> str | None:
         """Encrypt the ID number using Fernet if configured."""
         key = getattr(settings, "IDNO_ENC_KEY", None)
         if not plain_id or not key:
@@ -110,7 +128,7 @@ class User(AbstractUser, BaseModel):
             return None
 
     @staticmethod
-    def _decrypt_idno(ciphertext: str) -> Optional[str]:
+    def _decrypt_idno(ciphertext: str) -> str | None:
         key = getattr(settings, "IDNO_ENC_KEY", None)
         if not ciphertext or not key:
             return None
@@ -125,7 +143,7 @@ class User(AbstractUser, BaseModel):
         except Exception:
             return None
 
-    def set_idno(self, plain_id: Optional[str]) -> None:
+    def set_idno(self, plain_id: str | None) -> None:
         """Set the user's ID number without storing plaintext."""
         hmac_value = self._compute_idno_hmac(plain_id or "")
         if hmac_value:
@@ -168,6 +186,57 @@ class User(AbstractUser, BaseModel):
     def save(self, *args, **kwargs):
         self.clean()
         super().save(*args, **kwargs)
+
+    @classmethod
+    def ministers(cls):
+        """Active users holding an executive office, ordered by name.
+
+        A Minister is a user with an *active* membership of an executive group
+        (``Group.EXECUTIVE_GROUP_TYPES``) in the ``Minister`` or
+        ``Deputy Minister`` role — the office is held over time, so a reshuffle
+        ends the membership rather than editing the user.
+        """
+        from .groups import Group
+
+        return (
+            cls.objects.filter(
+                is_active=True,
+                memberships__is_active=True,
+                memberships__role__name__in=cls.EXECUTIVE_ROLE_NAMES,
+                memberships__group__group_type__in=Group.EXECUTIVE_GROUP_TYPES,
+            )
+            .distinct()
+            .order_by("last_name", "first_name")
+        )
+
+    def executive_memberships(self):
+        """This user's executive-office memberships, current or past.
+
+        Ended appointments are included on purpose: an agreement or bill already
+        on file still names the office holder who served at the time, so a
+        reshuffle must not invalidate it.
+        """
+        from .groups import Group
+
+        return self.get_groups_with_roles().filter(
+            role__name__in=self.EXECUTIVE_ROLE_NAMES,
+            group__group_type__in=Group.EXECUTIVE_GROUP_TYPES,
+        )
+
+    @property
+    def current_portfolio(self):
+        """Group of this user's current executive appointment, if any.
+
+        ``None`` for anyone who is not a serving Minister or Deputy Minister;
+        use :meth:`get_groups_with_roles` when the role is needed too.
+        """
+        membership = (
+            self.executive_memberships()
+            .filter(is_active=True)
+            .order_by("-start_date")
+            .first()
+        )
+        return membership.group if membership else None
 
     def get_groups_with_roles(self):
         from .permissions import GroupMembership

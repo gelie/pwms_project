@@ -10,6 +10,10 @@ Key optimizations:
 - Org groups/roles are looked up from cache; MP party + house-members groups
   (and the MP/Staff roles) are created on demand when missing
 - Optimized for speed (target: <2 minutes for 1600+ users)
+- Users whose ``identity_source`` is not ``erp`` are managed in PWMS (Ministers
+  appointed from outside the ERP, scraper placeholders, admin accounts): the
+  sync never creates, updates or deactivates them, and it never ends their
+  executive memberships
 
 Usage:
     python manage.py sync_users_oracle
@@ -21,6 +25,7 @@ from time import perf_counter
 
 from django.core.management.base import CommandError
 from django.utils import timezone
+
 from pwms.management.commands.sync_base import OracleSyncBase
 from pwms.membership.sync_service import MembershipSyncService
 from pwms.models import Group, GroupMembership, Role, User
@@ -42,6 +47,8 @@ class Command(OracleSyncBase):
                 "new_memberships": 0,
                 "updated_memberships": 0,
                 "deactivated_memberships": 0,
+                "preserved_executive_memberships": 0,
+                "skipped_local_users": 0,
                 "fixed_passwords": 0,
             }
         )
@@ -353,6 +360,19 @@ class Command(OracleSyncBase):
         elif username and username.lower() in existing_users_by_username:
             user = existing_users_by_username[username.lower()]
 
+        if user is not None and user.identity_source != "erp":
+            # The identity is owned by PWMS (e.g. a Minister appointed from
+            # outside the ERP), so an Oracle row must not overwrite it - not
+            # even the fields this sync otherwise treats as authoritative.
+            self.stats["skipped_local_users"] += 1
+            self.logger.warning(
+                f"⏭️  Skipping locally managed user {user.username!r} "
+                f"(identity_source={user.identity_source!r}); Oracle row for "
+                f"{username!r} would overwrite it. Set identity_source='erp' "
+                f"to hand this identity to the ERP sync."
+            )
+            return
+
         if user:
             changes = []
             if user.username.lower() != username.lower():
@@ -474,7 +494,14 @@ class Command(OracleSyncBase):
         existing_users: dict[str, User],
         dry_run: bool,
     ):
-        """Deactivate local users that are no longer present in Oracle."""
+        """Deactivate local users that are no longer present in Oracle.
+
+        Only ``identity_source == "erp"`` users are eligible: rows owned by
+        PWMS (Ministers appointed from outside the ERP, scraper placeholders,
+        admin accounts) are left active even when Oracle does not know them.
+        Memberships in executive groups are never ended here either, so losing
+        an ERP payroll record cannot silently end a political appointment.
+        """
         oracle_hmacs = set(
             filter(
                 None,
@@ -500,8 +527,31 @@ class Command(OracleSyncBase):
             if not user or not user.is_active:
                 continue
 
+            if user.identity_source != "erp":
+                self.logger.debug(
+                    f"Skipping locally managed user "
+                    f"(identity_source={user.identity_source!r}): {user.username}"
+                )
+                continue
+
             active_qs = GroupMembership.objects.filter(user=user, is_active=True)
-            active_count = active_qs.count()
+            # Political office outlives an employment record: end the
+            # memberships the ERP vouches for, preserve the executive ones.
+            deactivatable_qs = active_qs.exclude(
+                group__group_type__in=Group.EXECUTIVE_GROUP_TYPES
+            )
+            active_count = deactivatable_qs.count()
+            preserved_count = active_qs.count() - active_count
+
+            if preserved_count:
+                self.stats["preserved_executive_memberships"] += preserved_count
+                self.stats["warnings"] += 1
+                self.logger.warning(
+                    f"⚠️  {user.username} is missing from Oracle but still holds "
+                    f"{preserved_count} executive membership(s); preserving them. "
+                    f"Set identity_source='local' to keep this office holder's "
+                    f"account active."
+                )
 
             if not dry_run:
                 try:
@@ -509,7 +559,7 @@ class Command(OracleSyncBase):
                     user.save(update_fields=["is_active"])
 
                     if active_count:
-                        active_qs.update(is_active=False, end_date=today)
+                        deactivatable_qs.update(is_active=False, end_date=today)
                 except Exception as e:
                     self.logger.error(
                         f"Error deactivating user {user.username}: {e!s}",
@@ -521,7 +571,9 @@ class Command(OracleSyncBase):
             self.stats["disabled_users"] += 1
             self.stats["deactivated_memberships"] += active_count
             self.logger.info(
-                f"{'[DRY RUN] ' if dry_run else ''}Deactivated user: {user.username}; memberships deactivated: {active_count}"
+                f"{'[DRY RUN] ' if dry_run else ''}Deactivated user: {user.username}; "
+                f"memberships deactivated: {active_count}; "
+                f"executive memberships preserved: {preserved_count}"
             )
 
     def normalize_name_fields(self, user_data: tuple) -> dict[str, str]:
@@ -591,6 +643,9 @@ class Command(OracleSyncBase):
         self.stdout.write(f"   New users created: {self.stats['new_users']}")
         self.stdout.write(f"   Users updated: {self.stats['updated_users']}")
         self.stdout.write(f"   Users deactivated: {self.stats['disabled_users']}")
+        self.stdout.write(
+            f"   Skipped (locally managed): {self.stats['skipped_local_users']}"
+        )
 
         self.stdout.write("\n👥 MEMBERSHIP STATISTICS:")
         self.stdout.write(f"   New memberships: {self.stats['new_memberships']}")
@@ -599,6 +654,10 @@ class Command(OracleSyncBase):
         )
         self.stdout.write(
             f"   Deactivated memberships: {self.stats['deactivated_memberships']}"
+        )
+        self.stdout.write(
+            "   Preserved executive memberships: "
+            f"{self.stats['preserved_executive_memberships']}"
         )
 
         self.stdout.write("\n🔐 PASSWORD FIXES:")
