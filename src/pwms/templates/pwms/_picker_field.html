@@ -3,7 +3,7 @@ Renders a choice field the way its form decided it should look: a foreign key
 whose option list is longer than ``WorkflowInstanceFormMixin.search_picker_threshold``
 becomes an HTMX search picker, anything shorter stays an ordinary <select>.
 
-  {% include "pwms/_picker_field.html" with field=form.owner search_url="pwms:user_search" placeholder="Type to search users..." selected_name=form.picker_labels.owner wrapper_class="col-12 col-md-6" %}
+  {% include "pwms/_picker_field.html" with field=form.assigned_to search_url="pwms:user_search" placeholder="Type to search users..." selected_name=form.picker_labels.assigned_to wrapper_class="col-12 col-md-6" %}
 
 ``search_url``, ``placeholder``, ``selected_name``, ``depends_on``,
 ``depends_param`` and ``clears`` only apply to the search picker branch — see

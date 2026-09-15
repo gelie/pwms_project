@@ -195,8 +195,10 @@ All of this is exposed through one **`PermissionResolver` service**
 API share: `resolve(user, resource, action)`, `permissions_for(user, resource)`
 (the six capabilities) and `require(user, resource, action)`. It adds the
 superuser bypass, grants `manage` to users holding the global
-`Role.can_manage_permissions` capability, and lets a workflow instance's
-**owner** always view/edit/delete their own record.
+`Role.can_manage_permissions` capability, and treats two people named on a
+workflow instance as implicitly authorised: its **owner** may always
+view/edit/delete it, and its **assignee** (`assigned_to`) may always view it —
+assignment is a work queue, so it confers reading rights only.
 
 The service is wired in: the workflow CRUD views enforce `edit`/`delete` with
 `require()` (both GET and POST) and hide the Edit/Delete buttons when they are
@@ -246,8 +248,9 @@ Consumers:
 - **Synchronisation** from the legacy Oracle system (users, groups, roles,
   memberships) — basis for keeping identity data current.
 - **Committee scraping** (Parliament website) to import committee members.
-- **Notification / deadline jobs** — delegate expirations, referral deadlines,
-  overdue alerts (email delivery planned).
+- **Notification / deadline jobs** — referral deadline reminders and expiry
+  (email delivered); delegate expirations and overdue alerts still to be
+  repointed to `pwms.models`.
 - **Workflow tooling** — state import, workflow-type import/export, diagrams.
 - **Maintenance** — validate memberships, fix missing group access, update event
   statuses, show hierarchy.

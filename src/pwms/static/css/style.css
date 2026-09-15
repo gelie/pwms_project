@@ -589,3 +589,172 @@ html:not([data-theme]) .theme-toggle .theme-icon-when-auto {
     z-index: 1050;
     max-height: 15rem;
 }
+
+/* Dashboard (templates/pwms/dashboard.html). Colours come from the theme
+   variables so the whole page follows light/dark without extra rules; the
+   `color-mix()` tints keep the accent legible on either surface. */
+.dashboard-hero {
+    background-color: var(--theme-green);
+    background-image: linear-gradient(135deg, var(--theme-green) 0%, var(--theme-dark-gold) 100%);
+    background-blend-mode: normal;
+}
+
+.dashboard-hero-sub {
+    color: rgba(255, 255, 255, 0.85);
+    font-family: var(--bs-font-serif);
+}
+
+/* Stat cards */
+.dashboard-stat {
+    --dashboard-accent: var(--theme-green);
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    height: 100%;
+    padding: 1.25rem;
+    border: 1px solid var(--bs-border-color);
+    border-left: 5px solid var(--dashboard-accent);
+    background-color: var(--bs-secondary-bg);
+    color: var(--bs-body-color);
+}
+
+.dashboard-stat--gold {
+    --dashboard-accent: var(--theme-gold);
+}
+
+.dashboard-stat--dark-gold {
+    --dashboard-accent: var(--theme-dark-gold);
+}
+
+.dashboard-stat--orange {
+    --dashboard-accent: var(--theme-orange);
+}
+
+.dashboard-stat-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-bottom: 0.5rem;
+    border-radius: 50%;
+    color: var(--dashboard-accent);
+    background-color: color-mix(in srgb, var(--dashboard-accent) 16%, transparent);
+}
+
+.dashboard-stat-value {
+    font-family: var(--bs-font-serif);
+    font-size: 2rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--bs-emphasis-color);
+}
+
+.dashboard-stat-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.dashboard-stat-note {
+    font-size: 0.8rem;
+    color: var(--bs-secondary-color);
+}
+
+/* Breakdown bars */
+.dashboard-bar + .dashboard-bar {
+    margin-top: 0.9rem;
+}
+
+.dashboard-bar-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.25rem;
+    font-size: 0.85rem;
+}
+
+.dashboard-bar-count {
+    color: var(--bs-secondary-color);
+    font-variant-numeric: tabular-nums;
+}
+
+.dashboard-bar .progress {
+    height: 0.5rem;
+    border-radius: 0;
+    background-color: color-mix(in srgb, var(--theme-dark-gold) 15%, transparent);
+}
+
+.dashboard-bar-fill {
+    background-color: var(--theme-green);
+}
+
+.dashboard-bar-fill--gold {
+    background-color: var(--theme-gold);
+}
+
+/* Work lists */
+.dashboard-list .list-group-item {
+    background-color: transparent;
+    color: var(--bs-body-color);
+    border-color: var(--bs-border-color);
+}
+
+.dashboard-list .list-group-item:hover,
+.dashboard-list .list-group-item:focus {
+    background-color: color-mix(in srgb, var(--theme-gold) 12%, transparent);
+}
+
+.dashboard-deadline {
+    flex-shrink: 0;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    color: var(--bs-secondary-color);
+}
+
+.dashboard-deadline.is-overdue {
+    color: var(--theme-orange);
+    font-weight: 600;
+}
+
+/* Activity timeline */
+.dashboard-activity {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.dashboard-activity li {
+    position: relative;
+    padding: 0 0 1rem 1.5rem;
+    border-left: 2px solid color-mix(in srgb, var(--theme-gold) 40%, transparent);
+}
+
+.dashboard-activity li:last-child {
+    padding-bottom: 0;
+    border-left-color: transparent;
+}
+
+.dashboard-activity li::before {
+    content: "";
+    position: absolute;
+    top: 0.35rem;
+    left: -0.4rem;
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 50%;
+    background-color: var(--theme-gold);
+}
+
+/* Empty state */
+.dashboard-empty-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 4rem;
+    height: 4rem;
+    border-radius: 50%;
+    color: var(--theme-gold);
+    background-color: color-mix(in srgb, var(--theme-gold) 18%, transparent);
+}

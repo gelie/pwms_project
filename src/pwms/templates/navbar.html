@@ -94,14 +94,7 @@
               {% endif %}
             </ul>
             <div class="auth-menu">
-              <button type="button"
-                      class="theme-toggle auth-item"
-                      aria-label="Toggle colour theme"
-                      title="Toggle colour theme (auto, light, dark)">
-                <span class="theme-icon theme-icon-when-auto">{% lucide "sun-moon" size=20 %}</span>
-                <span class="theme-icon theme-icon-when-light">{% lucide "sun" size=20 %}</span>
-                <span class="theme-icon theme-icon-when-dark">{% lucide "moon" size=20 %}</span>
-              </button>
+
               {% if user.is_authenticated %}
                 <a class="nav-link auth-action auth-item"
                    href="{% url "pwms:logout" %}"
@@ -123,6 +116,22 @@
                   <span>Not signed in</span>
                 </span>
               {% endif %}
+              <button type="button"
+                      class="theme-toggle auth-item"
+                      aria-label="Toggle colour theme"
+                      title="Toggle colour theme (auto, light, dark)">
+                <span class="theme-icon theme-icon-when-auto">{% lucide "bell" size=20 %}</span>
+                <span class="theme-icon theme-icon-when-light">{% lucide "sun" size=20 %}</span>
+                <span class="theme-icon theme-icon-when-dark">{% lucide "bell-ring" size=20 %}</span>
+              </button>
+              <button type="button"
+                      class="theme-toggle auth-item"
+                      aria-label="Toggle colour theme"
+                      title="Toggle colour theme (auto, light, dark)">
+                <span class="theme-icon theme-icon-when-auto">{% lucide "sun-moon" size=20 %}</span>
+                <span class="theme-icon theme-icon-when-light">{% lucide "sun" size=20 %}</span>
+                <span class="theme-icon theme-icon-when-dark">{% lucide "moon" size=20 %}</span>
+              </button>
             </div>
           </div>
         </div>

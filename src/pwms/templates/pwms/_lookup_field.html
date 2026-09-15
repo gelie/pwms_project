@@ -7,12 +7,14 @@ form POST still submits ``name="<field>"``.
 Reach it through ``pwms/_picker_field.html``, which only picks this branch for a
 field whose option list is longer than the form's search-picker threshold:
 
-  {% include "pwms/_picker_field.html" with field=form.owner search_url="pwms:user_search" placeholder="Type to search users..." selected_name=form.picker_labels.owner wrapper_class="col-12 col-md-6" %}
+  {% include "pwms/_picker_field.html" with field=form.assigned_to search_url="pwms:user_search" placeholder="Type to search users..." selected_name=form.picker_labels.assigned_to wrapper_class="col-12 col-md-6" %}
 
 ``search_url`` is the URL *name* of the view returning the results fragment (the
 fragment must call one of the ``window.select*`` helpers in static/js/htmx-lookup.js).
 ``placeholder`` and ``selected_name`` are optional; ``selected_name`` prefills the
 text input with what is already stored, so an edit form shows the current choice.
+Pass ``hide_label=True`` where the surrounding row carries its own labelling (the
+"add a delegate" row on the delegation report form, which has no room for one).
 
 Two optional arguments wire one picker to another, for a country/city pair:
 
@@ -29,10 +31,12 @@ Example (from the delegation report form):
      id="{{ field.auto_id }}_picker"
      data-lookup
      {% if clears %}data-clears="{{ clears }}"{% endif %}>
-  <label class="form-label" for="{{ field.auto_id }}_search">
-    {{ field.label }}
-    {% if field.field.required %}<span class="text-danger" aria-hidden="true">*</span>{% endif %}
-  </label>
+  {% if not hide_label %}
+    <label class="form-label" for="{{ field.auto_id }}_search">
+      {{ field.label }}
+      {% if field.field.required %}<span class="text-danger" aria-hidden="true">*</span>{% endif %}
+    </label>
+  {% endif %}
   <div class="position-relative">
     {{ field }}
     <input type="text"

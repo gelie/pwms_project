@@ -229,9 +229,11 @@ single entry point the UI and API both call: `resolve(user, resource, action)`,
 `permissions_for(user, resource)` (the six capabilities) and `require(...)`.
 It dispatches by resource type — workflow instances go through `can(...)` above,
 other models fall back to a conservative default or a registered resolver —
-adds the superuser bypass, lets a workflow instance's **owner** always
-view/edit/delete it, and grants `manage` to anyone holding the global
-`Role.can_manage_permissions` capability. The DRF audit endpoint consumes it via
+adds the superuser bypass, grants `manage` to anyone holding the global
+`Role.can_manage_permissions` capability, and treats two people named on a
+workflow instance as implicitly authorised — its **owner** may always
+view/edit/delete it and its **assignee** may always view it (assignment confers
+reading rights only). The DRF audit endpoint consumes it via
 `WorkflowViewPermission` (`pwms/api/permissions.py`).
 
 ---

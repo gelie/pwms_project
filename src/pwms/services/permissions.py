@@ -15,8 +15,10 @@ Resolution is resource-type aware:
   types can register custom resolvers with :func:`register_resolver`.
 
 Superusers always pass. A workflow instance's ``owner`` is always granted
-view / edit / delete on it; only the view right (from that owner grant or the
-group chain) flows down to the instance's descendants. The ``manage`` action
+view / edit / delete on it, and its ``assigned_to`` user is always granted
+**view** — that field names who owes the next action, and naming someone who
+cannot open the record is a dead end. Only the view right (from either grant or
+the group chain) flows down to the instance's descendants. The ``manage`` action
 additionally honours the global ``Role.can_manage_permissions`` capability, so a
 manager role grants the ability to administer any resource even without a
 per-instance grant.
@@ -100,16 +102,28 @@ def resolve(user, resource, action: str) -> bool:
     return resolver(user, resource, action)
 
 
+def _has_direct_view_grant(user, instance) -> bool:
+    """
+    True when ``user`` may view ``instance`` without any access row.
+
+    Two people are named on the record itself: the ``owner`` who produced it, and
+    the ``assigned_to`` user who owes the next action. Neither should have to
+    belong to some group to find their own work.
+    """
+    return user.pk in (instance.owner_id, instance.assigned_to_id)
+
+
 def _resolve_workflow_instance(user, instance, action: str) -> bool:
     """
     Resolve an action against a workflow instance's RBAC chain.
 
-    Every action is resolved on the instance itself (its owner plus its own
-    group/Role/State chain). In addition, **view** access cascades *down* the
-    hierarchy: a child is viewable when its parent — or, transitively, any
-    ancestor — is. A grant on a delegation report therefore lets its readers see
-    the international resolutions it contains, while edit/delete/transition and
-    the rest stay governed by each instance's own permissions.
+    Every action is resolved on the instance itself: its owner (view/edit/delete),
+    its assignee (view only) and its own group/Role/State chain. In addition,
+    **view** access cascades *down* the hierarchy: a child is viewable when its
+    parent — or, transitively, any ancestor — is. A grant on a delegation report
+    therefore lets its readers see the international resolutions it contains,
+    while edit/delete/transition and the rest stay governed by each instance's own
+    permissions.
 
     Traversal goes through :class:`WorkflowRelationship` (``get_ancestors()``),
     so it works for any parent/child :class:`WorkflowType` pair, including ones
@@ -123,13 +137,19 @@ def _resolve_workflow_instance(user, instance, action: str) -> bool:
     # remaining capabilities follow the instance's own group/Role/State chain.
     if action in (VIEW, EDIT, DELETE) and user.pk == instance.owner_id:
         return True
+    # Assignment is a work queue, so it confers *view only*: whoever the work is
+    # assigned to has to be able to open it, but acting on it still takes a real
+    # group/Role/State grant — assigning work must not widen anyone's authority.
+    if action == VIEW and user.pk == instance.assigned_to_id:
+        return True
     if instance.can(user, action):
         return True
 
-    # Only the view right is inherited from ancestors (owner or group chain).
+    # Only the view right is inherited from ancestors (owner, assignee or the
+    # group chain).
     if action == VIEW:
         for ancestor in instance.get_ancestors():
-            if user.pk == ancestor.owner_id or ancestor.can(user, action):
+            if _has_direct_view_grant(user, ancestor) or ancestor.can(user, action):
                 return True
     return False
 

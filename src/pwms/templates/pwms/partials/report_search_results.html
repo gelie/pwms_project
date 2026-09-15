@@ -1,0 +1,13 @@
+{% for report in reports %}
+  <button type="button"
+          class="list-group-item list-group-item-action"
+          onclick="selectOption('{{ report.pk }}', '{{ report|escapejs }}')">
+    <span class="fw-medium">{{ report.title }}</span>
+    <span class="d-block small text-body-secondary">
+      {{ report.reference_number|default:"(no reference)" }}
+      {% if report.engagement_name %}· {{ report.engagement_name }}{% endif %}
+    </span>
+  </button>
+{% empty %}
+  <div class="list-group-item small text-body-secondary">No delegation reports found matching your search</div>
+{% endfor %}

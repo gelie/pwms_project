@@ -13,8 +13,9 @@ All commands live in `pwms/management/commands/` and run as:
 > They are marked **legacy** below.
 >
 > The reworked Oracle sync suite (`sync_groups_oracle`, `sync_roles_oracle`,
-> `sync_users_oracle`) and `populate_sites` import `pwms.models` directly and
-> run cleanly; the `legacy` / `pending repoint` statuses below apply to the rest.
+> `sync_users_oracle`), `populate_sites`, `check_referral_deadlines` and
+> `show_workflow_hierarchy` import `pwms.models` directly and run cleanly; the
+> `legacy` / `pending repoint` statuses below apply to the rest.
 
 ## Synchronisation (Oracle / legacy source)
 
@@ -139,10 +140,27 @@ type or date are reported and skipped, and the command ends with a summary.
 | Command | Purpose | Status |
 | --- | --- | --- |
 | `check_delegation_expirations` | detect expiring delegations/memberships | pending repoint |
-| `check_referral_deadlines` | warn when a referral deadline is approaching | pending repoint |
+| `check_referral_deadlines` | warn when a referral deadline is approaching, and expire referrals past it | ✅ live — see below |
 | `notify_deadlines` | dispatch deadline notifications (optionally scoped by workflow id) | pending repoint |
 | `send_overdue_alerts` | send overdue-workflow alerts / emails | pending repoint |
 | `update_event_statuses` | recompute/refresh statuses of events or instances | pending repoint |
+
+### Referral deadline reminders
+
+`check_referral_deadlines` emails reminders for open `WorkflowReferral` rows and
+closes the ones nobody answered:
+
+| Window | Action |
+| --- | --- |
+| due within 24 hours, not yet reminded | email the referred group's active members and the workflow owner, then stamp `deadline_notified_at` |
+| due within 1 hour, already reminded | send the final reminder (no second stamp) |
+| due date passed | `mark_expired()` the referral (emits `referral-expired`) and email the parties |
+
+Only `status="open"` referrals are considered, so an answered or recalled one is
+left alone. `--dry-run` reports what would be sent or expired without sending
+mail or writing anything. Mail is sent inline through `MAILERS`; the planned
+Notification model (see [Roadmap](./Roadmap%20&%20Planned%20Integrations.md))
+will move those sends to background tasks.
 
 ## Maintenance & inspection
 
@@ -150,7 +168,7 @@ type or date are reported and skipped, and the command ends with a summary.
 | --- | --- | --- |
 | `fix_missing_group_access` | create `WorkflowGroupAccess` for instances missing it — **superseded by `sync_type_group_access`** | legacy |
 | `sync_type_group_access` | backfill `WorkflowGroupAccess` (owning group + viewer groups) from each instance's `WorkflowType` | ✅ live |
-| `show_workflow_hierarchy` | print group/workflow hierarchy trees | legacy |
+| `show_workflow_hierarchy` | print the parent/child tree of workflow instances | ✅ live — see below |
 | `validate_memberships` | integrity-check group memberships | pending repoint |
 
 ### Type-level group access
@@ -166,6 +184,22 @@ It is idempotent and never overwrites an existing row, so it is safe to re-run.
 | --- | --- |
 | `--workflow-type NAME_OR_SLUG` | restrict the backfill to one workflow type |
 | `--dry-run` | report what would be created without writing anything |
+
+### Hierarchy inspection
+
+`show_workflow_hierarchy` prints the parent/child tree that
+`WorkflowRelationship` builds across the concrete workflow registers. There is
+no single `Workflow` model to query, so the command gathers all four types and
+uses each instance's `parent_workflow` / `sub_workflows` helpers.
+
+| Option | Effect |
+| --- | --- |
+| `--workflow-id UUID` | show one workflow's root-to-leaf path, parent, siblings, children and counts (matched on `public_id`) |
+| `--show-all` | every hierarchy, with a descendant count per root |
+| `--show-orphans` | workflows with neither parent nor children |
+| `--workflow-type NAME` | restrict to one workflow type name |
+
+Rows are colour-coded by status: overdue first, then `urgent` / `high` priority.
 
 ## Roadmap hooks
 

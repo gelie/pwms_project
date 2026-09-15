@@ -1,0 +1,9 @@
+{% comment %}
+Renders a field the form decides the value of (its widget is a HiddenInput):
+the input itself, plus any validation error so a rejected hidden value is shown
+rather than failing silently.
+
+  {% include "pwms/_hidden_field.html" with field=form.owner %}
+{% endcomment %}
+{{ field }}
+{% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}

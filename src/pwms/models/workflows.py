@@ -249,6 +249,25 @@ class AbstractLegislativeWorkflow(BaseModel):
         if adding:
             self.materialize_group_access()
 
+    # -- overdue handling (BR12) --------------------------------------------
+    @property
+    def is_overdue(self):
+        """
+        True when the due date has expired while the workflow is still open.
+
+        BR12 models an expired deadline as this flag rather than as a state, so
+        it applies to every concrete workflow. ``closed`` means the instance has
+        reached a terminal state, whatever that state is called in its type.
+        """
+        if not self.deadline or not self.current_state_id:
+            return False
+        return self.deadline < timezone.now() and not self.current_state.is_terminal
+
+    @property
+    def overdue_identifier(self):
+        """BR12 flag text; empty string when the workflow is not overdue."""
+        return OVERDUE_IDENTIFIER if self.is_overdue else ""
+
     def materialize_group_access(self):
         """
         Create this instance's :class:`WorkflowGroupAccess` rows from its
@@ -1769,19 +1788,6 @@ class DelegationReport(AbstractLegislativeWorkflow):
             sequence = 1
         return f"{prefix}{sequence:04d}"
 
-    # -- overdue handling (BR12) -------------------------------------------
-    @property
-    def is_overdue(self):
-        """True when the due date has expired and the report is not closed."""
-        if not self.deadline or not self.current_state_id:
-            return False
-        return self.deadline < timezone.now() and not self.current_state.is_terminal
-
-    @property
-    def overdue_identifier(self):
-        """BR12 flag text; empty string when the report is not overdue."""
-        return OVERDUE_IDENTIFIER if self.is_overdue else ""
-
     # -- BR03 update history ------------------------------------------------
     def record_update(
         self,
@@ -1896,6 +1902,16 @@ class DelegationParticipant(BaseModel):
         ordering = ["participant_type", "order", "last_name", "first_name"]
         indexes = [
             models.Index(fields=["delegation_report", "participant_type"]),
+        ]
+        constraints = [
+            # One person appears at most once on a delegation. ``user`` is optional
+            # — an official may have no account — so this is a partial unique
+            # index: rows without an account are never compared against each other.
+            models.UniqueConstraint(
+                fields=["delegation_report", "user"],
+                condition=models.Q(user__isnull=False),
+                name="workflows_participant_report_user_uniq",
+            ),
         ]
 
     def __str__(self):
@@ -2210,19 +2226,6 @@ class InternationalAgreement(AbstractLegislativeWorkflow):
             sequence = 1
         return f"{prefix}{sequence:04d}"
 
-    # -- overdue handling (BR12) -------------------------------------------
-    @property
-    def is_overdue(self):
-        """True when the due date has expired and the agreement is not closed."""
-        if not self.deadline or not self.current_state_id:
-            return False
-        return self.deadline < timezone.now() and not self.current_state.is_terminal
-
-    @property
-    def overdue_identifier(self):
-        """BR12 flag text; empty string when the agreement is not overdue."""
-        return OVERDUE_IDENTIFIER if self.is_overdue else ""
-
 
 class Bill(AbstractLegislativeWorkflow):
     """
@@ -2385,19 +2388,6 @@ class Bill(AbstractLegislativeWorkflow):
             return current.version_label
         latest = self.versions.first()  # Meta.ordering: newest first
         return latest.version_label if latest is not None else ""
-
-    # -- overdue handling (shared indicator) --------------------------------
-    @property
-    def is_overdue(self):
-        """True when the due date has expired and the bill is not closed."""
-        if not self.deadline or not self.current_state_id:
-            return False
-        return self.deadline < timezone.now() and not self.current_state.is_terminal
-
-    @property
-    def overdue_identifier(self):
-        """Flag text; empty string when the bill is not overdue."""
-        return OVERDUE_IDENTIFIER if self.is_overdue else ""
 
 
 class BillVersion(BaseModel):

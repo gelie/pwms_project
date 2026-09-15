@@ -1,0 +1,49 @@
+{% comment %}
+One delegate on the delegation report form: the formset row that is actually
+submitted (hidden) paired with the card shown for it.
+
+Rendered for each form in ``participant_formset``, and once more inside a
+<template> as the source static/js/formset.js clones when "Add Delegate" is
+clicked. The ``data-adder-slot`` values name the ``add a delegate`` row's control
+whose value fills that text in a newly added card ("search" being the label the
+lookup's search box is showing, not the pk stored in the row).
+
+The text comes from the form's current value rather than the instance, so a save
+that is rejected (a duplicate delegate, say) re-renders the cards as they were
+filled in instead of blanking them.
+{% endcomment %}
+<div data-adder-item>
+  <div class="d-none">
+    {{ item.id }}
+    {{ item.user }}
+    {{ item.participant_type }}
+    {{ item.delegation_role }}
+    {{ item.DELETE }}
+  </div>
+  <div class="d-flex align-items-center justify-content-between border rounded-3 p-2 mb-2">
+    <div class="d-flex align-items-center gap-3">
+      <span class="rounded-circle bg-secondary-subtle text-body d-inline-flex align-items-center justify-content-center flex-shrink-0"
+            style="width: 2.5rem;
+                   height: 2.5rem"
+            aria-hidden="true"
+            data-adder-avatar>{{ item.selected_user_label|slice:":1" }}</span>
+      <div>
+        <div class="fw-medium" data-adder-slot="search">{{ item.selected_user_label }}</div>
+        <div class="small text-body-secondary" data-adder-slot="delegation_role">
+          {{ item.delegation_role.value|default:"" }}
+        </div>
+      </div>
+    </div>
+    <button type="button"
+            class="btn btn-sm btn-link text-body"
+            aria-label="Remove this delegate"
+            data-adder-remove>{% lucide "x" size=18 %}</button>
+  </div>
+  {% if item.errors %}
+    <div class="mb-2">
+      {% for errors in item.errors.values %}
+        {% for error in errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>

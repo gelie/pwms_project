@@ -11,21 +11,33 @@ The forms implement one rule that the abstract base cannot express directly:
 a new instance always starts in its workflow type's initial state, while an
 existing instance may only move between states that belong to the type it was
 created with.
+
+The report form also carries two child lists: the delegates attending the
+engagement (``DelegationParticipant`` rows) and the resolutions adopted there
+(``InternationalResolution`` instances nested through ``WorkflowRelationship``).
 """
 
 from django import forms
 from django.contrib.auth import get_user_model
+from django.forms import (
+    BaseFormSet,
+    BaseInlineFormSet,
+    formset_factory,
+    inlineformset_factory,
+)
 from django_flatpickr.widgets import DatePickerInput, DateTimePickerInput
 
 from .models import (
     Bill,
     BillVersion,
+    DelegationParticipant,
     DelegationReport,
     InternationalAgreement,
     InternationalResolution,
     State,
     WorkflowType,
 )
+from .services.permissions import EDIT, resolve
 
 User = get_user_model()
 
@@ -44,15 +56,18 @@ class WorkflowInstanceFormMixin:
     """
     Shared create/update behaviour for concrete workflow instances.
 
-    On **create** the form exposes ``workflow_type`` (only the enabled types the
-    ``user`` may create in — creation is group-scoped RBAC, see
-    :meth:`WorkflowType.can_create`) and hides ``current_state``, which is
-    derived from the type's initial state. On **update** ``workflow_type`` is
-    fixed and ``current_state`` becomes editable, limited to the states of that
-    type.
+    Each concrete form stands for exactly one workflow type, so the type is
+    never a choice: on **create** it is pinned to this form's type and rendered
+    hidden, and ``current_state`` is derived from that type's initial state. On
+    **update** the type is fixed by the instance and ``current_state`` becomes
+    editable, limited to the states of that type.
 
-    Pass the acting user as the ``user`` keyword argument to
-    ``__init__``; omitting it yields no creatable types, which fails closed.
+    ``owner`` is not a choice either — it is the acting user on create, and the
+    instance's existing owner on update — so it too is rendered hidden, and its
+    posted value is ignored.
+
+    Pass the acting user as the ``user`` keyword argument to ``__init__``;
+    omitting it fails closed (nothing may be created).
     """
 
     #: Workflow type pre-selected when creating a new instance.
@@ -62,9 +77,9 @@ class WorkflowInstanceFormMixin:
     #: render as HTMX search pickers instead (see ``pwms/_picker_field.html``).
     search_picker_threshold = 10
 
-    #: Fields that may become search pickers, checked in this order.
+    #: Fields that may become search pickers, checked in this order. ``owner`` is
+    #: deliberately absent: it is never chosen by hand (see ``__init__``).
     search_picker_fields = (
-        "owner",
         "assigned_to",
         "responsible_group",
         "responsible_committee",
@@ -83,6 +98,18 @@ class WorkflowInstanceFormMixin:
         for name in ("owner", "assigned_to", "sponsor"):
             if name in self.fields:
                 self.fields[name].queryset = users
+
+        # The owner is never picked: a new instance belongs to the user creating
+        # it, and an existing one keeps the owner it already has. ``disabled``
+        # makes Django use the initial/instance value and ignore what was posted,
+        # so a crafted POST cannot hand ownership to someone else.
+        if "owner" in self.fields:
+            owner_field = self.fields["owner"]
+            owner_field.disabled = True
+            owner_field.widget = forms.HiddenInput()
+            if self.is_create and user is not None:
+                self.initial["owner"] = user
+
         if "responsible_minister" in self.fields:
             # Only serving office holders are offered: a former minister, or one
             # without a PWMS account, is recorded on the document name instead.
@@ -113,12 +140,22 @@ class WorkflowInstanceFormMixin:
 
         if self.is_create:
             self.fields.pop("current_state", None)
+            # The type is implicit in the form, so it is not offered as a choice.
+            # It is pinned to this form's type and rendered hidden; narrowing the
+            # queryset to that single type also stops a hand-crafted POST from
+            # swapping in another type, which would create a mis-typed record.
+            type_field = self.fields["workflow_type"]
             creatable = WorkflowType.creatable_by(user)
-            self.fields["workflow_type"].queryset = creatable
             if self.initial_workflow_type:
-                default_type = creatable.filter(name=self.initial_workflow_type).first()
-                if default_type is not None:
-                    self.fields["workflow_type"].initial = default_type
+                creatable = creatable.filter(name=self.initial_workflow_type)
+            type_field.queryset = creatable
+            # Seed both the field and the form: a ModelForm fills ``self.initial``
+            # from the (empty) instance, and that mapping wins over the field's
+            # own ``initial`` when Django resolves the value to render.
+            default_type = creatable.first()
+            type_field.initial = default_type
+            self.initial["workflow_type"] = default_type
+            type_field.widget = forms.HiddenInput()
         else:
             self.fields.pop("workflow_type", None)
             self.fields["current_state"].queryset = State.objects.filter(
@@ -142,9 +179,8 @@ class WorkflowInstanceFormMixin:
 
         The pickers (see ``pwms/_lookup_field.html``) only post a pk, so the page
         needs the matching label to prefill the visible search box. It comes from
-        the instance on an update form, or from the form's initial on create
-        (``owner`` defaults to the acting user), which keeps the box and the pk
-        that would be submitted in step.
+        the instance on an update form, or from the form's initial on create,
+        which keeps the box and the pk that would be submitted in step.
         """
         labels = {}
         for name in self.search_picker_fields:
@@ -222,13 +258,10 @@ class DelegationReportForm(WorkflowInstanceFormMixin, forms.ModelForm):
             "report_document_url",
         ]
         widgets = {
-            "workflow_type": forms.Select(attrs={"class": "form-select"}),
             "current_state": forms.Select(attrs={"class": "form-select"}),
             "title": forms.TextInput(attrs={"class": "form-control"}),
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
-            # owner/assigned_to are swapped to search pickers by the mixin when
-            # the user list is long, so they keep their select widget here.
-            "owner": forms.Select(attrs={"class": "form-select"}),
+            # Swapped to a search picker by the mixin when the user list is long.
             "assigned_to": forms.Select(attrs={"class": "form-select"}),
             "priority": forms.Select(attrs={"class": "form-select"}),
             "engagement_name": forms.TextInput(attrs={"class": "form-control"}),
@@ -243,10 +276,126 @@ class DelegationReportForm(WorkflowInstanceFormMixin, forms.ModelForm):
         }
 
 
+class DelegationParticipantForm(forms.ModelForm):
+    """
+    One delegate / support official on a delegation report (BR02.3.7/8).
+
+    The person is chosen from the user register through the shared lookup rather
+    than typed in: the row records *who* and *in what role*, and the name columns
+    the model keeps are filled from the chosen account (see :meth:`save`).
+    """
+
+    class Meta:
+        model = DelegationParticipant
+        fields = ["user", "participant_type", "delegation_role"]
+        widgets = {
+            "participant_type": forms.Select(attrs={"class": "form-select"}),
+            "delegation_role": forms.TextInput(attrs={"class": "form-control"}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["user"].label = "Delegate"
+        self.fields["participant_type"].label = "Type"
+        self.fields["user"].queryset = User.objects.filter(is_active=True).order_by(
+            "username"
+        )
+        # Always the search lookup, never a <select> of every account.
+        self.fields["user"].widget = forms.HiddenInput()
+        # Not required at field level: an untouched "add another" row must not
+        # complain, and a participant recorded without an account stays valid
+        # until the row is actually edited (see ``clean``).
+        self.fields["user"].required = False
+        if "DELETE" in self.fields:
+            self.fields["DELETE"].widget.attrs["class"] = "form-check-input"
+
+    @property
+    def selected_user_label(self):
+        """Name to show in the row's search box for the chosen user."""
+        pk = self["user"].value()
+        if not pk:
+            return ""
+        user = self.fields["user"].queryset.filter(pk=pk).first()
+        return user.display_name if user is not None else ""
+
+    def clean(self):
+        cleaned = super().clean()
+        # A row that carries data has to name a person: the name columns are taken
+        # from that account, so without one there would be nothing to record.
+        if self.is_bound and self.has_changed() and not cleaned.get("user"):
+            self.add_error("user", "Choose the delegate.")
+        return cleaned
+
+    def save(self, commit=True):
+        participant = super().save(commit=False)
+        user = self.cleaned_data.get("user")
+        if user is not None:
+            participant.user = user
+            # Keep the name columns in step with the account the row picked; the
+            # report lists people, and the form never asks for the name twice.
+            participant.first_name = user.first_name or user.get_username()
+            participant.last_name = user.last_name
+        if commit:
+            participant.save()
+        return participant
+
+
+class DelegationParticipantInlineFormSet(BaseInlineFormSet):
+    """Rejects the same person being listed twice on one report."""
+
+    def clean(self):
+        super().clean()
+        listed = set()
+        for form in self.forms:
+            cleaned = getattr(form, "cleaned_data", None)
+            # A form the formset treats as empty (an untouched "add" row, or one
+            # marked for removal) has no cleaned data and is not a delegate.
+            if not cleaned or cleaned.get("DELETE"):
+                continue
+            user = cleaned.get("user")
+            if user is None:
+                continue
+            if user.pk in listed:
+                form.add_error(
+                    "user",
+                    f"{user.display_name} is already on this delegation.",
+                )
+            else:
+                listed.add(user.pk)
+
+
+#: Delegates are rows of the report, so they are edited inline with it. No blank
+#: rows are pre-rendered: the form's one-line "add a delegate" row appends them.
+DelegationParticipantFormSet = inlineformset_factory(
+    DelegationReport,
+    DelegationParticipant,
+    form=DelegationParticipantForm,
+    formset=DelegationParticipantInlineFormSet,
+    extra=0,
+    can_delete=True,
+)
+
+
 class InternationalResolutionForm(WorkflowInstanceFormMixin, forms.ModelForm):
     """Create/update form for an :class:`InternationalResolution`."""
 
     initial_workflow_type = "International Resolution"
+
+    #: The report a resolution came out of is an optional parent link stored in
+    #: ``WorkflowRelationship`` rather than a column, so it is a plain form field
+    #: and is written back through ``set_parent_workflow`` when the form saves.
+    parent_report = forms.ModelChoiceField(
+        queryset=DelegationReport.objects.none(),
+        required=False,
+        label="Delegation report",
+        help_text="The delegation report this resolution came out of, if any.",
+    )
+
+    #: Give ``parent_report`` the mixin's search-picker treatment as well, so a
+    #: long register still renders as a search box rather than a huge <select>.
+    search_picker_fields = WorkflowInstanceFormMixin.search_picker_fields + (
+        "parent_report",
+    )
 
     adoption_date = forms.DateField(
         required=False,
@@ -276,13 +425,10 @@ class InternationalResolutionForm(WorkflowInstanceFormMixin, forms.ModelForm):
             "implementation_progress",
         ]
         widgets = {
-            "workflow_type": forms.Select(attrs={"class": "form-select"}),
             "current_state": forms.Select(attrs={"class": "form-select"}),
             "title": forms.TextInput(attrs={"class": "form-control"}),
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
-            # owner/assigned_to are swapped to search pickers by the mixin when
-            # the user list is long, so they keep their select widget here.
-            "owner": forms.Select(attrs={"class": "form-select"}),
+            # Swapped to a search picker by the mixin when the user list is long.
             "assigned_to": forms.Select(attrs={"class": "form-select"}),
             "priority": forms.Select(attrs={"class": "form-select"}),
             "resolution_number": forms.TextInput(attrs={"class": "form-control"}),
@@ -295,6 +441,103 @@ class InternationalResolutionForm(WorkflowInstanceFormMixin, forms.ModelForm):
                 attrs={"class": "form-control", "rows": 4}
             ),
         }
+
+    def __init__(self, *args, user=None, **kwargs):
+        super().__init__(*args, user=user, **kwargs)
+        # Offer only reports the user may edit: nesting a resolution under a report
+        # changes that report's hierarchy, so it is an edit of both records.
+        allowed = DelegationReport.objects.filter(
+            pk__in=[
+                report.pk
+                for report in DelegationReport.objects.all()
+                if resolve(user, report, EDIT)
+            ]
+        )
+        if not self.is_create:
+            current_parent = self.instance.parent_workflow
+            if isinstance(current_parent, DelegationReport):
+                # Whatever the resolution already sits under stays selectable even
+                # if the user may no longer edit it, so saving cannot detach it by
+                # accident.
+                self.initial["parent_report"] = current_parent
+                allowed = allowed | DelegationReport.objects.filter(
+                    pk=current_parent.pk
+                )
+        self.fields["parent_report"].queryset = allowed.order_by("-created_at")
+
+    def save(self, commit=True):
+        resolution = super().save(commit=commit)
+        if commit:
+            self._sync_parent_report(resolution)
+        return resolution
+
+    def _sync_parent_report(self, resolution):
+        """Attach the resolution under the chosen report, or detach it."""
+        parent = self.cleaned_data.get("parent_report")
+        current = resolution.parent_workflow
+        if parent is None:
+            if current is not None:
+                resolution.clear_parent_workflow()
+        elif current is None or current.pk != parent.pk:
+            resolution.set_parent_workflow(parent)
+
+
+class ChildResolutionForm(forms.ModelForm):
+    """
+    A resolution adopted at the engagement, captured from the report (BR02.3.9).
+
+    Only what the report page knows is asked for; the resolution's workflow type,
+    initial state and owner are supplied by the view, which also nests the new
+    instance under the report through ``WorkflowRelationship``.
+    """
+
+    class Meta:
+        model = InternationalResolution
+        fields = ["resolution_number", "title", "adoption_date"]
+        widgets = {
+            "resolution_number": forms.TextInput(attrs={"class": "form-control"}),
+            "title": forms.TextInput(attrs={"class": "form-control"}),
+            "adoption_date": DatePickerInput(attrs={"class": "form-control"}),
+        }
+
+
+class ChildResolutionBaseFormSet(BaseFormSet):
+    """Rejects two rows claiming the same resolution number.
+
+    ``resolution_number`` is unique, but two *new* rows carrying the same number
+    both pass the model's own check (neither is in the database yet) and the
+    second insert would fail at the constraint, so the clash is caught here.
+    """
+
+    def clean(self):
+        super().clean()
+        seen = set()
+        for form in self.forms:
+            cleaned = getattr(form, "cleaned_data", None)
+            if not cleaned or cleaned.get("DELETE"):
+                continue
+            number = (cleaned.get("resolution_number") or "").strip()
+            if not number:
+                continue
+            if number in seen:
+                form.add_error(
+                    "resolution_number",
+                    f"Resolution number {number} is listed twice.",
+                )
+            else:
+                seen.add(number)
+
+
+#: Resolutions are instances of their own, linked to the report on save rather
+#: than owned by it, so this is a plain formset — not an inline one. As with the
+#: delegates, rows are appended from the one-line "add a resolution" row, and
+#: ``can_delete`` lets that row's remove button drop one again.
+ChildResolutionFormSet = formset_factory(
+    ChildResolutionForm,
+    formset=ChildResolutionBaseFormSet,
+    extra=0,
+    can_delete=True,
+)
 
 
 class InternationalAgreementForm(WorkflowInstanceFormMixin, forms.ModelForm):
@@ -335,13 +578,10 @@ class InternationalAgreementForm(WorkflowInstanceFormMixin, forms.ModelForm):
             "explanatory_memorandum_url",
         ]
         widgets = {
-            "workflow_type": forms.Select(attrs={"class": "form-select"}),
             "current_state": forms.Select(attrs={"class": "form-select"}),
             "title": forms.TextInput(attrs={"class": "form-control"}),
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
-            # owner/assigned_to are swapped to search pickers by the mixin when
-            # the user list is long, so they keep their select widget here.
-            "owner": forms.Select(attrs={"class": "form-select"}),
+            # Swapped to a search picker by the mixin when the user list is long.
             "assigned_to": forms.Select(attrs={"class": "form-select"}),
             "priority": forms.Select(attrs={"class": "form-select"}),
             "agreement_type": forms.Select(attrs={"class": "form-select"}),
@@ -406,13 +646,10 @@ class BillForm(WorkflowInstanceFormMixin, forms.ModelForm):
             "notes",
         ]
         widgets = {
-            "workflow_type": forms.Select(attrs={"class": "form-select"}),
             "current_state": forms.Select(attrs={"class": "form-select"}),
             "title": forms.TextInput(attrs={"class": "form-control"}),
             "description": forms.Textarea(attrs={"class": "form-control", "rows": 3}),
-            # owner/assigned_to are swapped to search pickers by the mixin when
-            # the user list is long, so they keep their select widget here.
-            "owner": forms.Select(attrs={"class": "form-select"}),
+            # Swapped to a search picker by the mixin when the user list is long.
             "assigned_to": forms.Select(attrs={"class": "form-select"}),
             "priority": forms.Select(attrs={"class": "form-select"}),
             "bill_number": forms.TextInput(attrs={"class": "form-control"}),
@@ -462,3 +699,77 @@ class BillVersionForm(forms.ModelForm):
             ),
             "notes": forms.Textarea(attrs={"class": "form-control", "rows": 4}),
         }
+
+
+# -- "Add a …" rows -----------------------------------------------------------
+# The delegates and resolutions lists on the delegation report form are built
+# from a one-line row of controls: the page's JavaScript reads that row, appends
+# a formset row built from it and clears it again (see static/js/formset.js).
+# Nothing below is validated on the server — the fields exist so the row keeps
+# the shared lookup widget and stable ids — and each is prefixed so its inputs
+# cannot collide with the report's own fields.
+
+
+class DelegateAdderForm(forms.Form):
+    """The one-line "add a delegate" row: who, and in what role."""
+
+    user = forms.ModelChoiceField(
+        queryset=User.objects.all(),
+        required=False,
+        label="Delegate",
+        widget=forms.HiddenInput(),
+    )
+    participant_type = forms.ChoiceField(
+        choices=DelegationParticipant.PARTICIPANT_TYPE_CHOICES,
+        label="Type",
+        widget=forms.Select(
+            attrs={"class": "form-select", "aria-label": "Participant type"}
+        ),
+    )
+    delegation_role = forms.CharField(
+        required=False,
+        label="Delegation role",
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "Select a role...",
+                "aria-label": "Delegation role",
+            }
+        ),
+    )
+
+
+class ResolutionAdderForm(forms.Form):
+    """The one-line "add a resolution" row: its number, title and adoption date."""
+
+    resolution_number = forms.CharField(
+        label="Number",
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "Resolution number",
+                "aria-label": "Resolution number",
+            }
+        ),
+    )
+    title = forms.CharField(
+        label="Title",
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "Resolution title",
+                "aria-label": "Resolution title",
+            }
+        ),
+    )
+    adoption_date = forms.DateField(
+        required=False,
+        label="Adopted",
+        widget=DatePickerInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "Adoption date",
+                "aria-label": "Adoption date",
+            }
+        ),
+    )

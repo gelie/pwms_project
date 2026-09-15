@@ -6,6 +6,7 @@ from django.contrib.contenttypes.admin import GenericTabularInline
 from django.db.models import Q
 from mptt.admin import MPTTModelAdmin
 
+from .forms import DelegationParticipantInlineFormSet
 from .models import (
     Bill,
     BillVersion,
@@ -712,6 +713,9 @@ class DelegationParticipantInline(admin.TabularInline):
 
     model = DelegationParticipant
     extra = 0
+    # Shares the report form's rule that one person appears at most once, so the
+    # admin reports the clash instead of letting the unique index fail on save.
+    formset = DelegationParticipantInlineFormSet
     fields = (
         "participant_type",
         "title",

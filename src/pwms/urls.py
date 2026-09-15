@@ -118,6 +118,8 @@ urlpatterns = [
     path("user-search/", views.user_search, name="user_search"),
     # Group search for dynamic lookup
     path("group-search/", views.group_search, name="group_search"),
+    # Delegation report lookup (the resolution form's parent picker)
+    path("report-search/", views.report_search, name="report_search"),
     # Country / city lookup for the engagement location pickers
     path("country-search/", views.country_search, name="country_search"),
     path("city-search/", views.city_search, name="city_search"),

@@ -27,8 +27,9 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
 **Groundwork already present**
 
 - `Transition.notify_roles` — which roles should be alerted when a transition fires.
-- `check_referral_deadlines`, `notify_deadlines`, `send_overdue_alerts`,
-  `check_delegation_expirations` commands (to be repointed to `pwms.models`).
+- `notify_deadlines`, `send_overdue_alerts` and `check_delegation_expirations`
+  commands still to be repointed to `pwms.models`; `check_referral_deadlines`
+  now runs against `WorkflowReferral` (reminders + expiry).
 - `django-background-tasks` installed → ideal queue for async email dispatch.
 - `transition.requires_comment` and `TransitionLog` give the context for a
   message (who, from → to, note).
@@ -183,9 +184,10 @@ Migrations: `0008` (model) → `0009` (backfill one open referral per existing M
 row + events) → `0010` (drop the M2M and legacy `atc_*` fields); auditlog no
 longer registers `m2m_fields`.
 
-🔜 Still to do: repoint the legacy `check_referral_deadlines` command
-(reminders + auto-recall) at `WorkflowReferral` (`due_date`,
-`deadline_notified_at`, `mark_expired()`).
+✅ **Referral deadline job repointed** — `check_referral_deadlines` now runs
+against `WorkflowReferral` (`due_date`, `deadline_notified_at`,
+`mark_expired()`): it emails the 24-hour and 1-hour reminders and expires
+referrals whose deadline has passed (`--dry-run` previews either action).
 
 ---
 

@@ -25,18 +25,14 @@
     {% endif %}
     <h2 class="h5 mb-3">Workflow</h2>
     <div class="row g-3 mb-4">
+      {% include "pwms/_hidden_field.html" with field=form.owner %}
       {% if is_create %}
-        {% include "pwms/_form_field.html" with field=form.workflow_type wrapper_class="col-12 col-md-6" %}
+        {% include "pwms/_hidden_field.html" with field=form.workflow_type %}
       {% else %}
-        <div class="col-12 col-md-6">
-          <label class="form-label">Workflow type</label>
-          <p class="form-control-plaintext">{{ report.workflow_type.name }}</p>
-        </div>
         {% include "pwms/_form_field.html" with field=form.current_state wrapper_class="col-12 col-md-6" %}
       {% endif %}
       {% include "pwms/_form_field.html" with field=form.title wrapper_class="col-12" %}
       {% include "pwms/_form_field.html" with field=form.description wrapper_class="col-12" %}
-      {% include "pwms/_picker_field.html" with field=form.owner search_url="pwms:user_search" placeholder="Type to search users..." selected_name=form.picker_labels.owner wrapper_class="col-12 col-md-6" %}
       {% include "pwms/_picker_field.html" with field=form.assigned_to search_url="pwms:user_search" placeholder="Type to search users..." selected_name=form.picker_labels.assigned_to wrapper_class="col-12 col-md-6" %}
       {% include "pwms/_form_field.html" with field=form.deadline wrapper_class="col-12 col-md-6" %}
       {% include "pwms/_form_field.html" with field=form.priority wrapper_class="col-12 col-md-6" %}
@@ -51,6 +47,83 @@
       {% include "pwms/_form_field.html" with field=form.report_document_url wrapper_class="col-12 col-md-8" %}
       {% include "pwms/_form_field.html" with field=form.notes wrapper_class="col-12" %}
     </div>
+    <h3 class="h6 mb-3">Delegates</h3>
+    <p class="text-muted small mb-2">
+      Search for a person, give the role they held, then add them to the delegation.
+    </p>
+    <div data-adder-group data-adder-unique="user" data-adder-duplicate="is already on this delegation.">
+      {{ participant_formset.management_form }}
+      {% for error in participant_formset.non_form_errors %}
+        <div class="alert alert-danger py-2" role="alert">{{ error }}</div>
+      {% endfor %}
+      <div class="row g-2 align-items-center mb-2" data-adder>
+        {% include "pwms/_lookup_field.html" with field=delegate_adder.user search_url="pwms:user_search" placeholder="Search for a user..." hide_label=True wrapper_class="col-12 col-md-5" %}
+        <div class="col-12 col-md-3">{{ delegate_adder.participant_type }}</div>
+        <div class="col-12 col-md-2">{{ delegate_adder.delegation_role }}</div>
+        <div class="col-12 col-md-2">
+          <button type="button" class="btn btn-primary w-100" data-adder-add>
+            {% lucide "plus" size=16 %} Add Delegate
+          </button>
+        </div>
+      </div>
+      <div class="text-danger small d-none" data-adder-warning role="alert"></div>
+      <div class="mb-4" data-adder-items>
+        {% for item in participant_formset %}
+          {% include "pwms/_participant_item.html" with item=item %}
+        {% endfor %}
+      </div>
+      <template data-adder-empty>
+        {% include "pwms/_participant_item.html" with item=participant_formset.empty_form %}
+      </template>
+    </div>
+    {% if can_add_resolutions %}
+      <h3 class="h6 mb-3">Resolutions adopted</h3>
+      <p class="text-muted small mb-2">
+        Optional. Each resolution is created as an international resolution and linked to this report.
+      </p>
+      {% if child_resolutions %}
+        <p class="small text-body-secondary mb-1">Already linked to this report</p>
+        <ul class="list-unstyled mb-3">
+          {% for child in child_resolutions %}
+            <li>
+              {% if child.url %}
+                <a href="{{ child.url }}">{{ child.object.resolution_number }}</a>
+              {% else %}
+                {{ child.object.resolution_number }}
+              {% endif %}
+              — {{ child.object.title }}
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      <div data-adder-group>
+        {{ resolution_formset.management_form }}
+        {% for error in resolution_formset.non_form_errors %}
+          <div class="alert alert-danger py-2" role="alert">{{ error }}</div>
+        {% endfor %}
+        <div class="row g-2 align-items-center mb-2" data-adder>
+          <div class="col-12 col-md-3">{{ resolution_adder.resolution_number }}</div>
+          <div class="col-12 col-md-5">{{ resolution_adder.title }}</div>
+          <div class="col-12 col-md-2">{{ resolution_adder.adoption_date }}</div>
+          <div class="col-12 col-md-2">
+            <button type="button" class="btn btn-primary w-100" data-adder-add>
+              {% lucide "plus" size=16 %} Add Resolution
+            </button>
+          </div>
+        </div>
+        <div class="mb-4" data-adder-items>
+          {% for item in resolution_formset %}
+            {% include "pwms/_resolution_item.html" with item=item %}
+          {% endfor %}
+        </div>
+        <template data-adder-empty>
+          {% include "pwms/_resolution_item.html" with item=resolution_formset.empty_form %}
+        </template>
+      </div>
+    {% else %}
+      {# Hidden with the section, but still posted or the formset will not validate. #}
+      {{ resolution_formset.management_form }}
+    {% endif %}
     <div class="d-flex flex-wrap gap-2">
       <button class="btn btn-primary"
               type="submit">{% if is_create %}Create report{% else %}Save changes{% endif %}</button>

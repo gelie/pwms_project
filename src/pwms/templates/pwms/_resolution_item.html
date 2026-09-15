@@ -1,0 +1,41 @@
+{% comment %}
+One resolution being added on the delegation report form: the formset row that
+is actually submitted (hidden) paired with the card shown for it.
+
+Rendered for each form in ``resolution_formset``, and once more inside a
+<template> as the source static/js/formset.js clones when "Add Resolution" is
+clicked. The ``data-adder-slot`` values name the ``add a resolution`` row's
+control whose value fills that text in a newly added card.
+
+As with the delegates, the text comes from the form's current value so a rejected
+save re-renders the cards as they were filled in, and any error the row raised (a
+number already in use, say) is shown under it.
+{% endcomment %}
+<div data-adder-item>
+  <div class="d-none">
+    {{ item.resolution_number }}
+    {{ item.title }}
+    {{ item.adoption_date }}
+    {{ item.DELETE }}
+  </div>
+  <div class="d-flex align-items-center justify-content-between border rounded-3 p-2 mb-2">
+    <div>
+      <div class="fw-medium" data-adder-slot="title">{{ item.title.value|default:"" }}</div>
+      <div class="small text-body-secondary d-flex gap-2">
+        <span data-adder-slot="resolution_number">{{ item.resolution_number.value|default:"" }}</span>
+        <span data-adder-slot="adoption_date">{{ item.adoption_date.value|default:"" }}</span>
+      </div>
+    </div>
+    <button type="button"
+            class="btn btn-sm btn-link text-body"
+            aria-label="Remove this resolution"
+            data-adder-remove>{% lucide "x" size=18 %}</button>
+  </div>
+  {% if item.errors %}
+    <div class="mb-2">
+      {% for errors in item.errors.values %}
+        {% for error in errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>

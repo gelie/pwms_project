@@ -7,9 +7,11 @@ from auditlog.context import set_actor
 from auditlog.models import LogEntry
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
+from django.core import mail
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
@@ -34,6 +36,7 @@ from .models import (
     TransitionLog,
     WorkflowEvent,
     WorkflowGroupAccess,
+    WorkflowReferral,
     WorkflowRelationship,
     WorkflowRolePermission,
     WorkflowType,
@@ -553,6 +556,26 @@ class DelegationReportTests(TestCase):
         report.add_sub_workflow(resolution)
         self.assertEqual(report.get_all_descendants(), [resolution])
 
+    def test_the_same_person_cannot_be_added_twice(self):
+        """The database refuses a duplicate delegate, whatever route creates it."""
+        report = self._report()
+        participant = {
+            "first_name": "Naledi",
+            "last_name": "Mokoena",
+            "user": self.user,
+        }
+        DelegationParticipant.objects.create(delegation_report=report, **participant)
+
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            DelegationParticipant.objects.create(
+                delegation_report=report, **participant
+            )
+
+        # Somebody can still join a different delegation.
+        DelegationParticipant.objects.create(
+            delegation_report=self._report(), **participant
+        )
+
     def test_assigned_official_email_is_exposed(self):
         report = self._report()
         self.assertEqual(report.assigned_to_email, "irpd@example.com")
@@ -800,11 +823,10 @@ class ImportBillVersionsCommandTests(TestCase):
         )
 
     def _csv(self, text):
-        handle = tempfile.NamedTemporaryFile(
+        with tempfile.NamedTemporaryFile(
             "w", suffix=".csv", delete=False, encoding="utf-8", newline=""
-        )
-        handle.write(text)
-        handle.close()
+        ) as handle:
+            handle.write(text)
         self.addCleanup(Path(handle.name).unlink)
         return handle.name
 
@@ -1307,6 +1329,26 @@ class WorkflowCrudViewTests(TestCase):
             "location_country": "",
             "notes": "",
             "report_document_url": "",
+            # The report form also carries the delegates and adopted-resolutions
+            # formsets. This is the management data for one untouched blank row in
+            # each; ``participant_type`` repeats the select's initial value, as a
+            # browser would, so the row counts as empty and is ignored.
+            "participants-TOTAL_FORMS": "1",
+            "participants-INITIAL_FORMS": "0",
+            "participants-MIN_NUM_FORMS": "0",
+            "participants-MAX_NUM_FORMS": "1000",
+            "participants-0-id": "",
+            "participants-0-user": "",
+            "participants-0-participant_type": DelegationParticipant.MEMBER,
+            "participants-0-delegation_role": "",
+            "participants-0-DELETE": "",
+            "resolutions-TOTAL_FORMS": "1",
+            "resolutions-INITIAL_FORMS": "0",
+            "resolutions-MIN_NUM_FORMS": "0",
+            "resolutions-MAX_NUM_FORMS": "1000",
+            "resolutions-0-resolution_number": "",
+            "resolutions-0-title": "",
+            "resolutions-0-adoption_date": "",
         }
         payload.update(overrides)
         return payload
@@ -1415,22 +1457,12 @@ class WorkflowCrudViewTests(TestCase):
         self.assertNotContains(edit, 'name="workflow_type"')
         response = self.client.post(
             reverse("pwms:delegation_report_update", args=[report.public_id]),
-            {
-                "title": "CRUD report (edited)",
-                "description": "",
-                "current_state": report.current_state.pk,
-                "owner": self.user.pk,
-                "assigned_to": "",
-                "deadline": "",
-                "priority": "high",
-                "engagement_name": "",
-                "engagement_start_date": "",
-                "engagement_end_date": "",
-                "location_city": "",
-                "location_country": "",
-                "notes": "",
-                "report_document_url": "",
-            },
+            self._report_payload(
+                title="CRUD report (edited)",
+                current_state=report.current_state.pk,
+                priority="high",
+                engagement_name="",
+            ),
         )
         self.assertRedirects(
             response,
@@ -1450,6 +1482,174 @@ class WorkflowCrudViewTests(TestCase):
         )
         self.assertRedirects(response, reverse("pwms:delegation_reports"))
         self.assertFalse(DelegationReport.objects.filter(pk=report.pk).exists())
+
+    def test_report_form_records_delegates(self):
+        """Delegates chosen through the user lookup are saved with their role."""
+        delegate = get_user_model().objects.create_user(
+            username="mokoena", first_name="Naledi", last_name="Mokoena"
+        )
+        payload = self._report_payload()
+        payload["participants-0-user"] = delegate.pk
+        payload["participants-0-delegation_role"] = "Leader of the Delegation"
+
+        response = self.client.post(reverse("pwms:delegation_report_create"), payload)
+        report = DelegationReport.objects.get(title="CRUD report")
+        self.assertRedirects(
+            response,
+            reverse("pwms:delegation_report_detail", args=[report.public_id]),
+        )
+
+        participant = report.participants.get()
+        self.assertEqual(participant.user, delegate)
+        self.assertEqual(participant.delegation_role, "Leader of the Delegation")
+        # The person's names are taken from the account the row picked.
+        self.assertEqual(participant.first_name, "Naledi")
+        self.assertEqual(participant.last_name, "Mokoena")
+
+        # The edit form lists the delegate again as one of the report's cards.
+        edit = self.client.get(
+            reverse("pwms:delegation_report_update", args=[report.public_id])
+        )
+        self.assertContains(edit, delegate.display_name)
+        self.assertContains(edit, "Leader of the Delegation")
+
+    def test_report_form_rejects_the_same_delegate_twice(self):
+        """One person cannot be listed twice on the same report."""
+        delegate = get_user_model().objects.create_user(
+            username="twice", first_name="Tanya", last_name="Twice"
+        )
+        payload = self._report_payload()
+        payload.update(
+            {
+                "participants-TOTAL_FORMS": "2",
+                "participants-0-user": delegate.pk,
+                "participants-0-delegation_role": "Delegate",
+                "participants-1-id": "",
+                "participants-1-user": delegate.pk,
+                "participants-1-participant_type": DelegationParticipant.MEMBER,
+                "participants-1-delegation_role": "Head Delegate",
+                "participants-1-DELETE": "",
+            }
+        )
+
+        response = self.client.post(reverse("pwms:delegation_report_create"), payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(DelegationReport.objects.exists())
+        # The clash is reported against the row, not swallowed.
+        self.assertContains(response, "is already on this delegation")
+
+    def test_report_form_rejects_the_same_resolution_number_twice(self):
+        """Two rows cannot claim the same resolution number."""
+        payload = self._report_payload()
+        payload.update(
+            {
+                "resolutions-TOTAL_FORMS": "2",
+                "resolutions-0-resolution_number": "IR-TWICE-1",
+                "resolutions-0-title": "First outcome",
+                "resolutions-1-resolution_number": "IR-TWICE-1",
+                "resolutions-1-title": "Second outcome",
+                "resolutions-1-adoption_date": "",
+                "resolutions-1-DELETE": "",
+            }
+        )
+
+        response = self.client.post(reverse("pwms:delegation_report_create"), payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(DelegationReport.objects.exists())
+        self.assertContains(response, "is listed twice")
+
+    def test_report_form_offers_one_line_adders(self):
+        """Delegates and resolutions are added from a one-line row, not blank rows."""
+        response = self.client.get(reverse("pwms:delegation_report_create"))
+
+        self.assertEqual(response.status_code, 200)
+        # Each adder posts its entry through the formset it belongs to.
+        self.assertContains(response, "participants-TOTAL_FORMS")
+        self.assertContains(response, "resolutions-TOTAL_FORMS")
+        self.assertContains(response, 'id="id_delegate_adder-user_search"')
+        self.assertContains(response, 'id="id_resolution_adder-title"')
+        # Nothing is pre-rendered: the page builds each row when one is added.
+        self.assertNotContains(response, 'name="participants-0-user"')
+        self.assertNotContains(response, 'name="resolutions-0-resolution_number"')
+        # The hidden <template> holds the empty form the page clones, and each
+        # card slot names the adder control whose value fills it in.
+        self.assertContains(response, "participants-__prefix__-user")
+        self.assertContains(response, "resolutions-__prefix__-title")
+        self.assertContains(response, 'data-adder-slot="delegation_role"')
+        self.assertContains(response, "data-adder-remove")
+
+    def test_report_form_creates_and_links_child_resolutions(self):
+        """A resolution entered on the report form is created and nested under it."""
+        payload = self._report_payload()
+        payload["resolutions-0-resolution_number"] = "IR-CHILD-1"
+        payload["resolutions-0-title"] = "Implement the outcome"
+
+        response = self.client.post(reverse("pwms:delegation_report_create"), payload)
+        report = DelegationReport.objects.get(title="CRUD report")
+        self.assertRedirects(
+            response,
+            reverse("pwms:delegation_report_detail", args=[report.public_id]),
+        )
+
+        resolution = InternationalResolution.objects.get(resolution_number="IR-CHILD-1")
+        self.assertEqual(resolution.title, "Implement the outcome")
+        self.assertEqual(resolution.workflow_type, self.resolution_type)
+        self.assertEqual(
+            resolution.current_state, self.resolution_type.get_initial_state()
+        )
+        self.assertEqual(resolution.owner, self.user)
+        self.assertEqual(report.get_all_descendants(), [resolution])
+
+    def test_resolution_form_links_to_an_existing_report(self):
+        """The resolution form nests the resolution under a chosen report."""
+        self.client.post(
+            reverse("pwms:delegation_report_create"),
+            self._report_payload(title="Parent report"),
+        )
+        report = DelegationReport.objects.get(title="Parent report")
+
+        response = self.client.post(
+            reverse("pwms:international_resolution_create"),
+            self._resolution_payload(parent_report=report.pk),
+        )
+        resolution = InternationalResolution.objects.get(title="CRUD resolution")
+        self.assertRedirects(
+            response,
+            reverse(
+                "pwms:international_resolution_detail", args=[resolution.public_id]
+            ),
+        )
+        self.assertEqual(resolution.parent_workflow, report)
+        self.assertEqual(report.get_all_descendants(), [resolution])
+
+    def test_resolution_update_can_detach_from_its_report(self):
+        """Clearing the parent picker on the edit form detaches the resolution."""
+        self.client.post(
+            reverse("pwms:delegation_report_create"),
+            self._report_payload(title="Parent report"),
+        )
+        report = DelegationReport.objects.get(title="Parent report")
+        self.client.post(
+            reverse("pwms:international_resolution_create"),
+            self._resolution_payload(parent_report=report.pk),
+        )
+        resolution = InternationalResolution.objects.get(title="CRUD resolution")
+        self.assertEqual(resolution.parent_workflow, report)
+
+        response = self.client.post(
+            reverse(
+                "pwms:international_resolution_update", args=[resolution.public_id]
+            ),
+            self._resolution_payload(
+                current_state=resolution.current_state.pk, parent_report=""
+            ),
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIsNone(
+            InternationalResolution.objects.get(pk=resolution.pk).parent_workflow
+        )
 
     def test_international_resolution_crud_cycle(self):
         response = self.client.post(
@@ -1827,6 +2027,29 @@ class WorkflowCrudViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFalse(DelegationReport.objects.exists())
 
+    def test_create_form_hides_the_type_and_owner(self):
+        """The type is implicit and the owner is the acting user, so both are hidden."""
+        response = self.client.get(reverse("pwms:delegation_report_create"))
+
+        self.assertEqual(response.status_code, 200)
+        form = response.context["form"]
+        # Submitted, but not controls the user can change.
+        self.assertNotContains(response, '<select name="workflow_type"')
+        self.assertContains(response, '<input type="hidden" name="workflow_type"')
+        self.assertEqual(form["workflow_type"].value(), self.report_type.pk)
+        self.assertNotContains(response, '<select name="owner"')
+        self.assertContains(response, '<input type="hidden" name="owner"')
+        self.assertEqual(form["owner"].value(), self.user.pk)
+
+    def test_create_cannot_be_retargeted_at_another_workflow_type(self):
+        """A forged workflow_type cannot create a mis-typed instance."""
+        response = self.client.post(
+            reverse("pwms:delegation_report_create"),
+            self._report_payload(workflow_type=self.agreement_type.pk),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(DelegationReport.objects.exists())
+
     def test_search_filters_the_list(self):
         self.client.post(
             reverse("pwms:delegation_report_create"),
@@ -1852,18 +2075,94 @@ class WorkflowCrudViewTests(TestCase):
         ):
             self.assertContains(response, reverse(f"pwms:{name}"))
 
-    def test_workflows_dashboard_lists_every_register(self):
+    def test_workflows_page_unifies_every_accessible_instance(self):
+        """One table spans all four concrete workflow types."""
+        self.client.post(
+            reverse("pwms:delegation_report_create"),
+            self._report_payload(title="Unified report"),
+        )
+        self.client.post(
+            reverse("pwms:international_resolution_create"),
+            self._resolution_payload(title="Unified resolution"),
+        )
+        self.client.post(
+            reverse("pwms:international_agreement_create"),
+            self._agreement_payload(title="Unified agreement"),
+        )
+        self.client.post(
+            reverse("pwms:bill_create"), self._bill_payload(title="Unified bill")
+        )
+
         response = self.client.get(reverse("pwms:workflows"))
         self.assertEqual(response.status_code, 200)
-        for label in (
-            "Delegation Reports",
-            "International Resolutions",
-            "International Agreements",
-            "Bills",
+        for title in (
+            "Unified report",
+            "Unified resolution",
+            "Unified agreement",
+            "Unified bill",
         ):
-            self.assertContains(response, label)
-        self.assertContains(response, "Recent international agreements")
-        self.assertContains(response, "Recent bills")
+            self.assertContains(response, title)
+
+        # The page's own template comment must not leak as literal text; a
+        # multi-line ``{# #}`` comment (which Django does not accept) would.
+        self.assertNotContains(response, "Data-driven create menu")
+
+        # Every row links to its own detail page (not a placeholder).
+        for model, view_name in (
+            (DelegationReport, "pwms:delegation_report_detail"),
+            (InternationalResolution, "pwms:international_resolution_detail"),
+            (InternationalAgreement, "pwms:international_agreement_detail"),
+            (Bill, "pwms:bill_detail"),
+        ):
+            instance = model.objects.get()
+            self.assertContains(
+                response, reverse(view_name, kwargs={"public_id": instance.public_id})
+            )
+
+    def test_workflows_filters_narrow_the_table(self):
+        self.client.post(
+            reverse("pwms:delegation_report_create"),
+            self._report_payload(title="Geneva delegation", priority="high"),
+        )
+        self.client.post(
+            reverse("pwms:international_resolution_create"),
+            self._resolution_payload(title="Geneva resolution"),
+        )
+        url = reverse("pwms:workflows")
+
+        # Free text matches on the title.
+        response = self.client.get(url, {"q": "Geneva"})
+        self.assertContains(response, "Geneva delegation")
+        self.assertContains(response, "Geneva resolution")
+
+        # Type narrows to one register; the other type drops out.
+        response = self.client.get(url, {"type": "Delegation Report"})
+        self.assertContains(response, "Geneva delegation")
+        self.assertNotContains(response, "Geneva resolution")
+
+        # Priority filters on the stored value, not the display label.
+        response = self.client.get(url, {"priority": "high"})
+        self.assertContains(response, "Geneva delegation")
+        self.assertNotContains(response, "Geneva resolution")
+
+    def test_workflows_page_only_lists_instances_the_user_may_view(self):
+        self.client.post(
+            reverse("pwms:delegation_report_create"),
+            self._report_payload(title="Private report"),
+        )
+        self.assertContains(
+            self.client.get(reverse("pwms:workflows")), "Private report"
+        )
+
+        outsider = get_user_model().objects.create_user(
+            username="workflow-outsider", password="pw"
+        )
+        self.client.force_login(outsider)
+
+        response = self.client.get(reverse("pwms:workflows"))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "Private report")
+        self.assertContains(response, "0 workflows")
 
     def test_create_requires_a_role_from_the_type_group(self):
         """No create role in the type's group -> no creation (403 on POST)."""
@@ -1879,6 +2178,18 @@ class WorkflowCrudViewTests(TestCase):
         )
         self.assertEqual(response.status_code, 403)
         self.assertFalse(DelegationReport.objects.exists())
+
+    def test_create_page_requires_a_role_for_that_specific_type(self):
+        """A create role for another type does not open this type's create form."""
+        # The acting user keeps a create role for bills only, so the report form
+        # (a different type) must not be offered. Rolled back with the test.
+        self.report_type.create_roles.remove(self.creator_role)
+
+        response = self.client.get(reverse("pwms:delegation_report_create"))
+        self.assertRedirects(response, reverse("pwms:delegation_reports"))
+
+        # The type whose role they do hold still opens.
+        self.assertEqual(self.client.get(reverse("pwms:bill_create")).status_code, 200)
 
     def test_can_create_needs_the_role_in_the_types_own_group(self):
         User = get_user_model()
@@ -1974,10 +2285,11 @@ class WorkflowCrudViewTests(TestCase):
         response = self.client.get(reverse("pwms:international_resolution_create"))
 
         self.assertEqual(response.context["form"].search_pickers, set())
-        self.assertContains(response, '<select name="owner"')
+        # owner is never chosen by hand, so it is hidden rather than a control.
+        self.assertContains(response, '<input type="hidden" name="owner"')
         self.assertContains(response, '<select name="assigned_to"')
         self.assertContains(response, '<select name="responsible_group"')
-        self.assertNotContains(response, 'id="id_owner_search"')
+        self.assertNotContains(response, 'id="id_assigned_to_search"')
 
     def test_long_option_lists_become_search_pickers(self):
         """More options than the threshold switches the fields to search fields."""
@@ -1993,17 +2305,16 @@ class WorkflowCrudViewTests(TestCase):
                 form = response.context["form"]
 
                 self.assertEqual(response.status_code, 200)
-                self.assertIn("owner", form.search_pickers)
+                # owner is never a picker: it is hidden and fixed server-side.
+                self.assertNotIn("owner", form.search_pickers)
                 self.assertIn("assigned_to", form.search_pickers)
                 # A <select> with every active user is not rendered.
-                self.assertNotContains(response, '<select name="owner"')
                 self.assertNotContains(response, '<select name="assigned_to"')
-                self.assertContains(response, 'id="id_owner_search"')
                 self.assertContains(response, 'id="id_assigned_to_search"')
                 self.assertContains(response, f'hx-get="{reverse("pwms:user_search")}"')
-                # create defaults owner to the acting user, and the search box
-                # has to show that name or the pk looks unset.
-                self.assertContains(response, f'value="{self.user.display_name}"')
+                # The hidden owner still carries the acting user.
+                self.assertContains(response, '<input type="hidden" name="owner"')
+                self.assertEqual(form["owner"].value(), self.user.pk)
 
     def test_group_field_becomes_a_picker_only_when_the_list_is_long(self):
         """The group picker follows the same threshold as the user fields."""
@@ -2050,7 +2361,7 @@ class WorkflowCrudViewTests(TestCase):
         self.assertContains(response, f"selectUser('{self.user.pk}'")
 
     def test_picked_users_round_trip_through_the_form(self):
-        """Owner and assignee picked in the search are saved and shown again."""
+        """The assignee picked in the search is saved; the owner stays the actor."""
         self._add_extra_users()
         assignee = get_user_model().objects.create_user(
             username="assignee", first_name="Ada", last_name="Assignee"
@@ -2746,6 +3057,57 @@ class WorkflowPermissionInheritanceTests(TestCase):
         self.assertFalse(resolve(stranger, self.report, VIEW))
         self.assertFalse(resolve(stranger, self.resolution, VIEW))
 
+    def test_assignment_confers_view_only(self):
+        """Assigned work becomes visible to the assignee, and nothing more."""
+        self.assertFalse(resolve(self.colleague, self.report, VIEW))
+
+        self.report.assigned_to = self.colleague
+        self.report.save(update_fields=["assigned_to"])
+
+        self.assertTrue(resolve(self.colleague, self.report, VIEW))
+        # Assignment must not widen anyone's authority over the record.
+        self.assertFalse(resolve(self.colleague, self.report, EDIT))
+        self.assertFalse(resolve(self.colleague, self.report, DELETE))
+        self.assertFalse(resolve(self.colleague, self.report, TRANSITION))
+
+    def test_assignment_view_cascades_to_child_workflows(self):
+        """An assignee can read what the assigned workflow contains."""
+        self.report.assigned_to = self.colleague
+        self.report.save(update_fields=["assigned_to"])
+
+        self.assertTrue(resolve(self.colleague, self.resolution, VIEW))
+        self.assertFalse(resolve(self.colleague, self.resolution, EDIT))
+
+    def test_assignment_does_not_leak_up_to_the_parent(self):
+        """Assigning a child does not reveal the report it sits under."""
+        self.resolution.assigned_to = self.colleague
+        self.resolution.save(update_fields=["assigned_to"])
+
+        self.assertTrue(resolve(self.colleague, self.resolution, VIEW))
+        self.assertFalse(resolve(self.colleague, self.report, VIEW))
+
+    def test_assigned_user_can_find_and_open_their_work(self):
+        """The rule reaches the views: the assignee sees the row and the page."""
+        self.report.assigned_to = self.colleague
+        self.report.save(update_fields=["assigned_to"])
+        self.client.force_login(self.colleague)
+
+        listing = self.client.get(reverse("pwms:delegation_reports"))
+        self.assertContains(listing, self.report.reference_number)
+
+        detail_url = reverse(
+            "pwms:delegation_report_detail", args=[self.report.public_id]
+        )
+        self.assertEqual(self.client.get(detail_url).status_code, 200)
+
+        # Reading only: the edit page stays closed to an assignee, so the
+        # permission-driven buttons are absent from the page as well.
+        edit_url = reverse(
+            "pwms:delegation_report_update", args=[self.report.public_id]
+        )
+        self.assertEqual(self.client.get(edit_url).status_code, 403)
+        self.assertNotContains(self.client.get(detail_url), edit_url)
+
     def test_parent_owner_can_open_child_detail_page(self):
         """The cascade is wired into the views, not just the resolver."""
         self.client.force_login(self.parent_owner)
@@ -2769,3 +3131,351 @@ class WorkflowPermissionInheritanceTests(TestCase):
             reverse("pwms:delegation_report_detail", args=[self.report.public_id])
         )
         self.assertEqual(parent_page.status_code, 403)
+
+
+class DashboardViewTests(TestCase):
+    """The dashboard summarises only the work the signed-in user can see."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.viewer = User.objects.create_user(
+            username="dash-viewer",
+            first_name="Dana",
+            last_name="Viewer",
+            password="pw",
+        )
+        cls.stranger = User.objects.create_user(username="dash-stranger", password="pw")
+        cls.referrer = User.objects.create_user(
+            username="dash-referrer",
+            first_name="Rex",
+            last_name="Referrer",
+            password="pw",
+        )
+        cls.activity_actor = User.objects.create_user(
+            username="dash-activity",
+            first_name="Ada",
+            last_name="Activity",
+            password="pw",
+        )
+        cls.committee = Group.objects.create(
+            name="Dash Referral Committee XZ", group_type="portfolio_committee"
+        )
+        cls.role = Role.objects.create(name="Dash Committee Member")
+        GroupMembership.objects.create(
+            user=cls.viewer, group=cls.committee, role=cls.role
+        )
+
+        report_type = WorkflowType.objects.get(name="Delegation Report")
+        resolution_type = WorkflowType.objects.get(name="International Resolution")
+        now = timezone.now()
+
+        cls.overdue_report = DelegationReport.objects.create(
+            workflow_type=report_type,
+            current_state=report_type.get_initial_state(),
+            title="Overdue delegation",
+            owner=cls.viewer,
+            deadline=now - timedelta(days=3),
+        )
+        cls.overdue_resolution = InternationalResolution.objects.create(
+            workflow_type=resolution_type,
+            current_state=resolution_type.get_initial_state(),
+            title="Overdue resolution",
+            resolution_number="IR-DASH-OVERDUE",
+            owner=cls.viewer,
+            deadline=now - timedelta(days=1),
+        )
+        cls.due_report = DelegationReport.objects.create(
+            workflow_type=report_type,
+            current_state=report_type.get_initial_state(),
+            title="Due soon report",
+            owner=cls.viewer,
+            assigned_to=cls.viewer,
+            deadline=now + timedelta(days=2),
+        )
+        cls.stranger_report = DelegationReport.objects.create(
+            workflow_type=report_type,
+            current_state=report_type.get_initial_state(),
+            title="Stranger private report",
+            owner=cls.stranger,
+            deadline=now - timedelta(days=5),
+        )
+        cls.report_ct = ContentType.objects.get_for_model(DelegationReport)
+        WorkflowReferral.objects.create(
+            content_type=cls.report_ct,
+            object_id=cls.due_report.pk,
+            referred_to=cls.committee,
+            referred_by=cls.referrer,
+            due_date=now + timedelta(days=4),
+        )
+        TransitionLog.objects.create(
+            content_type=cls.report_ct,
+            object_id=cls.due_report.pk,
+            action="STATE_TRANSITION",
+            from_state=report_type.get_initial_state(),
+            to_state=report_type.get_initial_state(),
+            actor=cls.activity_actor,
+        )
+
+    def setUp(self):
+        self.client.force_login(self.viewer)
+
+    def _dashboard(self):
+        return self.client.get(reverse("pwms:dashboard"))
+
+    def test_requires_login(self):
+        self.client.logout()
+        response = self.client.get(reverse("pwms:dashboard"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/pwms/login/", response["Location"])
+
+    def test_counts_only_visible_work(self):
+        """A stranger's work never inflates the viewer's metrics."""
+        response = self._dashboard()
+        self.assertContains(response, "Overdue delegation")
+        self.assertContains(response, "Due soon report")
+        self.assertNotContains(response, "Stranger private report")
+
+    def test_overdue_work_surfaces_across_types(self):
+        """Every concrete type honours the shared BR12 overdue rule."""
+        response = self._dashboard()
+        self.assertContains(response, "Overdue delegation")
+        self.assertContains(response, "Overdue resolution")
+        self.assertNotContains(response, "Nothing is past its deadline.")
+
+    def test_due_soon_lists_upcoming_work(self):
+        response = self._dashboard()
+        self.assertContains(response, "Due soon report")
+        self.assertNotContains(response, "Nothing falls due in the next 7 days.")
+
+    def test_awaiting_referral_shows_for_my_committee(self):
+        response = self._dashboard()
+        self.assertContains(response, self.committee.name)
+
+    def test_referral_to_another_committee_stays_hidden(self):
+        other = Group.objects.create(name="Unrelated Board XY")
+        WorkflowReferral.objects.create(
+            content_type=self.report_ct,
+            object_id=self.due_report.pk,
+            referred_to=other,
+            due_date=timezone.now() + timedelta(days=1),
+        )
+        response = self._dashboard()
+        self.assertNotContains(response, other.name)
+
+    def test_recent_activity_lists_visible_state_changes(self):
+        response = self._dashboard()
+        self.assertContains(response, self.activity_actor.display_name)
+
+    def test_activity_on_invisible_work_stays_hidden(self):
+        ghost = get_user_model().objects.create_user(
+            username="ghost-actor",
+            first_name="Ghost",
+            last_name="Actor",
+        )
+        TransitionLog.objects.create(
+            content_type=self.report_ct,
+            object_id=self.stranger_report.pk,
+            action="STATE_TRANSITION",
+            actor=ghost,
+        )
+        response = self._dashboard()
+        self.assertNotContains(response, "Ghost Actor")
+
+    def test_empty_state_for_a_user_with_no_work(self):
+        loner = get_user_model().objects.create_user(
+            username="dash-loner", password="pw"
+        )
+        self.client.force_login(loner)
+        response = self.client.get(reverse("pwms:dashboard"))
+        self.assertContains(response, "Nothing on your plate yet")
+
+
+class ShowWorkflowHierarchyCommandTests(TestCase):
+    """``show_workflow_hierarchy`` over the concrete workflow registers."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.owner = User.objects.create_user(username="hierarchy-owner", password="pw")
+        report_type = WorkflowType.objects.get(name="Delegation Report")
+        resolution_type = WorkflowType.objects.get(name="International Resolution")
+
+        cls.report = DelegationReport.objects.create(
+            workflow_type=report_type,
+            current_state=report_type.get_initial_state(),
+            title="Shadow budget report",
+            owner=cls.owner,
+        )
+        cls.resolution = InternationalResolution.objects.create(
+            workflow_type=resolution_type,
+            current_state=resolution_type.get_initial_state(),
+            title="Referred resolution",
+            resolution_number="IR-HIER-1",
+            owner=cls.owner,
+        )
+        cls.report.add_sub_workflow(cls.resolution)
+
+        # A root with neither parent nor children: the orphan case.
+        cls.orphan = DelegationReport.objects.create(
+            workflow_type=report_type,
+            current_state=report_type.get_initial_state(),
+            title="Lonely report",
+            owner=cls.owner,
+        )
+
+    def _run(self, *args):
+        out = StringIO()
+        call_command("show_workflow_hierarchy", *args, stdout=out)
+        return out.getvalue()
+
+    def test_specific_workflow_prints_its_path(self):
+        output = self._run("--workflow-id", str(self.resolution.public_id))
+
+        self.assertIn("Hierarchy path:", output)
+        # The parent and the target both appear, parent first.
+        self.assertIn("Shadow budget report", output)
+        self.assertIn("Referred resolution", output)
+        self.assertIn("Is root: False", output)
+        self.assertIn("Total descendants: 0", output)
+
+    def test_default_listing_shows_roots_with_their_children(self):
+        output = self._run()
+
+        self.assertIn("Root Workflows", output)
+        self.assertIn("Shadow budget report", output)
+        # The child is not a root, but it is drawn under its parent.
+        self.assertIn("Referred resolution", output)
+        self.assertIn("Lonely report", output)
+
+    def test_orphans_lists_workflows_without_links(self):
+        output = self._run("--show-orphans")
+
+        self.assertIn("Lonely report", output)
+        self.assertNotIn("Shadow budget report", output)
+        self.assertNotIn("Referred resolution", output)
+
+    def test_show_all_reports_descendant_counts(self):
+        output = self._run("--show-all")
+
+        self.assertIn("Shadow budget report", output)
+        self.assertIn("Total descendants: 1", output)
+
+    def test_workflow_type_filter_excludes_other_types(self):
+        output = self._run("--workflow-type", "Bill")
+
+        self.assertNotIn("Shadow budget report", output)
+        self.assertIn("No root workflows found.", output)
+
+    def test_unknown_workflow_id_is_rejected(self):
+        with self.assertRaises(CommandError):
+            call_command(
+                "show_workflow_hierarchy",
+                "--workflow-id",
+                "00000000-0000-0000-0000-000000000000",
+                stdout=StringIO(),
+            )
+
+
+class CheckReferralDeadlinesCommandTests(TestCase):
+    """``check_referral_deadlines`` against the typed WorkflowReferral rows."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.owner = User.objects.create_user(
+            username="deadline-owner", email="owner@example.com", password="pw"
+        )
+        cls.member = User.objects.create_user(
+            username="deadline-member", email="member@example.com", password="pw"
+        )
+        cls.committee = Group.objects.create(
+            name="Deadline Committee XZ", group_type="portfolio_committee"
+        )
+        cls.role = Role.objects.create(name="Deadline Committee Member")
+        GroupMembership.objects.create(
+            user=cls.member, group=cls.committee, role=cls.role
+        )
+        cls.report_type = WorkflowType.objects.get(name="Delegation Report")
+        cls.report = DelegationReport.objects.create(
+            workflow_type=cls.report_type,
+            current_state=cls.report_type.get_initial_state(),
+            title="Referred report",
+            owner=cls.owner,
+        )
+
+    def _referral(self, *, due_in, notified_at=None, status="open"):
+        return WorkflowReferral.objects.create(
+            content_type=ContentType.objects.get_for_model(DelegationReport),
+            object_id=self.report.pk,
+            referred_to=self.committee,
+            referred_by=self.owner,
+            due_date=timezone.now() + due_in,
+            deadline_notified_at=notified_at,
+            status=status,
+        )
+
+    def test_reminder_is_emailed_and_recorded(self):
+        referral = self._referral(due_in=timedelta(hours=2))
+
+        call_command("check_referral_deadlines", stdout=StringIO())
+
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertIn("Referred report", message.subject)
+        # The committee member and the workflow owner are both told.
+        self.assertEqual(
+            sorted(message.to), ["member@example.com", "owner@example.com"]
+        )
+        referral.refresh_from_db()
+        self.assertIsNotNone(referral.deadline_notified_at)
+
+    def test_reminder_is_not_repeated(self):
+        self._referral(due_in=timedelta(hours=2))
+
+        call_command("check_referral_deadlines", stdout=StringIO())
+        call_command("check_referral_deadlines", stdout=StringIO())
+
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_second_reminder_fires_inside_the_last_hour(self):
+        self._referral(
+            due_in=timedelta(minutes=30),
+            notified_at=timezone.now() - timedelta(hours=2),
+        )
+
+        call_command("check_referral_deadlines", stdout=StringIO())
+
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Referred report", mail.outbox[0].subject)
+
+    def test_passed_deadline_is_marked_expired(self):
+        referral = self._referral(due_in=timedelta(hours=-2))
+
+        call_command("check_referral_deadlines", stdout=StringIO())
+
+        referral.refresh_from_db()
+        self.assertEqual(referral.status, "expired")
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Expired", mail.outbox[0].subject)
+
+    def test_answered_referrals_are_left_alone(self):
+        referral = self._referral(due_in=timedelta(hours=-2), status="responded")
+
+        call_command("check_referral_deadlines", stdout=StringIO())
+
+        referral.refresh_from_db()
+        self.assertEqual(referral.status, "responded")
+        self.assertEqual(mail.outbox, [])
+
+    def test_dry_run_changes_nothing(self):
+        referral = self._referral(due_in=timedelta(hours=2))
+        expired = self._referral(due_in=timedelta(hours=-2))
+
+        call_command("check_referral_deadlines", "--dry-run", stdout=StringIO())
+
+        self.assertEqual(mail.outbox, [])
+        referral.refresh_from_db()
+        expired.refresh_from_db()
+        self.assertIsNone(referral.deadline_notified_at)
+        self.assertEqual(expired.status, "open")

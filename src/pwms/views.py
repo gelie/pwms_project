@@ -1,3 +1,7 @@
+from collections import Counter
+from datetime import timedelta
+from typing import ClassVar
+
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
@@ -5,6 +9,7 @@ from django.contrib.auth.forms import AuthenticationForm, UsernameField
 from django.contrib.auth.views import LoginView as BaseLoginView
 from django.contrib.auth.views import LogoutView as BaseLogoutView
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.db.models import Case, CharField, IntegerField, Q, Value, When
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -14,11 +19,16 @@ from django.utils.translation import gettext_lazy as _
 from .forms import (
     BillForm,
     BillVersionForm,
+    ChildResolutionFormSet,
+    DelegateAdderForm,
+    DelegationParticipantFormSet,
     DelegationReportForm,
     InternationalAgreementForm,
     InternationalResolutionForm,
+    ResolutionAdderForm,
 )
 from .models import (
+    AbstractLegislativeWorkflow,
     Bill,
     BillVersion,
     City,
@@ -27,7 +37,9 @@ from .models import (
     Group,
     InternationalAgreement,
     InternationalResolution,
+    TransitionLog,
     User,
+    WorkflowReferral,
     WorkflowType,
 )
 from .services.permissions import (
@@ -48,50 +60,255 @@ def index(request):
 
 
 def dashboard(request):
-    return render(request, "pwms/dashboard.html")
+    """Personal summary of the work the signed-in user may act on.
+
+    Every number on the page comes from one permission pass over the four
+    workflow registers, through :func:`visible_instances` — the same chain the
+    detail pages use. A metric therefore can never count a row the user could
+    not open, and referrals / transition logs are filtered through that same
+    set rather than queried in their own right.
+    """
+    user = request.user
+
+    accessible = []
+    for model in _WORKFLOW_MODELS:
+        accessible.extend(
+            visible_instances(
+                user,
+                model.objects.select_related(
+                    "workflow_type", "current_state", "owner", "assigned_to"
+                ),
+            )
+        )
+
+    # (content type, object id) -> instance. Resolves referrals and transition
+    # logs back to their workflow, and doubles as the permission filter for
+    # them: anything the user may not view is simply absent from the map.
+    by_key = {
+        (instance._instance_ct().pk, instance.pk): instance for instance in accessible
+    }
+
+    now = timezone.now()
+    due_soon_cutoff = now + timedelta(days=DUE_SOON_DAYS)
+
+    open_instances = [i for i in accessible if not i.current_state.is_terminal]
+    assigned = _dashboard_by_deadline(
+        [i for i in accessible if i.assigned_to_id == user.pk], now
+    )
+    overdue = _dashboard_by_deadline([i for i in accessible if i.is_overdue], now)
+    due_soon = _dashboard_by_deadline(
+        [
+            i
+            for i in open_instances
+            if i.deadline is not None and now <= i.deadline <= due_soon_cutoff
+        ],
+        now,
+    )
+
+    referral_rows = _dashboard_referrals(user, by_key, now)
+    total = len(accessible)
+    context = {
+        "total_count": total,
+        "open_count": len(open_instances),
+        "assigned_count": len(assigned),
+        "overdue_count": len(overdue),
+        "due_soon_count": len(due_soon),
+        "unassigned_count": sum(1 for i in open_instances if i.assigned_to_id is None),
+        "assigned_rows": _dashboard_rows(assigned),
+        "overdue_rows": _dashboard_rows(overdue),
+        "due_soon_rows": _dashboard_rows(due_soon),
+        "type_breakdown": _dashboard_breakdown(
+            Counter(i.workflow_type.name for i in accessible), total
+        ),
+        "status_breakdown": _dashboard_breakdown(
+            Counter(i.current_state.get_public_name_display() for i in accessible),
+            total,
+        ),
+        "referral_rows": referral_rows[:DASHBOARD_ROWS],
+        "referral_count": len(referral_rows),
+        "activity_rows": _dashboard_activity(by_key),
+        "due_soon_days": DUE_SOON_DAYS,
+        "has_work": bool(accessible),
+    }
+    return render(request, "pwms/dashboard.html", context)
+
+
+#: Workflows due within this many days are counted as "due soon".
+DUE_SOON_DAYS = 7
+
+#: Each dashboard list shows this many rows before its "view all" link takes over.
+DASHBOARD_ROWS = 5
+
+#: Transition-log rows scanned when building the activity feed (see below).
+DASHBOARD_ACTIVITY_SCAN = 200
+
+#: State changes kept in the activity feed.
+DASHBOARD_ACTIVITY_ROWS = 8
+
+
+def _dashboard_by_deadline(instances, now):
+    """Soonest deadline first; undated rows last, keeping their input order."""
+    return sorted(instances, key=lambda i: (i.deadline is None, i.deadline or now))
+
+
+def _dashboard_rows(instances):
+    """Presentation rows for one dashboard list, capped at ``DASHBOARD_ROWS``."""
+    return [
+        {
+            "object": instance,
+            "url": _workflow_detail_url(instance),
+            "identifier": _workflow_identifier(instance),
+        }
+        for instance in instances[:DASHBOARD_ROWS]
+    ]
+
+
+def _dashboard_breakdown(counter, total):
+    """``Counter`` -> rows carrying their rounded share of ``total``, biggest first."""
+    if not total:
+        return []
+    return [
+        {"label": label, "count": count, "percent": round(count * 100 / total)}
+        for label, count in counter.most_common()
+    ]
+
+
+def _dashboard_referrals(user, by_key, now):
+    """Open referrals to the user's committees, on workflows they may view."""
+    group_ids = user.memberships.filter(is_active=True).values_list(
+        "group_id", flat=True
+    )
+    rows = []
+    for referral in WorkflowReferral.objects.filter(
+        referred_to_id__in=group_ids, status="open"
+    ).select_related("referred_to", "referred_by"):
+        workflow = by_key.get((referral.content_type_id, referral.object_id))
+        if workflow is None:
+            continue
+        rows.append(
+            {
+                "referral": referral,
+                "workflow": workflow,
+                "url": _workflow_detail_url(workflow),
+            }
+        )
+    rows.sort(
+        key=lambda row: (
+            row["referral"].due_date is None,
+            row["referral"].due_date or now,
+        )
+    )
+    return rows
+
+
+def _dashboard_activity(by_key):
+    """Newest state changes on the user's workflows, most recent first.
+
+    One global scan, then a filter through ``by_key``, rather than a per-type
+    query: it keeps the page to a single read while still refusing to surface
+    activity on work the user may not see.
+    """
+    rows = []
+    recent = TransitionLog.objects.select_related(
+        "from_state", "to_state", "actor"
+    ).order_by("-timestamp")[:DASHBOARD_ACTIVITY_SCAN]
+    for log in recent:
+        workflow = by_key.get((log.content_type_id, log.object_id))
+        if workflow is None:
+            continue
+        rows.append(
+            {
+                "log": log,
+                "workflow": workflow,
+                "url": _workflow_detail_url(workflow),
+            }
+        )
+        if len(rows) >= DASHBOARD_ACTIVITY_ROWS:
+            break
+    return rows
+
+
+#: Concrete workflow models shown on the unified register, in display order.
+#: Each concrete model owns one ``WorkflowType``; the unified list spans them all.
+_WORKFLOW_MODELS = (
+    DelegationReport,
+    InternationalResolution,
+    InternationalAgreement,
+    Bill,
+)
+
+
+def _workflow_identifier(instance):
+    """The human-facing identifier this workflow carries, if any.
+
+    Concrete types number their instances differently, so this reaches for
+    whichever field the instance actually has rather than assuming one.
+    """
+    for field in ("reference_number", "resolution_number", "bill_number"):
+        value = getattr(instance, field, "")
+        if value:
+            return value
+    return ""
+
+
+def _workflow_search_text(instance):
+    """Lower-cased haystack the free-text filter matches against."""
+    return " ".join((instance.title or "", _workflow_identifier(instance))).lower()
 
 
 def workflows(request):
-    """Overview of the concrete workflow registers.
+    """Unified register of every workflow instance the signed-in user may view.
 
-    Counts and recent tables are limited to instances the signed-in user may
-    view, so the page never advertises rows whose detail page would 403.
+    One table spans all concrete workflow types, narrowed by free text, type,
+    state and priority. Rows are admitted through :func:`visible_instances` —
+    the same permission chain the detail pages use — so the page never lists a
+    row whose own page would 403. The type and state options are derived from
+    that accessible set rather than the whole register, so the filters cannot
+    advertise types or states the user has no access to.
     """
-    viewable_reports = visible_instances(
-        request.user,
-        DelegationReport.objects.select_related("current_state", "owner").order_by(
-            "-created_at"
-        ),
-    )
-    viewable_resolutions = visible_instances(
-        request.user,
-        InternationalResolution.objects.select_related(
-            "current_state", "owner"
-        ).order_by("-created_at"),
-    )
-    viewable_agreements = visible_instances(
-        request.user,
-        InternationalAgreement.objects.select_related(
-            "current_state", "owner"
-        ).order_by("-created_at"),
-    )
-    viewable_bills = visible_instances(
-        request.user,
-        Bill.objects.select_related("current_state", "owner").order_by("-created_at"),
-    )
+    accessible = []
+    for model in _WORKFLOW_MODELS:
+        accessible.extend(
+            visible_instances(
+                request.user,
+                model.objects.select_related("workflow_type", "current_state", "owner"),
+            )
+        )
+    # Instances arrive grouped by type; re-sort so the merged list is newest first.
+    accessible.sort(key=lambda instance: instance.created_at, reverse=True)
+
+    query = request.GET.get("q", "").strip()
+    type_filter = request.GET.get("type", "")
+    state_filter = request.GET.get("status", "")
+    priority_filter = request.GET.get("priority", "")
+
+    needle = query.lower()
+    rows = [
+        {
+            "object": instance,
+            "url": _workflow_detail_url(instance),
+            "identifier": _workflow_identifier(instance),
+        }
+        for instance in accessible
+        if (not needle or needle in _workflow_search_text(instance))
+        and (not type_filter or instance.workflow_type.name == type_filter)
+        and (not state_filter or instance.current_state.name == state_filter)
+        and (not priority_filter or instance.priority == priority_filter)
+    ]
+
     context = {
-        "report_count": len(viewable_reports),
-        "resolution_count": len(viewable_resolutions),
-        "agreement_count": len(viewable_agreements),
-        "bill_count": len(viewable_bills),
-        "recent_reports": viewable_reports[:5],
-        "recent_resolutions": viewable_resolutions[:5],
-        "recent_agreements": viewable_agreements[:5],
-        "recent_bills": viewable_bills[:5],
-        # The create views redirect away unless the user holds a create role for
-        # at least one enabled workflow type, so gate the "New ..." buttons on
-        # that same condition instead of offering a dead action.
-        "can_create_workflows": WorkflowType.creatable_by(request.user).exists(),
+        "rows": rows,
+        "query": query,
+        "type_choices": sorted(
+            {instance.workflow_type.name for instance in accessible}
+        ),
+        "state_choices": sorted(
+            {instance.current_state.name for instance in accessible}
+        ),
+        "priority_choices": AbstractLegislativeWorkflow._meta.get_field(
+            "priority"
+        ).choices,
+        "has_filters": bool(query or type_filter or state_filter or priority_filter),
     }
     return render(request, "pwms/workflows.html", context)
 
@@ -188,6 +405,89 @@ def _deny_uncreatable_workflow_type(request):
         )
 
 
+def _creatable_form_type(user, form_class):
+    """
+    The workflow type ``form_class`` creates in, if ``user`` may create it.
+
+    Each concrete form represents exactly one type (``initial_workflow_type``),
+    so a create view gates on that type rather than on "some type the user may
+    create in": a user whose create role covers only a *different* type would
+    otherwise be shown a form that can never validate.
+    """
+    return (
+        WorkflowType.creatable_by(user)
+        .filter(name=form_class.initial_workflow_type)
+        .first()
+    )
+
+
+def _can_create_form_type(user, form_class):
+    """True when ``user`` may create the workflow type ``form_class`` stands for."""
+    return _creatable_form_type(user, form_class) is not None
+
+
+def _child_resolution_formset(request):
+    """Child-resolution formset for the report form, bound on POST."""
+    data = request.POST if request.method == "POST" else None
+    return ChildResolutionFormSet(data, prefix="resolutions")
+
+
+def _save_child_resolutions(report, formset, user):
+    """
+    Create the resolutions entered on a report form and nest them under it.
+
+    Ignored unless ``user`` may create resolutions in the first place: the section
+    is hidden from everyone else, so a forged POST must not create instances.
+    """
+    resolution_type = _creatable_form_type(user, InternationalResolutionForm)
+    if resolution_type is None:
+        return
+    for form in formset:
+        if not form.cleaned_data:
+            continue  # an untouched "add another" row
+        resolution = form.save(commit=False)
+        resolution.workflow_type = resolution_type
+        resolution.current_state = (
+            resolution_type.get_initial_state()
+            or resolution_type.states.order_by("order", "name").first()
+        )
+        resolution.owner = user
+        resolution.save()
+        report.add_sub_workflow(resolution)
+
+
+def _viewable_sub_workflows(instance, user):
+    """Children of ``instance`` the user may open, paired with their URLs."""
+    return [
+        {"object": child, "url": _workflow_detail_url(child)}
+        for child in instance.sub_workflows
+        if resolve(user, child, VIEW)
+    ]
+
+
+def _report_form_context(request, form, participants, resolutions, report=None):
+    """Context shared by the delegation report create and edit pages.
+
+    The two "add a …" rows (delegates, resolutions) are prefixed so their inputs
+    cannot collide with the report's own fields; nothing in them is validated.
+    """
+    return {
+        "form": form,
+        "report": report,
+        "participant_formset": participants,
+        "resolution_formset": resolutions,
+        "child_resolutions": (
+            _viewable_sub_workflows(report, request.user) if report is not None else []
+        ),
+        "can_add_resolutions": _can_create_form_type(
+            request.user, InternationalResolutionForm
+        ),
+        "delegate_adder": DelegateAdderForm(prefix="delegate_adder"),
+        "resolution_adder": ResolutionAdderForm(prefix="resolution_adder"),
+        "is_create": report is None,
+    }
+
+
 # -- Delegation reports ------------------------------------------------------
 
 
@@ -255,49 +555,68 @@ def delegation_report_detail(request, public_id):
 
 
 def delegation_report_create(request):
-    """Create a delegation report; the initial state is derived from its type."""
+    """Create a delegation report, with its delegates and adopted resolutions."""
     if request.method == "POST":
         _deny_uncreatable_workflow_type(request)
         form = DelegationReportForm(request.POST, user=request.user)
-        if form.is_valid():
-            report = form.save()
+        participants = DelegationParticipantFormSet(request.POST, prefix="participants")
+        resolutions = _child_resolution_formset(request)
+        if form.is_valid() and participants.is_valid() and resolutions.is_valid():
+            with transaction.atomic():
+                report = form.save()
+                participants.instance = report
+                participants.save()
+                _save_child_resolutions(report, resolutions, request.user)
             messages.success(
                 request, f'Delegation report "{report.reference_number}" created.'
             )
             return redirect("pwms:delegation_report_detail", public_id=report.public_id)
     else:
-        if not WorkflowType.creatable_by(request.user).exists():
+        if not _can_create_form_type(request.user, DelegationReportForm):
             messages.error(
                 request,
                 "You do not have a role that may create delegation reports.",
             )
             return redirect("pwms:delegation_reports")
         form = DelegationReportForm(user=request.user, initial={"owner": request.user})
+        participants = DelegationParticipantFormSet(prefix="participants")
+        resolutions = _child_resolution_formset(request)
     return render(
         request,
         "pwms/delegation-report-form.html",
-        {"form": form, "is_create": True},
+        _report_form_context(request, form, participants, resolutions),
     )
 
 
 def delegation_report_update(request, public_id):
-    """Edit a delegation report."""
+    """Edit a delegation report, its delegates and any adopted resolutions."""
     report = get_object_or_404(DelegationReport, public_id=public_id)
     require(request.user, report, EDIT)
     if request.method == "POST":
-        form = DelegationReportForm(request.POST, instance=report)
-        if form.is_valid():
-            report = form.save()
+        form = DelegationReportForm(request.POST, instance=report, user=request.user)
+        participants = DelegationParticipantFormSet(
+            request.POST, instance=report, prefix="participants"
+        )
+        resolutions = _child_resolution_formset(request)
+        if form.is_valid() and participants.is_valid() and resolutions.is_valid():
+            with transaction.atomic():
+                report = form.save()
+                participants.save()
+                _save_child_resolutions(report, resolutions, request.user)
             messages.success(
                 request, f'Delegation report "{report.reference_number}" updated.'
             )
             return redirect("pwms:delegation_report_detail", public_id=report.public_id)
     else:
-        form = DelegationReportForm(instance=report)
+        form = DelegationReportForm(instance=report, user=request.user)
+        participants = DelegationParticipantFormSet(
+            instance=report, prefix="participants"
+        )
+        resolutions = _child_resolution_formset(request)
     return render(
         request,
         "pwms/delegation-report-form.html",
-        {"form": form, "report": report, "is_create": False},
+        _report_form_context(request, form, participants, resolutions, report=report),
     )
 
 
@@ -403,7 +722,7 @@ def international_resolution_create(request):
                 public_id=resolution.public_id,
             )
     else:
-        if not WorkflowType.creatable_by(request.user).exists():
+        if not _can_create_form_type(request.user, InternationalResolutionForm):
             messages.error(
                 request,
                 "You do not have a role that may create international resolutions.",
@@ -424,7 +743,9 @@ def international_resolution_update(request, public_id):
     resolution = get_object_or_404(InternationalResolution, public_id=public_id)
     require(request.user, resolution, EDIT)
     if request.method == "POST":
-        form = InternationalResolutionForm(request.POST, instance=resolution)
+        form = InternationalResolutionForm(
+            request.POST, instance=resolution, user=request.user
+        )
         if form.is_valid():
             resolution = form.save()
             messages.success(
@@ -548,7 +869,7 @@ def international_agreement_create(request):
                 public_id=agreement.public_id,
             )
     else:
-        if not WorkflowType.creatable_by(request.user).exists():
+        if not _can_create_form_type(request.user, InternationalAgreementForm):
             messages.error(
                 request,
                 "You do not have a role that may create international agreements.",
@@ -687,7 +1008,7 @@ def bill_create(request):
             messages.success(request, f'Bill "{bill.bill_number}" created.')
             return redirect("pwms:bill_detail", public_id=bill.public_id)
     else:
-        if not WorkflowType.creatable_by(request.user).exists():
+        if not _can_create_form_type(request.user, BillForm):
             messages.error(request, "You do not have a role that may create bills.")
             return redirect("pwms:bills")
         form = BillForm(user=request.user, initial={"owner": request.user})
@@ -847,7 +1168,7 @@ class LogoutView(BaseLogoutView):
     """
 
     template_name = "pwms/logout.html"
-    http_method_names = ["get", "post", "options"]
+    http_method_names: ClassVar[list[str]] = ["get", "post", "options"]
 
     def get(self, request, *args, **kwargs):
         """Render the confirmation page (the logout itself happens on POST)."""
@@ -891,6 +1212,36 @@ def group_search(request):
         request=request,
         template_name="pwms/partials/group_search_results.html",
         context={"groups": groups},
+    )
+
+
+def report_search(request):
+    """
+    Search the delegation reports the user may edit, for HTMX.
+
+    Feeds the resolution form's parent picker: linking a resolution under a report
+    edits that report's hierarchy too, so only reports the user may edit are
+    offered.
+    """
+    search_query = request.GET.get("search", "").strip()
+
+    reports = [
+        report
+        for report in DelegationReport.objects.order_by("-created_at")
+        if resolve(request.user, report, EDIT)
+    ]
+    if search_query:
+        needle = search_query.lower()
+        reports = [
+            report
+            for report in reports
+            if needle in f"{report.reference_number or ''} {report.title}".lower()
+        ]
+
+    return render(
+        request=request,
+        template_name="pwms/partials/report_search_results.html",
+        context={"reports": reports[:20]},
     )
 
 

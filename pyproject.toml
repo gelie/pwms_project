@@ -16,6 +16,7 @@ dependencies = [
     "django-auth-ldap>=5.3.0",
     "django-background-tasks>=1.2.8",
     "django-bootstrap5>=26.3",
+    "django-chartjs>=2.3.0",
     "django-extensions>=4.1",
     "django-filter>=26.1",
     "django-flatpickr>=2.1.0",
@@ -47,3 +48,24 @@ packages = ["src/pwms"]
 [build-system]
 requires = ["uv_build>=0.12.3,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "ruff>=0.16.7",
+]
+
+[tool.ruff]
+# Pin the language level and line length the codebase is actually written to,
+# so lint/format results do not shift when ruff changes its own defaults.
+target-version = "py314"
+line-length = 88
+
+[tool.ruff.lint]
+ignore = [
+    # RUF012 ("mutable class default") assumes a class-level list/dict is a
+    # shared-state bug. In Django that shape is the documented idiom: model
+    # Meta.ordering / Meta.indexes, field *_CHOICES, DRF serializer Meta, and
+    # migration operations / dependencies. The rule only ever fires on
+    # framework boilerplate here, burying the findings that matter.
+    "RUF012",
+]

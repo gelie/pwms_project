@@ -10,7 +10,9 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 
 from pathlib import Path
 
+import ldap
 from decouple import config
+from django_auth_ldap.config import GroupOfNamesType, LDAPSearch
 
 # Repo root (manage.py, .env, logs/, docs/ live here; templates/ and static/
 # live inside the app package at src/pwms/).
@@ -44,7 +46,7 @@ INSTALLED_APPS = [
     "background_task",
     "rest_framework",
     "drf_spectacular",
-    # "chartjs",
+    "chartjs",
     "django_flatpickr",
     "lucide",
     "mptt",
@@ -196,6 +198,13 @@ MAILERS = {
     },
 }
 
+# Authentication backends
+# Using custom backends for graceful LDAP fallback
+AUTHENTICATION_BACKENDS = [
+    # "workflows.backends.GracefulLDAPBackend",  # LDAP with graceful error handling
+    "pwms.backends.FallbackModelBackend",  # Django fallback with logging
+]
+
 # Custom user model
 AUTH_USER_MODEL = "pwms.User"
 
@@ -263,3 +272,58 @@ WORKFLOW_DIAGRAM_DIRS = [
 # Mermaid Markdown exports land next to the written docs so they render inline
 # in GitHub and VS Code. Override per run with `--mermaid-dir` / `--no-mermaid`.
 WORKFLOW_DIAGRAM_DOCS_DIR = BASE_DIR / "src/pwms/docs"
+
+# LDAP Configuration
+# # LDAP Configuration for Active Directory
+ldap.set_option(
+    ldap.OPT_X_TLS_REQUIRE_CERT, ldap.OPT_X_TLS_ALLOW
+)  # matches the per-connection option
+
+# LDAP Server Configuration
+AUTH_LDAP_SERVER_URI = config("AUTH_LDAP_SERVER_URI", default="")
+AUTH_LDAP_BIND_DN = config("AUTH_LDAP_BIND_DN", default="")
+AUTH_LDAP_BIND_PASSWORD = config("AUTH_LDAP_BIND_PASSWORD", default="")
+
+# LDAP User Search
+AUTH_LDAP_USER_SEARCH = LDAPSearch(
+    config("AUTH_LDAP_BASE_DN"),
+    ldap.SCOPE_SUBTREE,
+    "(|(sAMAccountName=%(user)s)(userPrincipalName=%(user)s)(mail=%(user)s))",
+)
+
+# LDAP User Attributes Mapping
+AUTH_LDAP_USER_ATTR_MAP = {
+    "username": "sAMAccountName",
+    "first_name": "givenName",
+    "last_name": "sn",
+    "email": "mail",
+}
+
+# # LDAP Group Configuration (optional)
+AUTH_LDAP_GROUP_SEARCH = LDAPSearch(
+    config("AUTH_LDAP_BASE_DN"), ldap.SCOPE_SUBTREE, "(objectClass=group)"
+)
+AUTH_LDAP_GROUP_TYPE = GroupOfNamesType()
+
+# Populate Django user model from LDAP
+AUTH_LDAP_ALWAYS_UPDATE_USER = True
+AUTH_LDAP_FIND_GROUP_PERMS = True
+AUTH_LDAP_MIRROR_GROUPS = True
+
+# Start TLS (optional, set to False if not using TLS)
+AUTH_LDAP_START_TLS = False
+
+# Allow LDAP authentication to fail gracefully and fall back to ModelBackend
+# This prevents LDAP connection errors from blocking all authentication
+AUTH_LDAP_AUTHORIZE_ALL_USERS = False
+AUTH_LDAP_CACHE_TIMEOUT = 3600
+
+# === Essential options for Active Directory ===
+AUTH_LDAP_CONNECTION_OPTIONS = {
+    ldap.OPT_REFERRALS: 0,  # AD referrals break everything if not disabled
+    ldap.OPT_NETWORK_TIMEOUT: 5,  # Reduced timeout to fail fast (5 seconds)
+    ldap.OPT_TIMEOUT: 5,  # Overall operation timeout
+    # This tells OpenSSL/python-ldap to skip CA verification
+    # Perfectly safe when you fully control both ends (internal AD)
+    ldap.OPT_X_TLS_REQUIRE_CERT: ldap.OPT_X_TLS_ALLOW,
+}
