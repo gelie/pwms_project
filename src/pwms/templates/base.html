@@ -33,8 +33,9 @@
     <script src="{% static "js/navbar.js" %}" defer></script>
     <script src="{% static "js/formset.js" %}" defer></script>
     <script src="{% static "js/htmx-lookup.js" %}" defer></script>
-    {# Pages override this with their own name; the title block was previously
-       inert because <title> was hardcoded, so every tab read "PWMS". #}
+    <script src="{% static "js/password-toggle.js" %}" defer></script>
+    <!--Pages override this with their own name; the title block was previously
+       inert because <title> was hardcoded, so every tab read "PWMS".-->
     <title>{% block title %}PWMS{% endblock title %}</title>
   </head>
   <body>

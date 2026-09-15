@@ -1,4 +1,4 @@
-/* 
+/*
  * Bootstrap 5 Theme Overrides - Parliament of South Africa
  * Merged Light & Dark Mode using modern light-dark() function.
  * No media queries required for color switching!
@@ -56,6 +56,7 @@
   /* Image Paths */
   --img-top-header: url('../images/BGs3_top_header.png');
   --img-footer: url('../images/bg-2_footer.png');
+
 }
 
 /* Manual theme override. `light-dark()` resolves against the element's USED

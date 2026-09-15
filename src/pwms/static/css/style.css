@@ -16,7 +16,7 @@ body {
 }
 
 #top-nav {
-    background-color: #B3995D;
+    background-color: #b3995d;
     background-size: cover;
     background-position: center center;
     background-repeat: no-repeat;
@@ -29,12 +29,11 @@ body {
     border: none;
     /* Deeper than the old rgba(179, 153, 93, 0.2) wash, and it now follows the theme
        so dark mode gets a dark band instead of light gold over white. */
-    background: light-dark(rgba(179, 153, 93, 0.2), #1A1712);
+    background: light-dark(rgba(179, 153, 93, 0.2), #1a1712);
     padding: 0;
     position: relative;
     height: 120px;
 }
-
 
 .sticky-container {
     position: relative;
@@ -80,7 +79,6 @@ body {
     display: flex;
     align-items: center;
     width: 270px;
-
 }
 
 #topbar-logo {
@@ -90,7 +88,6 @@ body {
     /* max-width: 200px; */
     padding: 15px 0;
 }
-
 
 #topbar-left a,
 #topbar-left img {
@@ -249,8 +246,8 @@ body {
 
 #desktop-nav {
     z-index: 999;
-    border-bottom: 4px solid #EFBD47;
-    background-color: #9E7C0C;
+    border-bottom: 4px solid #efbd47;
+    background-color: #9e7c0c;
     width: 100%;
     max-width: 1897px;
     margin-top: 0px;
@@ -275,7 +272,7 @@ body {
    mode. Bootstrap resets the offcanvas to `background-color: transparent !important`
    at >=992px, where the bar shows inline, so this only affects the collapsed panel. */
 #desktop-nav #offcanvasNavbar {
-    background-color: light-dark(var(--theme-dark-gold), #4A3F28);
+    background-color: light-dark(var(--theme-dark-gold), #4a3f28);
 }
 
 /* The title inherits the theme's heading gold, which would vanish on a gold panel. */
@@ -308,16 +305,15 @@ body {
     }
 }
 
-#desktop-nav #main-horiz-menu>li:first-child,
+#desktop-nav #main-horiz-menu > li:first-child,
 .auth-menu {
     border-left: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-#desktop-nav #main-horiz-menu>li,
+#desktop-nav #main-horiz-menu > li,
 .auth-menu .auth-item {
     border-right: 1px solid rgba(255, 255, 255, 0.2) !important;
 }
-
 
 /* Uniform row height for the visible desktop nav links. IMPORTANT: do NOT
    stretch the dropdown menu or the offcanvas to 60px. The old blanket rule
@@ -325,7 +321,7 @@ body {
    fixed 60px height too, so only the first item sat on the menu's background
    and the remaining items overflowed below it with no background (looking
    transparent), and it also broke the mobile offcanvas layout. */
-#desktop-nav #main-horiz-menu>li>.nav-link {
+#desktop-nav #main-horiz-menu > li > .nav-link {
     height: 60px;
     display: flex;
     align-items: center;
@@ -348,9 +344,11 @@ body {
    a tap) fights Bootstrap's tap/click toggle. Inside the offcanvas the native click
    behaviour is therefore left alone. */
 @media (min-width: 992px) and (hover: hover) and (pointer: fine) {
-
-    #desktop-nav #main-horiz-menu .nav-item.dropdown:hover>.dropdown-menu,
-    #desktop-nav #main-horiz-menu .nav-item.dropdown:focus-within>.dropdown-menu {
+    #desktop-nav #main-horiz-menu .nav-item.dropdown:hover > .dropdown-menu,
+    #desktop-nav
+        #main-horiz-menu
+        .nav-item.dropdown:focus-within
+        > .dropdown-menu {
         display: block;
     }
 
@@ -359,8 +357,16 @@ body {
        rightwards once its JS has run (it adds data-bs-popper); a hover-opened menu has
        no inline positioning, so the offsets are spelled out here too. margin-left:0
        keeps the submenu touching the parent row so the pointer never crosses a dead gap. */
-    #desktop-nav #main-horiz-menu .nav-item.dropdown .dropend:hover>.dropdown-menu,
-    #desktop-nav #main-horiz-menu .nav-item.dropdown .dropend:focus-within>.dropdown-menu {
+    #desktop-nav
+        #main-horiz-menu
+        .nav-item.dropdown
+        .dropend:hover
+        > .dropdown-menu,
+    #desktop-nav
+        #main-horiz-menu
+        .nav-item.dropdown
+        .dropend:focus-within
+        > .dropdown-menu {
         display: block;
         top: 0;
         left: 100%;
@@ -374,21 +380,24 @@ body {
        260px-wide panels. While the pointer is anywhere inside the bar, only the hovered
        item's menu survives; the focused one comes back as soon as the pointer leaves.
        Needs both ids to outrank the :focus-within rule above. */
-    #desktop-nav #main-horiz-menu:hover .nav-item.dropdown:not(:hover)>.dropdown-menu {
+    #desktop-nav
+        #main-horiz-menu:hover
+        .nav-item.dropdown:not(:hover)
+        > .dropdown-menu {
         display: none;
     }
 
     /* Keep the parent item highlighted while the pointer is inside its menu. The link
        stops matching :hover as soon as the pointer moves down into .dropdown-menu, so
        the green block vanished the moment you reached a row. */
-    #desktop-nav #main-horiz-menu .nav-item.dropdown:hover>.nav-link,
-    #desktop-nav #main-horiz-menu .nav-item.dropdown:focus-within>.nav-link {
+    #desktop-nav #main-horiz-menu .nav-item.dropdown:hover > .nav-link,
+    #desktop-nav #main-horiz-menu .nav-item.dropdown:focus-within > .nav-link {
         background-color: var(--theme-green);
         color: #fff;
     }
 }
 
-.navbar-nav .nav-item.dropdown>.dropdown-menu {
+.navbar-nav .nav-item.dropdown > .dropdown-menu {
     margin-top: 0;
     border-top: 0;
     border-radius: 0;
@@ -399,7 +408,7 @@ body {
     padding: 0px;
 }
 
-.navbar-nav .nav-item.dropdown>.dropdown-menu li {
+.navbar-nav .nav-item.dropdown > .dropdown-menu li {
     color: #fefefe;
     border-top: 0;
     border-radius: 0;
@@ -410,14 +419,14 @@ body {
     border-top: 1px solid #ccc;
 }
 
-.navbar-nav .nav-item.dropdown>.dropdown-menu a {
+.navbar-nav .nav-item.dropdown > .dropdown-menu a {
     color: #fefefe;
     font-size: 0.9rem;
     background-color: var(--theme-green);
     text-decoration: none;
 }
 
-.navbar-nav .nav-item.dropdown>.dropdown-menu a:hover {
+.navbar-nav .nav-item.dropdown > .dropdown-menu a:hover {
     color: #fefefe;
     background-color: var(--theme-menu-hover);
     font-size: 0.9rem;
@@ -445,7 +454,7 @@ body {
 } */
 
 #site-footer {
-    border-bottom: 20px solid #9E7C0C;
+    border-bottom: 20px solid #9e7c0c;
     margin-top: 30px;
     padding: 40px 0;
     background-color: #275937;
@@ -562,6 +571,47 @@ html:not([data-theme]) .theme-toggle .theme-icon-when-auto {
     padding: 2rem;
 }
 
+/* Show/hide password button (see templates/pwms/login.html and
+   static/js/password-toggle.js). Revealed by its script, so a JS-less page shows
+   the plain password field rather than a button that cannot do anything. */
+.password-toggle {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    border-color: var(--bs-border-color-translucent);
+    border-left: transparent;
+    appearance: menulist-button;
+    background-image: none !important;
+    background-color: light-dark(
+        rgb(232, 240, 254),
+        rgba(70, 90, 126, 0.4)
+    ) !important;
+    color: fieldtext !important;
+}
+
+.password-toggle:hover,
+.password-toggle:mousein,
+.password-toggle:mouseover,
+.password-toggle:mouseout,
+.password-toggle:focus,
+.password-toggle:active,
+.password-toggle:clicked {
+    border-color: var(--bs-border-color-translucent);
+}
+
+html.password-toggle-ready .password-toggle {
+    display: inline-flex;
+}
+
+.password-toggle .password-toggle-icon {
+    display: none;
+}
+
+.password-toggle[aria-pressed="false"] .password-toggle-icon-show,
+.password-toggle[aria-pressed="true"] .password-toggle-icon-hide {
+    display: inline-flex;
+}
+
 /* HTMX searchable pickers (see templates/pwms/_lookup_field.html and
    static/js/htmx-lookup.js). htmx has no built-in indicator styling. */
 .htmx-indicator {
@@ -595,7 +645,11 @@ html:not([data-theme]) .theme-toggle .theme-icon-when-auto {
    `color-mix()` tints keep the accent legible on either surface. */
 .dashboard-hero {
     background-color: var(--theme-green);
-    background-image: linear-gradient(135deg, var(--theme-green) 0%, var(--theme-dark-gold) 100%);
+    background-image: linear-gradient(
+        135deg,
+        var(--theme-green) 0%,
+        var(--theme-dark-gold) 100%
+    );
     background-blend-mode: normal;
 }
 
@@ -639,7 +693,11 @@ html:not([data-theme]) .theme-toggle .theme-icon-when-auto {
     margin-bottom: 0.5rem;
     border-radius: 50%;
     color: var(--dashboard-accent);
-    background-color: color-mix(in srgb, var(--dashboard-accent) 16%, transparent);
+    background-color: color-mix(
+        in srgb,
+        var(--dashboard-accent) 16%,
+        transparent
+    );
 }
 
 .dashboard-stat-value {
@@ -683,7 +741,11 @@ html:not([data-theme]) .theme-toggle .theme-icon-when-auto {
 .dashboard-bar .progress {
     height: 0.5rem;
     border-radius: 0;
-    background-color: color-mix(in srgb, var(--theme-dark-gold) 15%, transparent);
+    background-color: color-mix(
+        in srgb,
+        var(--theme-dark-gold) 15%,
+        transparent
+    );
 }
 
 .dashboard-bar-fill {
@@ -728,7 +790,8 @@ html:not([data-theme]) .theme-toggle .theme-icon-when-auto {
 .dashboard-activity li {
     position: relative;
     padding: 0 0 1rem 1.5rem;
-    border-left: 2px solid color-mix(in srgb, var(--theme-gold) 40%, transparent);
+    border-left: 2px solid
+        color-mix(in srgb, var(--theme-gold) 40%, transparent);
 }
 
 .dashboard-activity li:last-child {

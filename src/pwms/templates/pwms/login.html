@@ -27,7 +27,19 @@
               </div>
               <div class="mb-4">
                 <label class="form-label" for="{{ form.password.id_for_label }}">{{ form.password.label }}</label>
-                {{ form.password }}
+                <div class="input-group">
+                  {{ form.password }}
+                  <button type="button"
+                          class="btn password-toggle"
+                          data-password-toggle
+                          aria-controls="{{ form.password.id_for_label }}"
+                          aria-label="Show password"
+                          aria-pressed="false"
+                          title="Show password">
+                    <span class="password-toggle-icon password-toggle-icon-show">{% lucide "eye" size=18 %}</span>
+                    <span class="password-toggle-icon password-toggle-icon-hide">{% lucide "eye-off" size=18 %}</span>
+                  </button>
+                </div>
                 {% for error in form.password.errors %}
                   <div class="invalid-feedback d-block">{{ error }}</div>
                 {% endfor %}
