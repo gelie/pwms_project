@@ -7,19 +7,21 @@ Repointed from the legacy ``workflows`` app to the current ``pwms`` models: a
 referral is closed with :meth:`WorkflowReferral.mark_expired` so the status
 machine and its ``referral-expired`` event stay authoritative.
 
-Mail goes out inline. Once the planned Notification model lands (see the
-roadmap), these sends should be enqueued as background tasks instead.
+Mail goes out through the notification log (``pwms.notifications``), so a
+reminder is recorded like every other alert — recipient, channel and delivery
+outcome included. This command keeps the wording and the 24-hour / final-hour
+windows; the dispatch layer decides who receives it and writes the record. An
+expiry raises its own alert from ``mark_expired()``, so it is not sent twice.
 """
 
 from datetime import timedelta
 
-from django.conf import settings
-from django.core.mail import send_mail
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.utils.timesince import timeuntil
 
 from pwms.models import WorkflowReferral
+from pwms.notifications import notify_referral_deadline, referral_audience
 
 #: How long before the due date each reminder goes out.
 FIRST_REMINDER = timedelta(hours=24)
@@ -110,8 +112,7 @@ class Command(BaseCommand):
             )
             return
 
-        recipients = self.recipient_emails(referral)
-        if not recipients:
+        if not referral_audience(referral):
             self.stderr.write(
                 self.style.WARNING(
                     f"Skipping referral {referral.public_id}: no recipients."
@@ -119,12 +120,10 @@ class Command(BaseCommand):
             )
             return
 
-        send_mail(
+        notify_referral_deadline(
+            referral,
             subject=f"Referral Deadline Warning: {workflow.title}",
             message=self.deadline_warning_body(referral, time_remaining),
-            from_email=default_from_email(),
-            recipient_list=recipients,
-            fail_silently=False,
         )
 
     def expire_referral(self, referral, *, dry_run=False):
@@ -146,32 +145,11 @@ class Command(BaseCommand):
             )
             return
 
-        recipients = self.recipient_emails(referral)
-        # mark_expired() owns the status change and emits the ``referral-expired``
-        # event, so the model — not this command — stays the source of truth.
+        # mark_expired() owns the status change, emits the ``referral-expired``
+        # event, and raises the alert to the parties (see pwms.notifications), so
+        # the model — not this command — stays the source of truth for what an
+        # expiry means.
         referral.mark_expired()
-        if not recipients:
-            return
-
-        send_mail(
-            subject=f"Referral Expired: {workflow.title}",
-            message=expiry_body(referral),
-            from_email=default_from_email(),
-            recipient_list=recipients,
-            fail_silently=False,
-        )
-
-    def recipient_emails(self, referral):
-        """Active members of the referred group, plus the workflow owner."""
-        memberships = referral.referred_to.members.filter(
-            is_active=True
-        ).select_related("user")
-        emails = {member.user.email for member in memberships if member.user.email}
-
-        owner = referral.content_object.owner
-        if owner is not None and owner.email:
-            emails.add(owner.email)
-        return sorted(emails)
 
     def deadline_warning_body(self, referral, time_remaining):
         return (
@@ -187,29 +165,9 @@ class Command(BaseCommand):
         )
 
 
-def default_from_email():
-    """Sender address for these notices."""
-    return getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@pwms.org.za")
-
-
 def referred_by_label(referral):
     """Name of whoever raised the referral, tolerating the nullable FK."""
     referrer = referral.referred_by
     if referrer is None:
         return "PWMS"
     return referrer.get_full_name() or referrer.get_username()
-
-
-def expiry_body(referral):
-    """Body for the notice that an unanswered referral has expired."""
-    return (
-        f"Dear member,\n\n"
-        f"The referral of '{referral.content_object.title}' to "
-        f"{referral.referred_to.name} has expired unanswered and is now closed.\n\n"
-        f"Deadline was: {referral.due_date:%Y-%m-%d %H:%M}\n"
-        f"Referred by: {referred_by_label(referral)}\n\n"
-        "Please raise a new referral if the matter still needs the committee's "
-        "attention.\n\n"
-        "Best regards,\n"
-        "PWMS"
-    )

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Alerts{% endblock title %}
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="mb-0">Alerts</h1>
+    <div class="d-flex align-items-center gap-3">
+      <span class="text-muted">
+        {{ alert_total }} alert{{ alert_total|pluralize }} · {{ unread_count }} unread
+      </span>
+      {% if unread_count %}
+        <form method="post" action="{% url "pwms:notifications_read_all" %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-outline-secondary">Mark all read</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+  <div class="list-group">
+    {% for alert in alerts %}
+      <a class="list-group-item list-group-item-action{% if alert.is_unread %} alert-unread{% endif %}"
+         href="{% url "pwms:notification_open" alert.public_id %}">
+        <div class="d-flex w-100 justify-content-between align-items-start gap-3">
+          <span class="fw-medium">{{ alert.subject }}</span>
+          <small class="text-body-secondary text-nowrap">{{ alert.created_at|timesince }} ago</small>
+        </div>
+        <small class="text-body-secondary">
+          {{ alert.get_kind_display }}
+          {% if alert.actor %}· raised by {{ alert.actor.display_name }}{% endif %}
+        </small>
+      </a>
+    {% empty %}
+      <div class="list-group-item text-muted">No alerts yet.</div>
+    {% endfor %}
+  </div>
+{% endblock content %}

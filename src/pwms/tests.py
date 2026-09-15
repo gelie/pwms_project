@@ -3381,6 +3381,16 @@ class ShowWorkflowHierarchyCommandTests(TestCase):
 class CheckReferralDeadlinesCommandTests(TestCase):
     """``check_referral_deadlines`` against the typed WorkflowReferral rows."""
 
+    def run_command(self, *args):
+        """Run the command and let its deferred alerts actually go out.
+
+        Alerts are emailed from ``transaction.on_commit``, so a workflow change
+        that rolls back mails nobody - and a ``TestCase`` never commits, so the
+        callbacks have to be executed explicitly for the mail to appear.
+        """
+        with self.captureOnCommitCallbacks(execute=True):
+            call_command("check_referral_deadlines", *args, stdout=StringIO())
+
     @classmethod
     def setUpTestData(cls):
         User = get_user_model()
@@ -3419,14 +3429,17 @@ class CheckReferralDeadlinesCommandTests(TestCase):
     def test_reminder_is_emailed_and_recorded(self):
         referral = self._referral(due_in=timedelta(hours=2))
 
-        call_command("check_referral_deadlines", stdout=StringIO())
+        self.run_command()
 
-        self.assertEqual(len(mail.outbox), 1)
-        message = mail.outbox[0]
-        self.assertIn("Referred report", message.subject)
-        # The committee member and the workflow owner are both told.
+        # One message per recipient: each delivery is logged on its own
+        # notification row, and the committee is not shown the owner's address.
+        self.assertEqual(len(mail.outbox), 2)
         self.assertEqual(
-            sorted(message.to), ["member@example.com", "owner@example.com"]
+            sorted(message.to[0] for message in mail.outbox),
+            ["member@example.com", "owner@example.com"],
+        )
+        self.assertTrue(
+            all("Referred report" in message.subject for message in mail.outbox)
         )
         referral.refresh_from_db()
         self.assertIsNotNone(referral.deadline_notified_at)
@@ -3434,10 +3447,11 @@ class CheckReferralDeadlinesCommandTests(TestCase):
     def test_reminder_is_not_repeated(self):
         self._referral(due_in=timedelta(hours=2))
 
-        call_command("check_referral_deadlines", stdout=StringIO())
-        call_command("check_referral_deadlines", stdout=StringIO())
+        self.run_command()
+        self.run_command()
 
-        self.assertEqual(len(mail.outbox), 1)
+        # One reminder run, one message per recipient; the second run is silent.
+        self.assertEqual(len(mail.outbox), 2)
 
     def test_second_reminder_fires_inside_the_last_hour(self):
         self._referral(
@@ -3445,25 +3459,28 @@ class CheckReferralDeadlinesCommandTests(TestCase):
             notified_at=timezone.now() - timedelta(hours=2),
         )
 
-        call_command("check_referral_deadlines", stdout=StringIO())
+        self.run_command()
 
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertIn("Referred report", mail.outbox[0].subject)
+        self.assertEqual(len(mail.outbox), 2)
+        self.assertTrue(
+            all("Referred report" in message.subject for message in mail.outbox)
+        )
 
     def test_passed_deadline_is_marked_expired(self):
         referral = self._referral(due_in=timedelta(hours=-2))
 
-        call_command("check_referral_deadlines", stdout=StringIO())
+        self.run_command()
 
         referral.refresh_from_db()
         self.assertEqual(referral.status, "expired")
-        self.assertEqual(len(mail.outbox), 1)
-        self.assertIn("Expired", mail.outbox[0].subject)
+        # mark_expired() raises the notice itself, so exactly one per recipient.
+        self.assertEqual(len(mail.outbox), 2)
+        self.assertTrue(all("Expired" in message.subject for message in mail.outbox))
 
     def test_answered_referrals_are_left_alone(self):
         referral = self._referral(due_in=timedelta(hours=-2), status="responded")
 
-        call_command("check_referral_deadlines", stdout=StringIO())
+        self.run_command()
 
         referral.refresh_from_db()
         self.assertEqual(referral.status, "responded")
@@ -3473,7 +3490,7 @@ class CheckReferralDeadlinesCommandTests(TestCase):
         referral = self._referral(due_in=timedelta(hours=2))
         expired = self._referral(due_in=timedelta(hours=-2))
 
-        call_command("check_referral_deadlines", "--dry-run", stdout=StringIO())
+        self.run_command("--dry-run")
 
         self.assertEqual(mail.outbox, [])
         referral.refresh_from_db()

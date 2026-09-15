@@ -126,6 +126,19 @@ urlpatterns = [
     path("groups/mine/", views.my_groups, name="my_groups"),
     path("groups/all/", views.all_groups, name="all_groups"),
     path("groups/<int:pk>/", views.group_detail, name="group_detail"),
+    # Alerts: the bell menu, its page, and the read state of both. "read-all" is
+    # declared before the <uuid> route so the literal always wins the match.
+    path("alerts/", views.notifications, name="notifications"),
+    path(
+        "alerts/read-all/",
+        views.notifications_read_all,
+        name="notifications_read_all",
+    ),
+    path(
+        "alerts/<uuid:public_id>/",
+        views.notification_open,
+        name="notification_open",
+    ),
     path("reports/", views.reports, name="reports"),
     path("about/", views.about, name="about"),
     path("contact/", views.contact, name="contact"),

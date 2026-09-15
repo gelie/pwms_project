@@ -1,6 +1,7 @@
 from .base import BaseModel
 from .geography import City, Country
 from .groups import Group
+from .notifications import Notification
 from .permissions import GroupMembership, Role
 from .sharepoint import (
     SharepointDrive,
@@ -48,6 +49,7 @@ __all__ = [
     "GroupMembership",
     "InternationalAgreement",
     "InternationalResolution",
+    "Notification",
     "Role",
     "SharepointDrive",
     "SharepointFolder",

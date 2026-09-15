@@ -15,36 +15,68 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
 - Full auditing (`auditlog` CRUD + `TransitionLog`) with API access
 - Append-only domain event log (`EventType` registry + `WorkflowEvent`) with
   declarative transition guards (`Transition.required_event_types`)
+- In-app alerts + logged email dispatch (`Notification`, `pwms/notifications/`),
+  raised from the workflow domain methods and the create views
 - DRF API + OpenAPI (Swagger/ReDoc), admin, migrations, tests
 - django-ninja evaluation spike (`/ninja/`)
 
 ---
 
-## Email & notifications (🔜 — 🧩 groundwork)
+## Email & notifications (✅ shipped · 🔜 background tasks)
 
 **Goal:** notify the right people when things happen or are due.
 
-**Groundwork already present**
+**Shipped**
 
-- `Transition.notify_roles` — which roles should be alerted when a transition fires.
-- `notify_deadlines`, `send_overdue_alerts` and `check_delegation_expirations`
-  commands still to be repointed to `pwms.models`; `check_referral_deadlines`
-  now runs against `WorkflowReferral` (reminders + expiry).
-- `django-background-tasks` installed → ideal queue for async email dispatch.
-- `transition.requires_comment` and `TransitionLog` give the context for a
-  message (who, from → to, note).
-- `User.email` + role/group lookups via `GroupMembership` for addressing.
+- `Notification` (`pwms/models/notifications.py`, migration `0026_notification`)
+  — one row per (recipient, channel, event); the table is deliberately also the
+  delivery log (see [Data Model](./Data%20Model.md)).
+- `pwms/notifications/`: `dispatch.py` (audience rules + delivery), `context.py`
+  (the bell's context processor), re-exported from `__init__.py`.
+- Hooked on explicit domain methods, never `save()`:
+  `AbstractLegislativeWorkflow.perform_transition()` (`notify_transition`) and
+  `.refer()` (`notify_referral_created`); `WorkflowReferral.respond()` /
+  `recall()` / `mark_expired()` (`notify_referral_closed`); and the four create
+  views in `pwms/views.py` (`notify_workflow_created`). Fixtures, imports and
+  admin writes notify nobody.
+- Each dispatch writes an `in_app` row (sent immediately) and — when the
+  recipient has an email address — an `email` row (`pending` → `sent`/`failed`).
+  The send runs through `transaction.on_commit`, so work that rolls back mails
+  nobody; a failure is recorded on the row and logged, never raised.
+- Audience: the type's officers (active members of `WorkflowType.group` holding
+  one of its `create_roles`), the roles a transition names
+  (`Transition.notify_roles` plus the roles allowed to act next) and the people
+  the record names (`owner`, `assigned_to`) — minus the actor and anyone who
+  cannot VIEW the instance (`pwms.services.permissions.resolve`). Referrals use
+  `referral_audience()`: the referred group's active members plus the people the
+  record names (`owner`, `assigned_to`), deliberately not RBAC-filtered (a
+  referred committee may hold no `WorkflowGroupAccess` row — the referral is the
+  entitlement) and carrying only the referral's own facts.
+- `check_referral_deadlines` dispatches through `pwms.notifications` (logged as
+  `referral-deadline` alerts); `mark_expired()` raises the expiry alert itself
+  (see [Management Commands](./Management%20Commands.md)).
+- Dev mail: `MAILERS["default"]` uses the console backend; `DEFAULT_FROM_EMAIL`
+  and `PWMS_BASE_URL` set the sender and the absolute links.
+- UI: the navbar bell (`templates/navbar.html`, `static/css/style.css`), the
+  alerts page (`templates/pwms/notifications.html`) and the views/URLs
+  `pwms:notifications`, `pwms:notification_open` and
+  `pwms:notifications_read_all`. Body template:
+  `templates/emails/notification.txt`.
+- Tests: `pwms/tests_notifications.py` (33 tests) cover the audience rules,
+  RBAC filtering, the two channel rows, deferred sends, per-recipient delivery,
+  failed-send recording and the bell/page/read views.
 
-**Design sketch**
+> `Transition.notify_roles` exists but the RBAC seeds leave it unpopulated, so
+> the working audience for a transition is the type's `create_roles` officers
+> (plus the other sources above) until an administrator fills it in per
+> transition.
 
-1. Add an SMTP/mailer configuration block (env-driven: host/user/pass/from —
-   use `python-decouple` like other settings).
-2. Create a `Notification` model (recipient user, channel [email/in-app], type,
-   template context, delivered_at, read_at) OR reuse a mail queue table.
-3. On `perform_transition()` and on referral, enqueue notification jobs instead
-   of sending inline.
-4. Trigger deadline/overdue scans from the existing management commands as
-   background tasks (scheduled via cron / a beat-like loop).
+**Remaining (🔜)**
+
+- Dispatch alert email through `django-background-tasks` instead of
+  `transaction.on_commit`: it would add retries (a process crash mid-commit
+  leaves an `email` row `pending`).
+- HTML email templates — only the plain-text `notification.txt` exists.
 
 **Acceptance:** role members receive email when a transition they are subscribed
 to (`notify_roles`) fires; referral-deadline reminders are sent; all sends are
@@ -90,10 +122,14 @@ an audit trail of upload/download; permissions mirror PWMS group access.
 
 ## Notifications channel & email templating (🔜)
 
-- HTML email templates in `src/pwms/templates/emails/`, rendered with
-  request-free `render_to_string`.
-- Respect RBAC when composing (never leak content a recipient may not view).
-- Log every dispatch in the audit layer for accountability.
+- HTML email templates alongside the plain-text
+  `src/pwms/templates/emails/notification.txt`; rendering is already
+  request-free (`render_to_string`), so this is the outstanding piece.
+
+The rest originally sketched here has shipped: composition is RBAC-aware (a
+recipient who cannot VIEW the instance is dropped before the alert is written),
+and every dispatch is logged in the `Notification` log (see *Email &
+notifications* above).
 
 ---
 
@@ -186,8 +222,10 @@ longer registers `m2m_fields`.
 
 ✅ **Referral deadline job repointed** — `check_referral_deadlines` now runs
 against `WorkflowReferral` (`due_date`, `deadline_notified_at`,
-`mark_expired()`): it emails the 24-hour and 1-hour reminders and expires
-referrals whose deadline has passed (`--dry-run` previews either action).
+`mark_expired()`): it dispatches the 24-hour and 1-hour reminders through
+`pwms.notifications` (logged as `referral-deadline` alerts) and expires
+referrals whose deadline has passed (`--dry-run` previews either action). The
+expiry alert is raised by `mark_expired()` itself, not by the command.
 
 ---
 

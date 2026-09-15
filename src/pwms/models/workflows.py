@@ -2,6 +2,7 @@ from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from django_extensions.db.fields import AutoSlugField
@@ -374,7 +375,7 @@ class AbstractLegislativeWorkflow(BaseModel):
         from_state = self.current_state
         self.current_state = transition.to_state
         self.save(update_fields=["current_state", "updated_at"])
-        return TransitionLog.objects.create(
+        log = TransitionLog.objects.create(
             content_type=self._instance_ct(),
             object_id=self.pk,
             action="STATE_TRANSITION",
@@ -384,6 +385,14 @@ class AbstractLegislativeWorkflow(BaseModel):
             ip_address=ip_address,
             notes=comment,
         )
+
+        # Alert the stakeholders once the new state and its audit row exist, so
+        # the message can quote the state it moved into. Imported lazily: the
+        # notifications service reads these models.
+        from ..notifications import notify_transition
+
+        notify_transition(self, transition, actor=actor, comment=comment)
+        return log
 
     def group_accesses(self):
         """WorkflowGroupAccess rows granting groups access to this instance."""
@@ -501,7 +510,7 @@ class AbstractLegislativeWorkflow(BaseModel):
             raise ValidationError(
                 f"Referrals are not allowed in state '{self.current_state.name}'."
             )
-        return WorkflowReferral.objects.create(
+        referral = WorkflowReferral.objects.create(
             content_type=self._instance_ct(),
             object_id=self.pk,
             referred_to=group,
@@ -509,6 +518,12 @@ class AbstractLegislativeWorkflow(BaseModel):
             due_date=due_date,
             notes=notes,
         )
+
+        # Imported lazily: the notifications service reads these models.
+        from ..notifications import notify_referral_created
+
+        notify_referral_created(referral, actor=referred_by)
+        return referral
 
     # -- parent / child hierarchy ------------------------------------------
     # Concrete workflow instances are different tables, so the parent link is
@@ -762,6 +777,33 @@ class AbstractLegislativeWorkflow(BaseModel):
                 return True
 
         return False
+
+    # -- presentation / linking ---------------------------------------------
+    #: URL name of this type's detail view; set on each concrete subclass so
+    #: ``get_absolute_url`` needs no model -> route mapping of its own.
+    detail_url_name = ""
+
+    @property
+    def identifier(self):
+        """
+        The human-facing reference this workflow carries, if any.
+
+        Concrete types number their instances differently, so this reaches for
+        whichever field the instance actually has rather than assuming one.
+        """
+        for field in ("reference_number", "resolution_number", "bill_number"):
+            value = getattr(self, field, "")
+            if value:
+                return value
+        return ""
+
+    def get_absolute_url(self):
+        """Site-relative URL of this instance's detail page, "" when unset."""
+        if not self.detail_url_name or self.public_id is None:
+            return ""
+        return reverse(
+            f"pwms:{self.detail_url_name}", kwargs={"public_id": self.public_id}
+        )
 
     def __str__(self):
         return self.title or f"{self._meta.verbose_name} #{self.pk}"
@@ -1450,6 +1492,21 @@ class WorkflowReferral(BaseModel):
     def is_overdue(self):
         return bool(self.is_open and self.due_date and self.due_date < timezone.now())
 
+    def _alert(self, kind, *, actor=None):
+        """
+        Record the alert for a lifecycle change.
+
+        Imported lazily because the notifications service imports these models,
+        and a module-level import would close the loop.
+
+        Only these explicit lifecycle methods raise alerts — not ``save()`` — so
+        creating a referral row (a fixture, an import, the admin) does not mail
+        anyone.
+        """
+        from ..notifications import notify_referral_closed
+
+        notify_referral_closed(self, kind, actor=actor)
+
     def respond(self, *, responded_by=None, document_url="", notes=""):
         """Mark the referral answered (emits ``referral-responded``)."""
         if not self.is_open:
@@ -1462,6 +1519,7 @@ class WorkflowReferral(BaseModel):
         if notes:
             self.response_notes = notes
         self.save()
+        self._alert("referral-responded", actor=responded_by)
         return self
 
     def recall(self, *, recalled_by=None, reason=""):
@@ -1474,6 +1532,7 @@ class WorkflowReferral(BaseModel):
         if reason:
             self.recall_reason = reason
         self.save()
+        self._alert("referral-recalled", actor=recalled_by)
         return self
 
     def mark_expired(self):
@@ -1482,6 +1541,8 @@ class WorkflowReferral(BaseModel):
             return self
         self.status = "expired"
         self.save()
+        # No actor: the scheduled deadline job is what expired it.
+        self._alert("referral-expired")
         return self
 
     # -- event emission -----------------------------------------------------
@@ -1679,6 +1740,7 @@ class DelegationReport(AbstractLegislativeWorkflow):
         editable=False,
         help_text="System-generated unique reference number (BR02.6).",
     )
+    detail_url_name = "delegation_report_detail"
     engagement_name = models.CharField(
         max_length=255,
         blank=True,
@@ -2029,6 +2091,8 @@ class InternationalResolution(AbstractLegislativeWorkflow):
     implementation progress is recorded in ``implementation_progress``.
     """
 
+    detail_url_name = "international_resolution_detail"
+
     resolution_number = models.CharField(max_length=50, unique=True)
     resolution_text = models.TextField(
         blank=True,
@@ -2080,6 +2144,8 @@ class InternationalAgreement(AbstractLegislativeWorkflow):
     Documents (BR02, BR04, BR11) are held in SharePoint; this model keeps the
     agreement and explanatory-memorandum links.
     """
+
+    detail_url_name = "international_agreement_detail"
 
     SECTION_231_2 = "section-231-2"
     SECTION_231_3 = "section-231-3"
@@ -2251,6 +2317,8 @@ class Bill(AbstractLegislativeWorkflow):
 
     Documents live in SharePoint; this model keeps the bill document link.
     """
+
+    detail_url_name = "bill_detail"
 
     SECTION_74 = "section-74"
     SECTION_75 = "section-75"

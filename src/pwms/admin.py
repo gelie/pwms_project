@@ -20,6 +20,7 @@ from .models import (
     GroupMembership,
     InternationalAgreement,
     InternationalResolution,
+    Notification,
     Role,
     SharepointDrive,
     SharepointFolder,
@@ -1016,3 +1017,32 @@ class CityAdmin(admin.ModelAdmin):
     search_fields = ("name", "ascii_name")
     autocomplete_fields = ("country",)
     ordering = ("country", "name")
+
+
+# --- Alerts: the outbound notification log ------------------------------------
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    """Read-mostly view of every alert the system recorded.
+
+    These rows *are* the delivery log — who was told, on which channel, and
+    whether the mail went out — so the useful operations are reading and
+    filtering. Every field is read-only: editing a row would falsify the record
+    it exists to keep.
+    """
+
+    list_display = ("created_at", "recipient", "kind", "channel", "status", "subject")
+    list_filter = ("channel", "kind", "status")
+    search_fields = ("subject", "body", "recipient__username", "recipient__email")
+    raw_id_fields = ("recipient", "actor")
+    date_hierarchy = "created_at"
+    ordering = ("-created_at",)
+
+    def get_readonly_fields(self, request, obj=None):
+        """Alerts are evidence, not data entry: nothing here is editable."""
+        return [field.name for field in self.model._meta.fields]
+
+    def has_add_permission(self, request):
+        # Raised by workflow activity, never typed in.
+        return False

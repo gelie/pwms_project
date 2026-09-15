@@ -574,6 +574,36 @@ Automatic CRUD history for registered models. For `InternationalResolution` and
 changes for `referred_to_groups`). Reached via `auditlog.models.LogEntry`
 (see `pwms/utils/audit_helpers.py`).
 
+### `Notification(BaseModel)` — `pwms/models/notifications.py`
+
+One row per (recipient, channel, event), written by `pwms.notifications`. The
+table serves two purposes at once: it backs the navbar bell (`in_app` rows) and
+it is the **delivery log** (`email` rows), so "why did this person get that
+mail?" is answerable from the database. Migration `0026_notification`.
+
+| Field | Notes |
+| --- | --- |
+| `recipient` (FK `User`, related `notifications`) | who is being told |
+| `channel` | `in_app` or `email` — one row per channel |
+| `kind` | `workflow-created`, `workflow-transition`, `referral-created`, `referral-responded`, `referral-recalled`, `referral-expired`, `referral-deadline` |
+| `subject`, `body` | body is rendered exactly as sent (or as it would have been) |
+| `url` | site-relative link the alert opens |
+| `actor` (FK `User`, `SET_NULL`, nullable) | triggering user; null for system alerts (e.g. deadline reminders) |
+| `content_type` + `object_id` → `content_object` | **GFK** to the workflow instance |
+| `context` (JSON) | the variables the message was composed from |
+| `status` | `pending` / `sent` / `failed` |
+| `sent_at`, `read_at`, `error` | delivery outcome and read state |
+
+Every dispatch writes **two rows per recipient**: an `in_app` row (written
+`sent` immediately) and, when the recipient has an email address, an `email` row
+(`pending` → `sent`/`failed`). `is_unread` is true only for an `in_app` row with
+no `read_at` — an email row is a delivery record, never unread. Helpers:
+`mark_sent()`, `mark_failed(error)`, `mark_read()` (idempotent).
+
+Indexed on `(recipient, read_at)` (the bell's unread count) and
+`(recipient, -created_at)`. Registered in the admin **read-only**
+(`NotificationAdmin`): the rows are evidence, not data entry.
+
 ---
 
 ## 6. Conventions worth remembering

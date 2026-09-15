@@ -62,12 +62,19 @@
 - `SPECTACULAR_SETTINGS`: OpenAPI title/version for the generated schema.
 - `auditlog.middleware.AuditlogMiddleware` runs after auth so changes are attributed to the logged-in user.
 - Logging: console/file handler writing to the configured `LOG_DIR` (`pwms.log`).
+- Alerting email (`src/pwms/notifications/`): `MAILERS["default"]` uses the
+  console backend, so outbound alerts print to the console in development (swap
+  in SMTP to deliver them); `DEFAULT_FROM_EMAIL` sets the sender and
+  `PWMS_BASE_URL` makes the links in alert mail absolute. The
+  `pwms.notifications.alerts` context processor feeds the navbar bell
+  (`unread_alert_count` + the five newest `in_app` alerts).
 - Environment variables (`python-decouple`): `SECRET_KEY`, `DEBUG`, `PG_DB`,
   `PG_USERNAME`, `PG_PASSWORD`, `PG_HOST`, `PG_PORT`, `IDNO_HMAC_KEY`,
   `IDNO_ENC_KEY` (both required - they key the at-rest identity numbers, see
-  `User.set_idno`), and the optional LDAP set (`AUTH_LDAP_SERVER_URI`,
+  `User.set_idno`), the optional LDAP set (`AUTH_LDAP_SERVER_URI`,
   `AUTH_LDAP_BIND_DN`, `AUTH_LDAP_BIND_PASSWORD`, `AUTH_LDAP_BASE_DN`,
-  `AUTH_LDAP_START_TLS`).
+  `AUTH_LDAP_START_TLS`), and the optional alerting pair `DEFAULT_FROM_EMAIL`
+  and `PWMS_BASE_URL`.
 
 > The app is enabled via a single `AppConfig` (`pwms.apps.PwmsConfig`) whose
 > `ready()` registers the concrete workflow model with `auditlog`. It is the only

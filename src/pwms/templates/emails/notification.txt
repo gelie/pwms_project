@@ -1,0 +1,10 @@
+{% autoescape off %}{{ recipient.get_full_name|default:recipient.get_username }},
+
+{{ message }}
+{% if link %}
+{{ link }}
+{% endif %}
+--
+{{ kind_label }} · PWMS — Parliament Workflow Management System
+This is an automated message; please do not reply.
+{% endautoescape %}

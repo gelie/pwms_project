@@ -545,6 +545,88 @@ html:not([data-theme]) .theme-toggle .theme-icon-when-auto {
     display: inline-flex;
 }
 
+/* Alert bell — the placeholder bell in the auth cluster, now the real control.
+   The unread count is only rendered when there is something to read
+   (see templates/navbar.html and pwms.notifications.context). */
+.alerts-toggle {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    background: none;
+    border: 0;
+    padding: 0 0.75rem;
+    color: #fff;
+    cursor: pointer;
+    border-right: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.alerts-toggle:hover {
+    /* Matches #desktop-nav .theme-toggle:hover. */
+    background-color: var(--theme-green);
+    color: #fff;
+}
+
+.alerts-badge {
+    position: absolute;
+    top: 0.1rem;
+    right: 0.2rem;
+    min-width: 1.1rem;
+    padding: 0 0.25rem;
+    border-radius: 999px;
+    background-color: var(--theme-yellow);
+    color: #000;
+    font-size: 0.7rem;
+    font-weight: 700;
+    line-height: 1.1rem;
+    text-align: center;
+}
+
+.alerts-menu {
+    /* Wide enough for a subject, and it scrolls instead of stretching the bar
+       when several alerts arrive together. */
+    width: 22rem;
+    max-width: 90vw;
+    max-height: 24rem;
+    overflow-y: auto;
+}
+
+.alerts-menu-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    font-weight: 600;
+}
+
+/* Subjects are a sentence, not a label, so they wrap. */
+.alerts-item {
+    white-space: normal;
+}
+
+.alerts-item-subject {
+    display: block;
+}
+
+.alerts-item-meta {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--bs-secondary-color);
+}
+
+/* An unread marker on both the menu and the full page, so the badge count is
+   explainable at a glance. */
+.alerts-item--unread,
+.alert-unread {
+    border-left: 3px solid var(--theme-yellow);
+}
+
+.alerts-item--unread .alerts-item-subject {
+    font-weight: 600;
+}
+
 /* All-groups table: indent each group by its depth in the MPTT hierarchy. */
 .group-name[data-level="1"] {
     padding-left: 1rem;

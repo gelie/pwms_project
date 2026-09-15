@@ -15,6 +15,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
+from django.views.decorators.http import require_POST
 
 from .forms import (
     BillForm,
@@ -37,11 +38,13 @@ from .models import (
     Group,
     InternationalAgreement,
     InternationalResolution,
+    Notification,
     TransitionLog,
     User,
     WorkflowReferral,
     WorkflowType,
 )
+from .notifications import notify_workflow_created
 from .services.permissions import (
     DELETE,
     EDIT,
@@ -239,16 +242,8 @@ _WORKFLOW_MODELS = (
 
 
 def _workflow_identifier(instance):
-    """The human-facing identifier this workflow carries, if any.
-
-    Concrete types number their instances differently, so this reaches for
-    whichever field the instance actually has rather than assuming one.
-    """
-    for field in ("reference_number", "resolution_number", "bill_number"):
-        value = getattr(instance, field, "")
-        if value:
-            return value
-    return ""
+    """The human-facing identifier this workflow carries ("" when it has none)."""
+    return instance.identifier
 
 
 def _workflow_search_text(instance):
@@ -570,6 +565,7 @@ def delegation_report_create(request):
             messages.success(
                 request, f'Delegation report "{report.reference_number}" created.'
             )
+            notify_workflow_created(report, actor=request.user)
             return redirect("pwms:delegation_report_detail", public_id=report.public_id)
     else:
         if not _can_create_form_type(request.user, DelegationReportForm):
@@ -717,6 +713,7 @@ def international_resolution_create(request):
                 request,
                 f'International resolution "{resolution.resolution_number}" created.',
             )
+            notify_workflow_created(resolution, actor=request.user)
             return redirect(
                 "pwms:international_resolution_detail",
                 public_id=resolution.public_id,
@@ -864,6 +861,7 @@ def international_agreement_create(request):
                 request,
                 f'International agreement "{agreement.reference_number}" created.',
             )
+            notify_workflow_created(agreement, actor=request.user)
             return redirect(
                 "pwms:international_agreement_detail",
                 public_id=agreement.public_id,
@@ -1006,6 +1004,7 @@ def bill_create(request):
         if form.is_valid():
             bill = form.save()
             messages.success(request, f'Bill "{bill.bill_number}" created.')
+            notify_workflow_created(bill, actor=request.user)
             return redirect("pwms:bill_detail", public_id=bill.public_id)
     else:
         if not _can_create_form_type(request.user, BillForm):
@@ -1120,6 +1119,47 @@ def about(request):
 def contact(request):
     """Contact page (sign-in required)."""
     return render(request, "pwms/contact.html")
+
+
+# -- alerts -----------------------------------------------------------------
+#: Alerts listed on the alerts page (the bell menu shows the newest few).
+ALERT_PAGE_SIZE = 25
+
+
+def notifications(request):
+    """Every in-app alert for the signed-in user, newest first."""
+    inbox = Notification.objects.filter(
+        recipient=request.user, channel="in_app"
+    ).select_related("actor")
+    return render(
+        request,
+        "pwms/notifications.html",
+        {
+            "alerts": inbox[:ALERT_PAGE_SIZE],
+            "alert_total": inbox.count(),
+            "unread_count": inbox.filter(read_at__isnull=True).count(),
+        },
+    )
+
+
+def notification_open(request, public_id):
+    """Open an alert's subject: mark it read, then follow its link."""
+    alert = get_object_or_404(Notification, public_id=public_id, recipient=request.user)
+    alert.mark_read()
+    # Alerts without a target (e.g. an account-level notice) just mark themselves
+    # read and leave the reader on the list.
+    return redirect(alert.url or "pwms:notifications")
+
+
+@require_POST
+def notifications_read_all(request):
+    """Mark every unread alert read. POST-only: reading is a state change."""
+    updated = request.user.notifications.filter(
+        channel="in_app", read_at__isnull=True
+    ).update(read_at=timezone.now())
+    if updated:
+        messages.success(request, f"Marked {updated} alert(s) as read.")
+    return redirect("pwms:notifications")
 
 
 class LoginForm(AuthenticationForm):

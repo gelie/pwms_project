@@ -147,20 +147,22 @@ type or date are reported and skipped, and the command ends with a summary.
 
 ### Referral deadline reminders
 
-`check_referral_deadlines` emails reminders for open `WorkflowReferral` rows and
-closes the ones nobody answered:
+`check_referral_deadlines` dispatches reminders for open `WorkflowReferral` rows
+and closes the ones nobody answered:
 
 | Window | Action |
 | --- | --- |
-| due within 24 hours, not yet reminded | email the referred group's active members and the workflow owner, then stamp `deadline_notified_at` |
+| due within 24 hours, not yet reminded | alert the referred group's active members and the people the record names (owner, assignee), then stamp `deadline_notified_at` |
 | due within 1 hour, already reminded | send the final reminder (no second stamp) |
-| due date passed | `mark_expired()` the referral (emits `referral-expired`) and email the parties |
+| due date passed | `mark_expired()` the referral (emits `referral-expired`) and alert the parties |
 
 Only `status="open"` referrals are considered, so an answered or recalled one is
-left alone. `--dry-run` reports what would be sent or expired without sending
-mail or writing anything. Mail is sent inline through `MAILERS`; the planned
-Notification model (see [Roadmap](./Roadmap%20&%20Planned%20Integrations.md))
-will move those sends to background tasks.
+left alone. Reminders go through `pwms.notifications` and are logged as
+`referral-deadline` alerts (an `in_app` row and an `email` row per recipient);
+the expiry alert is raised by `WorkflowReferral.mark_expired()` and is not sent
+by the command. Mail is one message per recipient, so no recipient sees another's
+address. `--dry-run` reports what would be sent or expired without sending mail
+or writing anything.
 
 ## Maintenance & inspection
 

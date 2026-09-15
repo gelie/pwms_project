@@ -113,6 +113,8 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 # Powers the dynamic "Create a workflow" nav menu (creatable types).
                 "pwms.navigation.navigation",
+                # Unread count + recent alerts for the bell in the site chrome.
+                "pwms.notifications.alerts",
             ],
             "builtins": ["lucide.templatetags.lucide"],
         },
@@ -192,11 +194,20 @@ DJANGO_FLATPICKR = {
 # Email
 # https://docs.djangoproject.com/en/6.1/topics/email/#topic-email-configuration
 
+# Development delivery: outbound alerts are printed to the console rather than
+# sent (see pwms.notifications). Swapping in the SMTP backend is the only change
+# needed to start delivering them for real.
 MAILERS = {
     "default": {
         "BACKEND": "django.core.mail.backends.console.EmailBackend",
     },
 }
+
+# Sender for outbound alerts, and the base URL used to make the links in those
+# alerts absolute (the in-app bell uses site-relative paths). Both default to
+# values that suit a local runserver.
+DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="noreply@parliament.gov.za")
+PWMS_BASE_URL = config("PWMS_BASE_URL", default="http://localhost:8000")
 
 # For Production Server
 # EMAIL_BACKEND = config(
