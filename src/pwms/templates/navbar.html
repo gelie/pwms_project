@@ -79,9 +79,16 @@
                    data-bs-toggle="dropdown"
                    aria-expanded="false">Reports</a>
                 <ul class="dropdown-menu">
-                  <li><a class="dropdown-item" href="{% url "pwms:reports" %}">Action</a></li>
-                  <li><a class="dropdown-item" href="#">Another action</a></li>
-                  <li><a class="dropdown-item" href="#">Something else here</a></li>
+                  <li><a class="dropdown-item" href="{% url "pwms:reports" %}">Report builder</a></li>
+                  <li>
+                    <a class="dropdown-item" href="{% url "pwms:reports" %}?report_type=workflows">Workflow register</a>
+                  </li>
+                  <li>
+                    <a class="dropdown-item" href="{% url "pwms:reports" %}?report_type=activity">Activity &amp; audit trail</a>
+                  </li>
+                  <li>
+                    <a class="dropdown-item" href="{% url "pwms:reports" %}?report_type=referrals">Referrals</a>
+                  </li>
                 </ul>
               </li>
               <li class="nav-item">
@@ -117,7 +124,7 @@
                 </span>
               {% endif %}
               {% if user.is_authenticated %}
-                <div class="dropdown alerts-wrap auth-item">
+                <div class="dropdown alerts-wrap auth-item d-flex">
                   <button type="button"
                           class="alerts-toggle"
                           data-bs-toggle="dropdown"

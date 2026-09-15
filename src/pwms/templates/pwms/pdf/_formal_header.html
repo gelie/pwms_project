@@ -1,0 +1,11 @@
+{% comment %}
+  The masthead every formal document opens with: the Parliament wordmark (an
+  embedded data URI, so nothing is fetched), the system name and the document's
+  title and subtitle.
+{% endcomment %}
+<div class="header">
+  {% if logo_url %}<img src="{{ logo_url }}" alt="" height="42">{% endif %}
+  <div class="system-name">Parliament Workflow Management System</div>
+  <h1>{{ document_title }}</h1>
+  {% if document_subtitle %}<div class="subtitle">{{ document_subtitle }}</div>{% endif %}
+</div>

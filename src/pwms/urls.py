@@ -8,6 +8,13 @@ urlpatterns = [
     path("", views.index, name="home"),
     path("dashboard/", views.dashboard, name="dashboard"),
     path("workflows/", views.workflows, name="workflows"),
+    # One instrument as a formal, filed-style document (PDF or HTML). Keyed by
+    # public id rather than by type, so every instrument shares one route.
+    path(
+        "instruments/<uuid:public_id>/document/",
+        views.workflow_document,
+        name="workflow_document",
+    ),
     # Delegation reports
     path(
         "workflows/delegation-reports/",
@@ -174,7 +181,17 @@ urlpatterns = [
         views.notification_open,
         name="notification_open",
     ),
+    # Reports: the builder page, the HTMX preview it swaps in, the export
+    # stream and the share flow (mint a link, then the read-only shared view).
     path("reports/", views.reports, name="reports"),
+    path("reports/preview/", views.reports_preview, name="reports_preview"),
+    path("reports/export/", views.reports_export, name="reports_export"),
+    path("reports/share/", views.reports_share, name="reports_share"),
+    path(
+        "reports/shared/<str:token>/",
+        views.report_shared,
+        name="report_shared",
+    ),
     path("about/", views.about, name="about"),
     path("contact/", views.contact, name="contact"),
     path("login/", views.LoginView.as_view(), name="login"),

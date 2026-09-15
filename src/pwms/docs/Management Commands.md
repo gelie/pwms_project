@@ -13,9 +13,10 @@ All commands live in `pwms/management/commands/` and run as:
 > They are marked **legacy** below.
 >
 > The reworked Oracle sync suite (`sync_groups_oracle`, `sync_roles_oracle`,
-> `sync_users_oracle`), `populate_sites`, `check_referral_deadlines` and
-> `show_workflow_hierarchy` import `pwms.models` directly and run cleanly; the
-> `legacy` / `pending repoint` statuses below apply to the rest.
+> `sync_users_oracle`), `populate_sites`, `check_referral_deadlines`,
+> `send_scheduled_report_shares` and `show_workflow_hierarchy` import
+> `pwms.models` directly and run cleanly; the `legacy` / `pending repoint`
+> statuses below apply to the rest.
 
 ## Synchronisation (Oracle / legacy source)
 
@@ -141,6 +142,7 @@ type or date are reported and skipped, and the command ends with a summary.
 | --- | --- | --- |
 | `check_delegation_expirations` | detect expiring delegations/memberships | pending repoint |
 | `check_referral_deadlines` | warn when a referral deadline is approaching, and expire referrals past it | ✅ live — see below |
+| `send_scheduled_report_shares` | email due scheduled report shares and advance their schedules | ✅ live — see below |
 | `notify_deadlines` | dispatch deadline notifications (optionally scoped by workflow id) | pending repoint |
 | `send_overdue_alerts` | send overdue-workflow alerts / emails | pending repoint |
 | `update_event_statuses` | recompute/refresh statuses of events or instances | pending repoint |
@@ -163,6 +165,31 @@ the expiry alert is raised by `WorkflowReferral.mark_expired()` and is not sent
 by the command. Mail is one message per recipient, so no recipient sees another's
 address. `--dry-run` reports what would be sent or expired without sending mail
 or writing anything.
+
+### Scheduled report shares
+
+`send_scheduled_report_shares` drains the shares a reader made repeat from the
+reports page (daily, weekly or monthly). It emails each due share — the link,
+plus the rendered document when the share names one — and moves its
+`next_send_at` on by one interval.
+
+| Option | Effect |
+| --- | --- |
+| `--dry-run` | list the shares that are due without emailing or advancing anything |
+| `--queue` | queue the repeating background task instead of running once (see below) |
+
+Two ways to run it, both calling the same service:
+
+* **periodically** — from cron / systemd / a beat-style runner, like
+  `check_referral_deadlines`;
+* **as a background task** — `--queue` registers one repeating
+  `django-background-tasks` task (`pwms.tasks.deliver_scheduled_report_shares`,
+  hourly) that `manage.py process_tasks` then keeps draining.
+
+A send that fails does not stall the batch: the reason is recorded on the share
+(`last_error`) and logged, and the schedule still advances, so a broken address
+is retried at the next interval rather than on every run. Revoking or expiring a
+share takes it out of the queue immediately.
 
 ## Maintenance & inspection
 
@@ -203,11 +230,167 @@ uses each instance's `parent_workflow` / `sub_workflows` helpers.
 
 Rows are colour-coded by status: overdue first, then `urgent` / `high` priority.
 
+## Background tasks (the queue worker)
+
+Two jobs run through `django-background-tasks` rather than inline, so
+**`manage.py process_tasks` has to be running** for them to happen:
+
+| Task | Queued by | What it does |
+| --- | --- | --- |
+| `pwms.tasks.deliver_notification_email` | `pwms.notifications.dispatch.queue_email()`, inside the transaction that wrote the alert row | delivers one alert email, retrying a transient failure (`MAX_ATTEMPTS` + backoff) |
+| `pwms.tasks.deliver_scheduled_report_shares` | `send_scheduled_report_shares --queue`, once | repeating drain for scheduled report shares |
+
+`pwms/tasks.py` is the module the worker discovers — `process_tasks` imports
+`<installed app>.tasks` — and it is the only place that knows the queue exists:
+the work itself lives in the owning module, so the same code runs from a request,
+a command or a test. Queueing happens **inside** the caller's transaction, so a
+task commits with the row it acts on, and rolls back with it.
+
+### Running the worker under systemd
+
+One long-running service is all it takes. Adjust the paths to your checkout; this
+assumes the repo at `/srv/pwms`, so `.env`, `manage.py`, `.venv/`, `logs/` and
+`media/` all sit there as the README describes.
+
+`/etc/systemd/system/pwms-worker.service`:
+
+```ini
+[Unit]
+Description=PWMS background task worker (django-background-tasks)
+Documentation=file:///srv/pwms/src/pwms/docs/Management%20Commands.md
+# Drop `postgresql.service` if the database is not on this host.
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pwms
+Group=pwms
+WorkingDirectory=/srv/pwms
+
+# Unbuffered output, so `journalctl -u pwms-worker -f` is actually live.
+Environment=PYTHONUNBUFFERED=1
+
+# `--sleep` is the poll interval used when the queue is empty (default 5s).
+ExecStart=/srv/pwms/.venv/bin/python /srv/pwms/manage.py process_tasks --sleep 5
+
+Restart=always
+RestartSec=10
+
+# A task may be mid-flight when the service stops.
+TimeoutStopSec=90
+
+# Hardening: the worker needs its own checkout and the network, nothing else.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Install and start it:
+
+```bash
+sudo useradd --system --shell /usr/sbin/nologin pwms
+sudo chown -R pwms:pwms /srv/pwms/logs /srv/pwms/media
+# The worker reads its secrets from the repo's .env (python-decouple), so the
+# service account has to be able to read it — and nobody else.
+sudo chown pwms:pwms /srv/pwms/.env
+sudo chmod 600 /srv/pwms/.env
+sudo -u pwms /srv/pwms/.venv/bin/python /srv/pwms/manage.py check   # smoke test
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now pwms-worker
+systemctl status pwms-worker
+journalctl -u pwms-worker -f       # the worker's own output
+```
+
+What you need to know before copying that:
+
+- **The service account needs three things:** read access to the checkout (and to
+  the `.env` beside it), write access to `logs/` (the `LOGGING` file handler) and
+  to `media/` (user uploads). Everything else can stay root-owned and read-only.
+- **Do not pass `--dev`** outside development — it turns on the autoreloader.
+  `--duration` (default `0`, meaning "run forever") and `--queue` (serve one named
+  queue) are the other knobs.
+- **One service is enough.** With the `BACKGROUND_TASK_RUN_ASYNC = True` and
+  `BACKGROUND_TASK_ASYNC_THREADS = 4` settings this project ships, a single worker
+  runs several tasks at once. A second service is *also* safe: a worker claims a
+  task with a conditional `UPDATE`, so two of them cannot run the same row.
+- **Deploying outside `/srv`** (under `/home`, say) means dropping
+  `ProtectHome=true`. Tightening to `ProtectSystem=strict` means adding
+  `ReadWritePaths=/srv/pwms/logs /srv/pwms/media`.
+- **Stopping it.** django-background-tasks wires its "stop after the current task"
+  flag to `SIGTSTP` only — not to `SIGTERM` — so systemd's default signal ends the
+  process where it stands. That is safe, not merely tolerable: a task killed
+  mid-flight keeps its lock, and the library offers it to the next worker once the
+  lock is older than `MAX_RUN_TIME` (an hour by default). The alert row is still
+  `pending`, so nothing is lost; `deliver_email()` only acts on a `pending` row,
+  so nothing is sent twice. To have the worker finish the task in hand instead,
+  opt into the library's flag:
+
+  ```ini
+  KillSignal=SIGTSTP
+  ```
+
+  (`SIGTSTP` normally *suspends*; the library overrides it with a handler that
+  just raises the flag, so the process exits after its current task. Keep
+  `TimeoutStopSec` generous enough for the longest task.)
+
+### Periodic commands (systemd timer)
+
+The queue is not the only clock PWMS runs on: `check_referral_deadlines` above is
+a cron-style job that must run on a schedule and is **not** queued (scheduled
+report shares are — they are a task, so the worker drains those). A systemd timer
+beats a crontab here: its output lands in the journal beside everything else, and
+`Persistent=true` catches up a run missed while the host was down.
+
+The reminders it raises *are* alert email, so the worker still has to be running to
+send them.
+
+`/etc/systemd/system/pwms-referral-check.service`:
+
+```ini
+[Unit]
+Description=Check PWMS referral deadlines
+Documentation=file:///srv/pwms/src/pwms/docs/Management%20Commands.md
+After=network-online.target postgresql.service
+
+[Service]
+Type=oneshot
+User=pwms
+Group=pwms
+WorkingDirectory=/srv/pwms
+ExecStart=/srv/pwms/.venv/bin/python /srv/pwms/manage.py check_referral_deadlines
+```
+
+`/etc/systemd/system/pwms-referral-check.timer`:
+
+```ini
+[Unit]
+Description=Run the PWMS referral deadline check hourly
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now pwms-referral-check.timer
+systemctl list-timers pwms-referral-check.timer
+```
+
 ## Roadmap hooks
 
-New automation (email/notifications/SharePoint) will likely arrive as **new**
-commands plus **background-task** jobs (`django-background-tasks` is already
-installed). When you add one:
+New automation (email/notifications/SharePoint) arrives as **new** commands plus
+**background-task** jobs in `pwms/tasks.py`. When you add one:
 
 - name it for the job it does (do **not** call it `test.py` — that shadows
   Django’s built-in `test` command);

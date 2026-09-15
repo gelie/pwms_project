@@ -18,7 +18,7 @@
 | `django.contrib.*` | admin, auth, sessions, messages, contenttypes, staticfiles |
 | `django-auth-ldap` (+ `python-ldap`) | Active Directory sign-in; `pwms.backends.GracefulLDAPBackend` maps an authenticated AD account onto its existing ERP user |
 | `django-auditlog` | automatic CRUD audit trail (`LogEntry`); middleware captures the acting user |
-| `django-background-tasks` | async background task queue (deadline/notification jobs) |
+| `django-background-tasks` | async background task queue; `pwms/tasks.py` registers alert-email delivery and the scheduled-report drain, served by `manage.py process_tasks` |
 | `django-mptt` | hierarchical `Group` trees (Houses → Committees → …) |
 | `django-bootstrap5`, `lucide` | server-rendered UI components |
 | `django-htmx` | progressive enhancement / partial-page updates |

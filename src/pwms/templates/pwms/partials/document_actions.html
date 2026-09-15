@@ -1,0 +1,21 @@
+{% comment %}
+  The "Document" menu shared by every workflow detail page: the instrument as a
+  formal, filed-style PDF or as a standalone web page (see
+  pwms.reporting.instruments). Include with `object=<the workflow instance>`.
+{% endcomment %}
+<div class="dropdown">
+  <button class="btn btn-sm btn-outline-secondary dropdown-toggle"
+          type="button"
+          data-bs-toggle="dropdown"
+          aria-expanded="false">{% lucide "file-text" size=16 %} Document</button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    <li>
+      <a class="dropdown-item"
+         href="{% url "pwms:workflow_document" object.public_id %}?format=pdf">PDF (.pdf)</a>
+    </li>
+    <li>
+      <a class="dropdown-item"
+         href="{% url "pwms:workflow_document" object.public_id %}?format=html">Web page (.html)</a>
+    </li>
+  </ul>
+</div>

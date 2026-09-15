@@ -23,6 +23,7 @@ from .models import (
     InternationalAgreement,
     InternationalResolution,
     Notification,
+    ReportShare,
     Role,
     SharepointDrive,
     SharepointFolder,
@@ -1128,3 +1129,49 @@ class NotificationAdmin(admin.ModelAdmin):
     def has_add_permission(self, request):
         # Raised by workflow activity, never typed in.
         return False
+
+
+@admin.register(ReportShare)
+class ReportShareAdmin(admin.ModelAdmin):
+    """Read-mostly view of shared report links, plus a revoke action.
+
+    A share is a standing grant of access to one report's figures, so the row
+    records what was handed out and to whom. Nothing is editable — falsifying an
+    expiry or a recipient list would misrepresent that record — but a link can
+    be cut off, which is the one write an administrator actually needs.
+    """
+
+    list_display = (
+        "created_at",
+        "title",
+        "created_by",
+        "active",
+        "access_count",
+        "expires_at",
+    )
+    list_filter = ("created_at", "expires_at", "revoked_at")
+    search_fields = ("title", "recipients", "created_by__username")
+    raw_id_fields = ("created_by",)
+    date_hierarchy = "created_at"
+    ordering = ("-created_at",)
+    actions = ("revoke_shares",)
+
+    @admin.display(boolean=True, description="Active")
+    def active(self, obj):
+        return obj.is_active
+
+    def get_readonly_fields(self, request, obj=None):
+        """A share is a record of what was handed out: nothing is editable."""
+        return [field.name for field in self.model._meta.fields]
+
+    def has_add_permission(self, request):
+        # Minted from the reports page, never typed in.
+        return False
+
+    @admin.action(description="Revoke selected report links")
+    def revoke_shares(self, request, queryset):
+        revoked = 0
+        for share in queryset.filter(revoked_at__isnull=True):
+            share.revoke()
+            revoked += 1
+        self.message_user(request, f"Revoked {revoked} report link(s).")

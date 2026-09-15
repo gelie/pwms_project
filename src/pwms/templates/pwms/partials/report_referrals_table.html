@@ -1,0 +1,60 @@
+{% comment %}
+  Referrals raised on the matching workflows, newest first.
+{% endcomment %}
+<div class="card mb-4">
+  <div class="card-header d-flex align-items-center justify-content-between gap-2">
+    <span class="d-flex align-items-center gap-2">{% lucide "inbox" size=16 %} Referrals</span>
+    <span class="badge text-bg-light">{{ report.referrals|length }}</span>
+  </div>
+  <div class="table-responsive">
+    <table class="table table-striped table-hover align-middle mb-0">
+      <caption class="visually-hidden">Referrals on the matching workflows</caption>
+      <thead>
+        <tr>
+          <th scope="col">Workflow</th>
+          <th scope="col">Referred to</th>
+          <th scope="col">Referred by</th>
+          <th scope="col">Status</th>
+          <th scope="col">Raised</th>
+          <th scope="col">Due</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in report.referrals|slice:":25" %}
+          <tr>
+            <td>
+              {% if row.url %}
+                <a href="{{ row.url }}">{{ row.workflow.title }}</a>
+              {% else %}
+                {{ row.workflow.title }}
+              {% endif %}
+            </td>
+            <td>{{ row.referred_to }}</td>
+            <td>{{ row.referred_by|default:"—" }}</td>
+            <td>
+              <span class="badge {% if row.status_value == "open" %}text-bg-primary{% elif row.status_value == "responded" %}text-bg-success{% elif row.status_value == "expired" %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
+                {{ row.status }}
+              </span>
+              {% if row.is_overdue %}
+                <span class="badge text-bg-danger">Overdue</span>
+              {% endif %}
+            </td>
+            <td class="text-nowrap">{{ row.referred_at|date:"Y-m-d" }}</td>
+            <td class="text-nowrap">{{ row.due_date|date:"Y-m-d"|default:"—" }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="6" class="text-center text-body-secondary py-4">
+              No referrals on these workflows.
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if report.referrals|length > 25 %}
+    <div class="card-footer text-body-secondary small">
+      Showing the 25 most recent of {{ report.referrals|length }} referrals.
+    </div>
+  {% endif %}
+</div>

@@ -1,0 +1,193 @@
+{% comment %}
+  Shared skeleton for every formal document PWMS renders to PDF or HTML: the A4
+  page, the Parliament wordmark and the CSS the documents are built from.
+
+  Concrete documents extend this and fill `preamble` and `document`. It is
+  deliberately self-contained — inline CSS, the logo embedded as a data URI
+  (see `pwms.reporting.exports.logo_data_uri`) — so a downloaded file stands on
+  its own and WeasyPrint never fetches anything over the network.
+{% endcomment %}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ document_title }}{% endblock title %}</title>
+    <style>
+      @page {
+        size: A4 landscape;
+        margin: 1.4cm;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: Helvetica, Arial, sans-serif;
+        font-size: 10pt;
+        line-height: 1.4;
+        color: #333;
+      }
+
+      .header {
+        border-bottom: 4px solid #275937;
+        padding-bottom: 12px;
+        margin-bottom: 18px;
+      }
+
+      .header .system-name {
+        font-size: 11pt;
+        color: #666;
+        font-style: italic;
+      }
+
+      .header h1 {
+        margin: 4px 0 0;
+        font-size: 22pt;
+        color: #275937;
+      }
+
+      .header .subtitle {
+        margin-top: 4px;
+        font-size: 11pt;
+        color: #444;
+      }
+
+      .metadata,
+      .filters {
+        font-size: 9pt;
+        color: #444;
+        margin-bottom: 12px;
+      }
+
+      .metadata strong,
+      .filters strong {
+        color: #275937;
+      }
+
+      .filters {
+        padding: 8px 10px;
+        background-color: #f3f4f6;
+        border-left: 3px solid #275937;
+      }
+
+      .section {
+        margin-bottom: 22px;
+      }
+
+      h2 {
+        font-size: 13pt;
+        color: #275937;
+        margin: 0 0 8px;
+        padding-bottom: 4px;
+        border-bottom: 1px solid #d0d0d0;
+        page-break-after: avoid;
+      }
+
+      h3 {
+        font-size: 11pt;
+        color: #275937;
+        margin: 14px 0 6px;
+        page-break-after: avoid;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        page-break-inside: auto;
+      }
+
+      th,
+      td {
+        padding: 5px 6px;
+        border: 1px solid #ccc;
+        text-align: left;
+        vertical-align: top;
+        font-size: 8.5pt;
+      }
+
+      th {
+        background-color: #275937;
+        color: #ffffff;
+        font-weight: bold;
+      }
+
+      tbody tr:nth-child(even) {
+        background-color: #f5f6f7;
+      }
+
+      tr {
+        page-break-inside: avoid;
+      }
+
+      thead {
+        display: table-header-group;
+      }
+
+      .num {
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+
+      .overdue {
+        color: #b42318;
+        font-weight: bold;
+      }
+
+      .closed {
+        color: #067647;
+      }
+
+      .empty {
+        text-align: center;
+        color: #888;
+        font-style: italic;
+        padding: 12px;
+      }
+
+      /* Label/value tables (the "facts" of one instrument). */
+      table.fields th {
+        width: 30%;
+        background-color: #eef2ef;
+        color: #275937;
+        font-weight: bold;
+      }
+
+      .note {
+        margin: 0;
+        padding: 8px 10px;
+        background-color: #f8f9fa;
+        border-left: 3px solid #275937;
+        font-size: 9pt;
+        white-space: pre-line;
+      }
+
+      .pill {
+        display: inline-block;
+        padding: 2px 6px;
+        border: 1px solid #275937;
+        border-radius: 3px;
+        font-size: 8pt;
+      }
+
+      .footer {
+        margin-top: 24px;
+        padding-top: 10px;
+        border-top: 1px solid #d0d0d0;
+        font-size: 8pt;
+        color: #666;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    {% include "pwms/pdf/_formal_header.html" %}
+    {% block preamble %}{% endblock preamble %}
+    {% block document %}{% endblock document %}
+    <div class="footer">
+      Parliament Workflow Management System · {% block footer_note %}generated {{ generated_on|date:"F d, Y H:i" }}{% endblock footer_note %}
+    </div>
+  </body>
+</html>

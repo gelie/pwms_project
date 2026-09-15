@@ -24,6 +24,7 @@
         <span class="badge text-bg-danger">{{ bill.overdue_identifier }}</span>
       {% endif %}
       <span class="badge text-bg-secondary">{{ bill.get_priority_display }} priority</span>
+      {% include "pwms/partials/document_actions.html" with object=bill %}
       {% if perms.edit %}
         <a class="btn btn-sm btn-outline-secondary"
            href="{% url "pwms:bill_update" bill.public_id %}">

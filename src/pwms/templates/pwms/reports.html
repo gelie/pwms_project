@@ -1,33 +1,185 @@
 {% extends "base.html" %}
-{% block title %}About{% endblock title %}
+{% load static %}
+{% block title %}Reports{% endblock title %}
+{% block extra_head %}
+  <script src="{% static "js/report-share.js" %}" defer></script>
+{% endblock extra_head %}
 {% block content %}
-  <h1>About Us</h1>
-  <p>
-    PWMS is a lightweight property and warehouse management system built to keep
-    your records accurate, your teams aligned, and your day-to-day operations simple.
-  </p>
-  <h2>What We Do</h2>
-  <p>
-    We provide a single place to track inventory, manage properties, and monitor
-    the movement of goods. Instead of juggling spreadsheets and paper logs, you get
-    a clear, up-to-date view of everything that matters.
-  </p>
-  <h2>Our Mission</h2>
-  <p>
-    Our mission is to make management software that stays out of your way. It should
-    be fast to set up, easy to learn, and reliable enough to trust with your most
-    important data.
-  </p>
-  <h2>What You Can Expect</h2>
-  <ul>
-    <li>Simple, intuitive screens with no unnecessary clutter</li>
-    <li>Accurate, searchable records available whenever you need them</li>
-    <li>Clear reporting so you can make informed decisions</li>
-    <li>Ongoing support and regular improvements</li>
-  </ul>
-  <h2>Get In Touch</h2>
-  <p>
-    Have a question, a suggestion, or need a hand getting started?
-    <a href="{% url 'pwms:contact' %}">Contact us</a> and we will get back to you shortly.
-  </p>
+  <div class="page-header dashboard-hero rounded mb-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+      <div>
+        <h1 class="mb-1">Reports</h1>
+        <p class="dashboard-hero-sub mb-0">
+          Filter the workflows you can access, preview the result, then export or
+          share it. Every figure is scoped to your own access.
+        </p>
+      </div>
+    </div>
+  </div>
+  {% comment %}
+    The form degrades to a normal GET submit (no JS) and is upgraded by HTMX to
+    swap just the preview. Filters also re-run on change so the page keeps up
+    with the reader.
+  {% endcomment %}
+  <form id="report-filters"
+        class="card card-body mb-4"
+        method="get"
+        action="{% url "pwms:reports" %}"
+        hx-get="{% url "pwms:reports_preview" %}"
+        hx-target="#report-preview"
+        hx-swap="outerHTML"
+        hx-trigger="submit, change delay:300ms"
+        hx-indicator="#report-preview-loading">
+    <div class="row g-3">
+      <div class="col-12 col-lg-3">
+        <label class="form-label" for="report-type">Report</label>
+        <select class="form-select" id="report-type" name="report_type">
+          {% for value, label in report_types %}
+            <option value="{{ value }}"
+                    {% if filters.report_type == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-lg-5">
+        <label class="form-label" for="report-search">Search</label>
+        <input class="form-control"
+               id="report-search"
+               type="search"
+               name="q"
+               value="{{ filters.q }}"
+               placeholder="Title, reference or owner">
+      </div>
+      <div class="col-6 col-lg-2">
+        <label class="form-label" for="report-priority">Priority</label>
+        <select class="form-select" id="report-priority" name="priority">
+          <option value="">Any priority</option>
+          {% for option in options.priorities %}
+            <option value="{{ option.value }}"
+                    {% if filters.priority == option.value %}selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-lg-2">
+        <label class="form-label" for="report-sort">Sort by</label>
+        <select class="form-select" id="report-sort" name="sort">
+          {% for value, label in sort_choices %}
+            <option value="{{ value }}"
+                    {% if filters.sort == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-6 col-lg-3">
+        <label class="form-label" for="report-type-filter">Workflow type</label>
+        <select class="form-select" id="report-type-filter" name="type">
+          <option value="">All types</option>
+          {% for option in options.types %}
+            <option value="{{ option.value }}"
+                    {% if filters.type_id == option.value %}selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-6 col-lg-3">
+        <label class="form-label" for="report-state">State</label>
+        <select class="form-select" id="report-state" name="state">
+          <option value="">Any state</option>
+          {% for option in options.states %}
+            <option value="{{ option.value }}"
+                    {% if filters.state_id == option.value %}selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-6 col-lg-3">
+        <label class="form-label" for="report-owner">Owner</label>
+        <select class="form-select" id="report-owner" name="owner">
+          <option value="">Any owner</option>
+          {% for option in options.owners %}
+            <option value="{{ option.value }}"
+                    {% if filters.owner_id == option.value %}selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-6 col-lg-3">
+        <label class="form-label" for="report-group">Group</label>
+        <select class="form-select" id="report-group" name="group">
+          <option value="">Any group</option>
+          {% for option in options.groups %}
+            <option value="{{ option.value }}"
+                    {% if filters.group_id == option.value %}selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2">
+        <label class="form-label" for="report-period">Period</label>
+        <select class="form-select" id="report-period" name="period">
+          {% for value, label in period_choices %}
+            <option value="{{ value }}"
+                    {% if filters.period == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2">
+        <label class="form-label" for="report-date-field">Date field</label>
+        <select class="form-select" id="report-date-field" name="date_field">
+          {% for value, label in date_field_choices %}
+            <option value="{{ value }}"
+                    {% if filters.date_field == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-4 col-lg-2">
+        <label class="form-label" for="report-date-from">From</label>
+        <input class="form-control"
+               id="report-date-from"
+               type="date"
+               name="date_from"
+               value="{{ filters.date_from }}">
+      </div>
+      <div class="col-6 col-md-4 col-lg-2">
+        <label class="form-label" for="report-date-to">To</label>
+        <input class="form-control"
+               id="report-date-to"
+               type="date"
+               name="date_to"
+               value="{{ filters.date_to }}">
+      </div>
+      <div class="col-12 col-md-8 col-lg-4 d-flex flex-wrap align-items-end gap-3">
+        <div class="form-check">
+          <input class="form-check-input"
+                 type="checkbox"
+                 id="report-overdue"
+                 name="overdue_only"
+                 value="1"
+                 {% if filters.overdue_only %}checked{% endif %}>
+          <label class="form-check-label" for="report-overdue">Overdue only</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input"
+                 type="checkbox"
+                 id="report-due-soon"
+                 name="due_soon"
+                 value="1"
+                 {% if filters.due_soon %}checked{% endif %}>
+          <label class="form-check-label" for="report-due-soon">Due soon</label>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input"
+                 type="checkbox"
+                 id="report-unassigned"
+                 name="unassigned_only"
+                 value="1"
+                 {% if filters.unassigned_only %}checked{% endif %}>
+          <label class="form-check-label" for="report-unassigned">Unassigned only</label>
+        </div>
+      </div>
+    </div>
+    <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+      <button class="btn btn-primary" type="submit">{% lucide "search" size=16 %} Run report</button>
+      <a class="btn btn-link" href="{% url "pwms:reports" %}">Reset</a>
+      <span id="report-preview-loading" class="htmx-indicator text-body-secondary small">
+        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+        Building report…
+      </span>
+    </div>
+  </form>
+  {% include "pwms/partials/report_preview.html" %}
 {% endblock content %}

@@ -23,6 +23,7 @@
         <span class="badge text-bg-danger">{{ agreement.overdue_identifier }}</span>
       {% endif %}
       <span class="badge text-bg-secondary">{{ agreement.get_priority_display }} priority</span>
+      {% include "pwms/partials/document_actions.html" with object=agreement %}
       {% if perms.edit %}
         <a class="btn btn-sm btn-outline-secondary"
            href="{% url "pwms:international_agreement_update" agreement.public_id %}">

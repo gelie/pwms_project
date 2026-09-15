@@ -2,26 +2,32 @@
 
 from .context import alerts
 from .dispatch import (
+    NotificationDeliveryError,
     alert,
     deliver_email,
+    max_attempts,
     notify_referral_closed,
     notify_referral_created,
     notify_referral_deadline,
     notify_transition,
     notify_workflow_created,
+    queue_email,
     referral_audience,
     stakeholders,
 )
 
 __all__ = [
+    "NotificationDeliveryError",
     "alert",
     "alerts",
     "deliver_email",
+    "max_attempts",
     "notify_referral_closed",
     "notify_referral_created",
     "notify_referral_deadline",
     "notify_transition",
     "notify_workflow_created",
+    "queue_email",
     "referral_audience",
     "stakeholders",
 ]

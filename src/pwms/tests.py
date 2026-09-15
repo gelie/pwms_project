@@ -3381,15 +3381,27 @@ class ShowWorkflowHierarchyCommandTests(TestCase):
 class CheckReferralDeadlinesCommandTests(TestCase):
     """``check_referral_deadlines`` against the typed WorkflowReferral rows."""
 
-    def run_command(self, *args):
-        """Run the command and let its deferred alerts actually go out.
+    def run_queued_emails(self):
+        """Deliver the alerts the command queued - what ``process_tasks`` does.
 
-        Alerts are emailed from ``transaction.on_commit``, so a workflow change
-        that rolls back mails nobody - and a ``TestCase`` never commits, so the
-        callbacks have to be executed explicitly for the mail to appear.
+        Alert email is a background task now, so the command only queues it, and
+        a ``TestCase`` neither commits nor has a worker. Running the queue
+        synchronously here is what makes the mail observable.
         """
-        with self.captureOnCommitCallbacks(execute=True):
-            call_command("check_referral_deadlines", *args, stdout=StringIO())
+        from background_task.models import Task
+        from background_task.tasks import tasks as bg_tasks
+        from django.test import override_settings
+
+        with override_settings(BACKGROUND_TASK_RUN_ASYNC=False):
+            for task in list(
+                Task.objects.filter(task_name="pwms.tasks.deliver_notification_email")
+            ):
+                bg_tasks.run_task(task)
+
+    def run_command(self, *args):
+        """Run the command and let its queued alerts actually go out."""
+        call_command("check_referral_deadlines", *args, stdout=StringIO())
+        self.run_queued_emails()
 
     @classmethod
     def setUpTestData(cls):

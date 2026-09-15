@@ -10,6 +10,12 @@ to a person twice — once into the in-app bell (``in_app``) and once by mail
 (``email``) — and each half can succeed, fail or be read independently. Only the
 email row carries a delivery status worth waiting on; an in-app row is "sent"
 the moment it exists.
+
+The email half is delivered by a queued background task (see
+``pwms.notifications.dispatch`` and ``pwms.tasks``), which retries a transient
+failure. ``attempts`` and ``error`` are what that looks like from the outside: a
+row stays ``pending`` with the reason of its last failed attempt, and only
+becomes ``failed`` once the attempts are spent.
 """
 
 from django.contrib.contenttypes.fields import GenericForeignKey
@@ -90,8 +96,16 @@ class Notification(BaseModel):
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default="pending")
     sent_at = models.DateTimeField(null=True, blank=True)
     read_at = models.DateTimeField(null=True, blank=True)
+    attempts = models.PositiveIntegerField(
+        default=0,
+        help_text="Delivery attempts made so far (the queue retries a failure).",
+    )
     error = models.TextField(
-        blank=True, help_text="Delivery failure, when there is one."
+        blank=True,
+        help_text=(
+            "Delivery failure: the last attempt while the row is still pending, "
+            "or the reason it was given up on."
+        ),
     )
 
     class Meta:
@@ -126,14 +140,21 @@ class Notification(BaseModel):
         self.status = "sent"
         self.sent_at = timezone.now()
         self.error = ""
-        self.save(update_fields=["status", "sent_at", "error", "updated_at"])
+        self.save(
+            update_fields=["status", "sent_at", "error", "attempts", "updated_at"]
+        )
         return self
 
     def mark_failed(self, error):
-        """Record a failed delivery; the reason is kept for the log."""
+        """
+        Record a delivery that is finally given up on; the reason is kept.
+
+        A *retryable* failure is not this: the row stays ``pending`` with the
+        reason in ``error`` until the attempts run out (see ``deliver_email``).
+        """
         self.status = "failed"
         self.error = str(error)
-        self.save(update_fields=["status", "error", "updated_at"])
+        self.save(update_fields=["status", "error", "attempts", "updated_at"])
         return self
 
     def mark_read(self):

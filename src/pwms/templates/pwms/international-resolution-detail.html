@@ -20,6 +20,7 @@
     <div class="d-flex flex-wrap align-items-center gap-2">
       <span class="badge text-bg-secondary">{{ resolution.current_state.name }}</span>
       <span class="badge text-bg-secondary">{{ resolution.get_priority_display }} priority</span>
+      {% include "pwms/partials/document_actions.html" with object=resolution %}
       {% if perms.edit %}
         <a class="btn btn-sm btn-outline-secondary"
            href="{% url "pwms:international_resolution_update" resolution.public_id %}">

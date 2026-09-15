@@ -1,0 +1,17 @@
+Hello,
+
+{% if sender %}{{ sender.display_name }}{% else %}A colleague{% endif %} has shared a report with you: {{ title }}.
+
+{% if report %}It covers {{ report.total }} workflow record{{ report.total|pluralize }}{% if report.filter_summary %} and was filtered by {% for item in report.filter_summary %}{{ item }}{% if not forloop.last %}; {% endif %}{% endfor %}{% endif %}.{% endif %}
+
+Open the report (read-only):
+{{ link }}
+{% if share.expires_at %}
+This link expires on {{ share.expires_at|date:"d M Y H:i" }}.
+{% endif %}
+{% if share.message %}
+Message from the sender:
+{{ share.message }}
+{% endif %}
+---
+Parliament Workflow Management System

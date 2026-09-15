@@ -17,12 +17,15 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
   declarative transition guards (`Transition.required_event_types`)
 - In-app alerts + logged email dispatch (`Notification`, `pwms/notifications/`),
   raised from the workflow domain methods and the create views
+- Permission-scoped reporting: report builder with an HTMX preview, xlsx / pdf /
+  html / csv exports, per-instrument formal documents, token link/email sharing
+  and scheduled delivery (`pwms.reporting`, `ReportShare`)
 - DRF API + OpenAPI (Swagger/ReDoc), admin, migrations, tests
 - django-ninja evaluation spike (`/ninja/`)
 
 ---
 
-## Email & notifications (✅ shipped · 🔜 background tasks)
+## Email & notifications (✅ shipped)
 
 **Goal:** notify the right people when things happen or are due.
 
@@ -41,8 +44,16 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
   admin writes notify nobody.
 - Each dispatch writes an `in_app` row (sent immediately) and — when the
   recipient has an email address — an `email` row (`pending` → `sent`/`failed`).
-  The send runs through `transaction.on_commit`, so work that rolls back mails
-  nobody; a failure is recorded on the row and logged, never raised.
+  Delivery is **queued**: the row's task is written in the *same transaction* as
+  the row itself (`pwms/tasks.py`, django-background-tasks), so a workflow change
+  that rolls back queues nothing, and a crash straight after COMMIT cannot lose
+  the send. Dispatching never talks to a mail server, so it cannot raise.
+- The worker (`manage.py process_tasks`) sends from the queue. A transient
+  failure leaves the row `pending` with the reason in `error` and raises, so the
+  task is retried (django-background-tasks' own `MAX_ATTEMPTS` and backoff — 3
+  attempts by default); the row is marked `failed` once the attempts are spent.
+  `attempts` and `error` are therefore the log of a mail that never went out.
+  `queue_email()` hands a row to the queue; `deliver_email()` makes one attempt.
 - Audience: the type's officers (active members of `WorkflowType.group` holding
   one of its `create_roles`), the roles a transition names
   (`Transition.notify_roles` plus the roles allowed to act next) and the people
@@ -62,9 +73,10 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
   `pwms:notifications`, `pwms:notification_open` and
   `pwms:notifications_read_all`. Body template:
   `templates/emails/notification.txt`.
-- Tests: `pwms/tests_notifications.py` (33 tests) cover the audience rules,
-  RBAC filtering, the two channel rows, deferred sends, per-recipient delivery,
-  failed-send recording and the bell/page/read views.
+- Tests: `pwms/tests_notifications.py` covers the audience rules, RBAC
+  filtering, the two channel rows, queued (not inline) delivery, the
+  same-transaction rollback guarantee, per-recipient delivery, the retry policy
+  and terminal failure, and the bell/page/read views.
 
 > `Transition.notify_roles` exists but the RBAC seeds leave it unpopulated, so
 > the working audience for a transition is the type's `create_roles` officers
@@ -73,9 +85,6 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
 
 **Remaining (🔜)**
 
-- Dispatch alert email through `django-background-tasks` instead of
-  `transaction.on_commit`: it would add retries (a process crash mid-commit
-  leaves an `email` row `pending`).
 - HTML email templates — only the plain-text `notification.txt` exists.
 
 **Acceptance:** role members receive email when a transition they are subscribed
@@ -195,10 +204,65 @@ Remaining (🔜):
 
 ---
 
-## Exports & reporting (🔜)
+## Exports & reporting (✅ shipped)
 
-- PDF exports via `weasyprint`/`reportlab` (formal instruments).
-- Spreadsheet exports via `openpyxl` (lists, tracking, stats).
+**Goal:** turn the registers into figures people can filter, preview, forward and
+file — without ever widening anyone's access.
+
+**Shipped (2026-09-15)** — `pwms.reporting` (`builder` / `exports` / `instruments`
+/ `sharing`):
+
+- **Report builder** (`/pwms/reports/`, `views.reports`): one page spanning all
+  four workflow registers. Filters: report type, free text (matching the common
+  fields *and* each instrument's own — see `SEARCH_FIELDS`), workflow type,
+  state, priority, owner, group, period or explicit date range (created /
+  updated / deadline), overdue-only, due-soon, unassigned-only; sort by created,
+  deadline, priority or title.
+- **Permission-scoped**: every figure comes from `visible_instances`, the same
+  chain the lists and detail pages use, so a report — and its export — can never
+  show a row the reader could not open (`ReportData`).
+- **Live preview**: the filter form is an HTMX form that swaps
+  `pwms/partials/report_preview.html` (and degrades to a normal GET without JS).
+  The preview carries summary stats, breakdowns (type, state, public status,
+  priority, owner), the workflow register, the merged activity feed
+  (`TransitionLog` + `WorkflowEvent`) and referrals. The on-screen table caps at
+  `PREVIEW_ROW_LIMIT`; exports always carry the full set.
+- **Exports** (`reports_export`, `?format=`): **xlsx** (multi-sheet workbook via
+  `openpyxl`), **pdf** (WeasyPrint over the same document), **html**
+  (self-contained page, branding embedded as a data URI) and **csv**. The
+  print/export document is `pwms/templates/pwms/pdf/report_export.html`.
+- **Sharing** (`reports_share` / `report_shared`, model `ReportShare`, migration
+  `0032_reportshare`): mint a token-addressed read-only link (optionally
+  expiring), optionally email it to a recipient list (HTML + text) with the
+  exported file attached. A share always re-renders **the creator's** figures, so
+  a link never widens to the reader's access; opening it is counted
+  (`access_count` / `last_accessed_at`), and a revoked or expired link answers
+  410 Gone.
+- **Per-instrument documents** (`pwms.reporting.instruments`, one route for
+  every type: `/pwms/instruments/<public_id>/document/?format=pdf|html`): a
+  single delegation report, resolution, agreement or bill as a formal,
+  filed-style document. Every detail page has a **Document** menu for it. The
+  document is *data-driven* — its facts, notes and tables are shaped in Python
+  per type (``_TYPE_SECTIONS`` / ``_TYPE_NOTES`` / ``_TYPE_TABLES``), so
+  `templates/pwms/pdf/instrument_export.html` never learns about B-numbers — and
+  it reuses the register report's chrome through `templates/pwms/pdf/_formal_base.html`
+  (one CSS, one masthead, one footer, logo embedded as a data URI).
+- **Scheduled delivery** (`ReportShare.schedule`, migration `0033`): a share can
+  repeat daily, weekly or monthly. `send_scheduled_report_shares` drains the due
+  shares (see
+  [Management Commands](./Management%20Commands.md#scheduled-report-shares)), or
+  `--queue` registers a repeating `django-background-tasks` task
+  (`pwms/tasks.py`) for `manage.py process_tasks` to serve. Each send advances
+  `next_send_at` and records `last_sent_at` / `send_count` / `last_error`;
+  failures are recorded rather than raised, so one bad share never stalls the
+  batch. Revoking or expiring a share takes it out of the queue at once.
+- Tests: `pwms/tests_reports.py` covers filter parsing, permission scoping,
+  every export format, the instrument documents (all four types), the share
+  lifecycle, the shared/export paths, the scheduling arithmetic, the delivery
+  service, the command and the queued background task.
+
+**Remaining (🔜)**
+
 - Markdown→HTML rendering for note fields (`markdown` declared).
 
 ---
@@ -253,7 +317,10 @@ expiry alert is raised by `mark_expired()` itself, not by the command.
 
 ## Non-functional roadmap
 
-- Scheduled execution for background jobs (cron/systemd or a beat-style runner).
+- Scheduled execution for background jobs: the queue worker runs as a systemd
+  service and the periodic commands run as systemd timers — see
+  [Management Commands § Background tasks](./Management%20Commands.md#background-tasks-the-queue-worker)
+  and [§ Periodic commands](./Management%20Commands.md#periodic-commands-systemd-timer).
 - Production deployment concerns: `DEBUG=False`, `ALLOWED_HOSTS`, secrets in
   environment, TLS. Static/media are gathered/served separately:
   `collectstatic` collects the app static into `staticfiles/`

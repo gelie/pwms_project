@@ -26,6 +26,7 @@
       {% if report.is_overdue %}
         <span class="badge text-bg-danger">{{ report.overdue_identifier }}</span>
       {% endif %}
+      {% include "pwms/partials/document_actions.html" with object=report %}
       {% if perms.edit %}
         <a class="btn btn-sm btn-outline-secondary"
            href="{% url "pwms:delegation_report_update" report.public_id %}">{% lucide "pencil" size=16 %} Edit</a>

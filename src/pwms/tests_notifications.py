@@ -9,24 +9,27 @@ The dispatch layer has three jobs, and each gets a group of tests here:
 * **record** — every dispatch writes an ``in_app`` row (the bell) and an
   ``email`` row (the delivery log), and the email row ends up ``sent`` or
   ``failed`` with the reason kept;
-* **delivery** — mail is sent on commit, one message per recipient, and a
-  failure never propagates out of the workflow change that triggered it.
+* **delivery** — sending is *queued*, not done inline: the task is written in
+  the same transaction as the alert row, one message goes out per recipient, and
+  a transient failure is retried before the row is finally marked ``failed``.
 
-``transaction.on_commit`` callbacks do not run inside a ``TestCase`` (which
-never commits), so the tests that assert on ``mail.outbox`` wrap the action in
-``self.captureOnCommitCallbacks(execute=True)`` — which is also what documents
-that the sends are deferred by design.
+A ``TestCase`` never commits, and a queued task needs a worker, so the tests that
+assert on ``mail.outbox`` call ``run_queued_emails()`` — the real background task
+run synchronously, which is what ``manage.py process_tasks`` does in production.
 """
 
 from datetime import timedelta
 from io import StringIO
 from unittest import mock
 
+from background_task.models import Task
+from background_task.tasks import tasks as bg_tasks
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.core import mail
 from django.core.management import call_command
-from django.test import TestCase
+from django.db import transaction
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -46,11 +49,33 @@ from .models import (
     WorkflowType,
 )
 from .notifications import (
+    max_attempts,
     notify_referral_created,
     notify_workflow_created,
     referral_audience,
     stakeholders,
 )
+
+#: The name django-background-tasks registers for the alert-email job.
+EMAIL_TASK_NAME = "pwms.tasks.deliver_notification_email"
+
+
+def queued_email_tasks():
+    """The alert-email tasks waiting in the queue."""
+    return Task.objects.filter(task_name=EMAIL_TASK_NAME)
+
+
+def run_queued_emails():
+    """
+    Run every queued alert-email task now.
+
+    The real task, run synchronously (``BACKGROUND_TASK_RUN_ASYNC`` off) rather
+    than through the thread pool, so a test can assert on what the worker did —
+    retries and terminal failures included.
+    """
+    with override_settings(BACKGROUND_TASK_RUN_ASYNC=False):
+        for task in list(queued_email_tasks()):
+            bg_tasks.run_task(task)
 
 
 class AlertFixture(TestCase):
@@ -198,6 +223,8 @@ class DispatchRecordTests(AlertFixture):
                 recipient=self.officer, channel="email"
             ).exists()
         )
+        # No address, no delivery task: only the other officer is queued.
+        self.assertEqual(queued_email_tasks().count(), 1)
 
     def test_transition_alert_quotes_both_states(self):
         self.report.perform_transition(
@@ -222,20 +249,20 @@ class DispatchRecordTests(AlertFixture):
 
 
 class EmailDeliveryTests(AlertFixture):
-    """The email half: deferred send, one message each, failures recorded."""
+    """The email half: queued, one message each, retried, then recorded."""
 
     def test_addressed_from_the_configured_sender_to_the_recipient(self):
         """Sender comes from DEFAULT_FROM_EMAIL; each message names one recipient."""
-        with self.captureOnCommitCallbacks(execute=True):
-            notify_workflow_created(self.report, actor=self.author)
+        notify_workflow_created(self.report, actor=self.author)
+        run_queued_emails()
 
         message = next(m for m in mail.outbox if m.to == [self.officer.email])
         self.assertEqual(message.from_email, settings.DEFAULT_FROM_EMAIL)
         self.assertEqual(message.to, [self.officer.email])
 
-    def test_one_message_per_recipient_sent_on_commit(self):
-        with self.captureOnCommitCallbacks(execute=True):
-            notify_workflow_created(self.report, actor=self.author)
+    def test_one_message_per_recipient(self):
+        notify_workflow_created(self.report, actor=self.author)
+        run_queued_emails()
 
         self.assertEqual(
             sorted(message.to[0] for message in mail.outbox),
@@ -245,49 +272,89 @@ class EmailDeliveryTests(AlertFixture):
             Notification.objects.filter(channel="email", status="sent").count(), 2
         )
 
-    def test_nothing_is_sent_until_the_transaction_commits(self):
-        """A rolled-back workflow change must not mail anybody."""
-        with self.captureOnCommitCallbacks(execute=False):
-            notify_workflow_created(self.report, actor=self.author)
+    def test_mail_is_queued_rather_than_sent_inline(self):
+        """
+        Dispatching only queues; a worker is what actually sends.
 
-            self.assertEqual(mail.outbox, [])
-            self.assertEqual(
-                Notification.objects.filter(channel="email", status="pending").count(),
-                2,
-            )
+        That is what makes a crash after COMMIT survivable: the task is a row in
+        the database, not a callback that was about to run and then did not.
+        """
+        notify_workflow_created(self.report, actor=self.author)
+
+        self.assertEqual(mail.outbox, [])
+        self.assertEqual(
+            Notification.objects.filter(channel="email", status="pending").count(), 2
+        )
+        self.assertEqual(queued_email_tasks().count(), 2)
+
+        run_queued_emails()
+
+        self.assertEqual(len(mail.outbox), 2)
+        self.assertEqual(
+            Notification.objects.filter(channel="email", status="sent").count(), 2
+        )
+        self.assertEqual(queued_email_tasks().count(), 0)
+
+    def test_a_rolled_back_change_queues_nothing(self):
+        """The task commits with the alert row, so a rollback leaves nothing behind."""
+        with self.assertRaises(RuntimeError), transaction.atomic():
+            notify_workflow_created(self.report, actor=self.author)
+            raise RuntimeError("the workflow change failed")
+
+        self.assertEqual(Notification.objects.filter(channel="email").count(), 0)
+        self.assertEqual(queued_email_tasks().count(), 0)
+        self.assertEqual(mail.outbox, [])
 
     def test_message_carries_the_recipient_the_link_and_the_log_line(self):
-        with self.captureOnCommitCallbacks(execute=True):
-            notify_workflow_created(self.report, actor=self.author)
+        notify_workflow_created(self.report, actor=self.author)
+        run_queued_emails()
 
         message = next(m for m in mail.outbox if m.to == ["officer@example.com"])
         self.assertIn("officer", message.body)
         self.assertIn(self.report.get_absolute_url(), message.body)
         self.assertIn("Workflow created", message.body)
 
-    def test_a_failed_send_is_recorded_not_raised(self):
-        with (
-            mock.patch(
-                "pwms.notifications.dispatch.send_mail",
-                side_effect=OSError("smtp is down"),
-            ),
-            self.captureOnCommitCallbacks(execute=True),
+    def test_a_failed_send_is_retried_and_the_reason_kept(self):
+        with mock.patch(
+            "pwms.notifications.dispatch.send_mail",
+            side_effect=OSError("smtp is down"),
         ):
+            # Dispatching never raises, whatever the mail server does...
             notify_workflow_created(self.report, actor=self.author)
+            run_queued_emails()  # ...and one failed attempt is not the end.
 
-        failed = Notification.objects.filter(channel="email", status="failed")
-        self.assertEqual(failed.count(), 2)
-        self.assertIn("smtp is down", failed.first().error)
-        # The in-app half still landed, and the caller was never disturbed.
+        rows = Notification.objects.filter(channel="email")
+        self.assertEqual(rows.count(), 2)
+        self.assertEqual(set(rows.values_list("status", flat=True)), {"pending"})
+        self.assertEqual(set(rows.values_list("attempts", flat=True)), {1})
+        self.assertIn("smtp is down", rows.first().error)
+        # Still queued for another go, and the in-app half landed regardless.
+        self.assertEqual(queued_email_tasks().count(), 2)
         self.assertEqual(
             Notification.objects.filter(channel="in_app", status="sent").count(), 2
         )
 
+    def test_the_row_is_failed_once_the_attempts_run_out(self):
+        with mock.patch(
+            "pwms.notifications.dispatch.send_mail",
+            side_effect=OSError("smtp is down"),
+        ):
+            notify_workflow_created(self.report, actor=self.author)
+            for _attempt in range(max_attempts()):
+                run_queued_emails()
+
+        rows = Notification.objects.filter(channel="email")
+        self.assertEqual(set(rows.values_list("status", flat=True)), {"failed"})
+        self.assertEqual(set(rows.values_list("attempts", flat=True)), {max_attempts()})
+        self.assertIn("smtp is down", rows.first().error)
+        # Nothing is left to retry, so the queue is empty.
+        self.assertEqual(queued_email_tasks().count(), 0)
+
     def test_delivery_is_idempotent(self):
         from .notifications import deliver_email
 
-        with self.captureOnCommitCallbacks(execute=True):
-            notify_workflow_created(self.report, actor=self.author)
+        notify_workflow_created(self.report, actor=self.author)
+        run_queued_emails()
 
         sent = Notification.objects.filter(channel="email").first()
         before = len(mail.outbox)
@@ -569,8 +636,8 @@ class ReferralDeadlineLogTests(AlertFixture):
     def test_reminder_is_recorded_for_each_recipient(self):
         self._referral(due_in=timedelta(hours=2))
 
-        with self.captureOnCommitCallbacks(execute=True):
-            call_command("check_referral_deadlines", stdout=StringIO())
+        call_command("check_referral_deadlines", stdout=StringIO())
+        run_queued_emails()
 
         rows = Notification.objects.filter(kind="referral-deadline", channel="email")
         self.assertEqual(rows.count(), 2)
@@ -587,8 +654,8 @@ class ReferralDeadlineLogTests(AlertFixture):
         """``mark_expired()`` raises the notice, so the command must not also send."""
         self._referral(due_in=timedelta(hours=-2))
 
-        with self.captureOnCommitCallbacks(execute=True):
-            call_command("check_referral_deadlines", stdout=StringIO())
+        call_command("check_referral_deadlines", stdout=StringIO())
+        run_queued_emails()
 
         rows = Notification.objects.filter(kind="referral-expired", channel="email")
         self.assertEqual(rows.count(), 2)

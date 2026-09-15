@@ -11,8 +11,10 @@ ContentType-linked RBAC layer, and everything that happens to an instrument is
 **fully audited** (CRUD history + state-transition events).
 
 > **Status:** active early development (`0.1.0`). The workflow/RBAC/audit core,
-> in-app alerts and email dispatch, SharePoint document attachments, the DRF
-> audit API, OpenAPI docs, and a django-ninja evaluation spike are in place.
+> in-app alerts and queued email dispatch, SharePoint document attachments, a
+> permission-scoped report builder (preview, exports, per-instrument documents,
+> sharing, scheduled delivery), the DRF audit API, OpenAPI docs, and a
+> django-ninja evaluation spike are in place.
 > Remaining work is tracked in
 > [Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md).
 
@@ -122,6 +124,13 @@ Then open:
 - Admin → <http://127.0.0.1:8000/admin/>
 - Swagger UI → <http://127.0.0.1:8000/api/docs/>
 
+> **Email is queued.** Alert email and scheduled report shares are delivered by
+> `django-background-tasks`, so `python manage.py process_tasks` has to be running
+> for anything to go out. With the console backend in the sample `.env`, that
+> worker prints each message rather than sending it. For production, see
+> [Management Commands § Running the worker under
+> systemd](src/pwms/docs/Management%20Commands.md#running-the-worker-under-systemd).
+
 > **Database reset:** the schema can be dropped and recreated safely in
 > development, see [System Design](src/pwms/docs/System%20Design.md#database-reset).
 
@@ -141,9 +150,11 @@ install. See
 
 ## Roadmap
 
-Email & notifications and SharePoint document attachments have shipped; see
+Email & notifications, SharePoint document attachments and reporting (report
+builder, exports, per-instrument documents, sharing, scheduled delivery) have
+shipped; see
 [Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md)
-for what remains (document versioning, background-task email, reporting).
+for what remains (restoring / pinning document versions, HTML email templates).
 
 ---
 

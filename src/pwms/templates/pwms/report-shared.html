@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}
+  {% if inactive or unreadable %}Report link unavailable{% else %}Shared report: {{ report.title }}{% endif %}
+{% endblock title %}
+{% block content %}
+  {% if inactive %}
+    <div class="card">
+      <div class="card-body text-center py-5">
+        <span class="dashboard-empty-icon">{% lucide "link-2-off" size=30 %}</span>
+        <h1 class="h4 mt-3">This report link is no longer active</h1>
+        <p class="text-body-secondary mb-4">
+          It was either revoked or has expired. Ask whoever shared it for a new link.
+        </p>
+        <a class="btn btn-primary" href="{% url "pwms:reports" %}">Build your own report</a>
+      </div>
+    </div>
+  {% elif unreadable %}
+    <div class="card">
+      <div class="card-body text-center py-5">
+        <span class="dashboard-empty-icon">{% lucide "user-x" size=30 %}</span>
+        <h1 class="h4 mt-3">This report is no longer available</h1>
+        <p class="text-body-secondary mb-4">
+          The account that shared it is gone, so the report it captured can no longer
+          be rebuilt.
+        </p>
+        <a class="btn btn-primary" href="{% url "pwms:reports" %}">Build your own report</a>
+      </div>
+    </div>
+  {% else %}
+    <div class="alert alert-info d-flex flex-wrap align-items-center gap-2">
+      {% lucide "share-2" size=18 %}
+      <span>
+        Shared report ·
+        by {{ share.created_by.display_name|default:"unknown" }}
+        {% if share.created_at %}on {{ share.created_at|date:"d M Y H:i" }}{% endif %}
+        {% if share.expires_at %}· expires {{ share.expires_at|date:"d M Y H:i" }}{% endif %}
+      </span>
+      {% if share.message %}<span class="w-100 small mb-0">{{ share.message }}</span>{% endif %}
+    </div>
+    {% include "pwms/partials/report_preview.html" %}
+  {% endif %}
+{% endblock content %}

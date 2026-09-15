@@ -11,29 +11,31 @@ referrals, where the referral is what entitles the committee to know.
 *What?* Messages are rendered from ``templates/emails/notification.txt`` and the
 rendered text is stored on the row, so the alert explains itself later.
 
-*When?* Rows are written immediately, inside the caller's transaction, but the
-mail is sent with :func:`django.db.transaction.on_commit`, so a workflow change
-that rolls back never mails anybody.
+*When?* Rows are written immediately, inside the caller's transaction, and the
+mail is handed to the background queue **in that same transaction** — so the
+task commits atomically with the alert row and a workflow change that rolls back
+queues nothing. Dispatching therefore never talks to a mail server; the worker
+(``manage.py process_tasks``) does, and retries a transient failure.
 
 Every dispatch writes two rows per recipient — one ``in_app`` (the bell) and one
 ``email`` — and the email row carries the delivery outcome. The
 :class:`~pwms.models.Notification` table is therefore the log of what was sent,
 to whom, and whether it worked.
 
-Nothing here raises. A notification is a side effect of the work, so a dead mail
-server must not fail the transition that triggered it; the failure is recorded on
-the row and logged instead.
+Dispatching never raises. A notification is a side effect of the work, so a dead
+mail server must not fail the transition that triggered it — and with delivery
+queued, the transition never speaks to a mail server at all. The failure is
+recorded on the row (``error`` / ``attempts``) and logged; the *task* raises so
+the queue reschedules it (see :func:`deliver_email`).
 """
 
 from __future__ import annotations
 
 import logging
-from functools import partial
 
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
 from django.core.mail import send_mail
-from django.db import transaction
 from django.template.loader import render_to_string
 from django.utils import timezone
 
@@ -198,26 +200,67 @@ def render_body(*, recipient, message, url="", instance=None, actor=None, kind="
     )
 
 
-def deliver_email(notification_id):
+# -- delivery ---------------------------------------------------------------
+def max_attempts():
     """
-    Send one queued email row and record what happened.
+    How many attempts an alert email gets before it is marked failed.
 
-    Runs through ``transaction.on_commit``, so it never executes for work that was
-    rolled back. Failures are recorded on the row rather than raised: losing an
-    alert must not break the request that produced it.
+    Reads the same ``MAX_ATTEMPTS`` django-background-tasks uses to decide when
+    it stops retrying the *task*, so the row and the queue give up together.
     """
-    row = (
+    return getattr(settings, "MAX_ATTEMPTS", 3)
+
+
+class NotificationDeliveryError(RuntimeError):
+    """
+    A retryable delivery failure.
+
+    Raised by :func:`deliver_email` so the queued task fails and
+    django-background-tasks reschedules it. Deliberately not raised on the last
+    attempt: there is nothing left to retry, and the row carries the reason from
+    then on.
+    """
+
+
+def _pending_email_row(notification_id):
+    """The email row still to be delivered, or ``None`` when there is none."""
+    return (
         Notification.objects.select_related("recipient")
-        .filter(pk=notification_id)
+        .filter(pk=notification_id, status="pending")
         .first()
     )
-    if row is None or row.status != "pending":
+
+
+def deliver_email(notification_id):
+    """
+    Make one delivery attempt for one queued email row, and record the outcome.
+
+    Returns the row it acted on, or ``None`` when the row is gone or no longer
+    ``pending``. That guard is what makes delivery idempotent: a retried task
+    cannot send the same alert twice.
+
+    Failure policy:
+
+    * a recipient with no address is permanent, so the row is marked ``failed``;
+    * anything else leaves the row ``pending`` with the reason in ``error`` and
+      **raises** :class:`NotificationDeliveryError`, which is how the queue
+      learns to try again (its own ``MAX_ATTEMPTS`` and backoff do the timing);
+    * once :func:`max_attempts` attempts have been made the row is marked
+      ``failed`` and nothing is raised.
+
+    Dispatching an alert never raises — ``_record`` only queues this work — so a
+    dead mail server still cannot break the workflow change that produced the
+    alert. The error surfaces here, in the worker, and in the log.
+    """
+    row = _pending_email_row(notification_id)
+    if row is None:
         return None
 
     recipient = row.recipient
     if not recipient.email:
         return row.mark_failed("recipient has no email address")
 
+    row.attempts += 1
     try:
         send_mail(
             subject=row.subject,
@@ -226,13 +269,29 @@ def deliver_email(notification_id):
             recipient_list=[recipient.email],
             fail_silently=False,
         )
-    except Exception as error:  # noqa: BLE001 - recorded, never re-raised
+    except Exception as error:
         logger.warning(
-            "Notification %s to %s failed: %s", row.pk, recipient.email, error
+            "Notification %s to %s failed on attempt %s/%s: %s",
+            row.pk,
+            recipient.email,
+            row.attempts,
+            max_attempts(),
+            error,
         )
-        return row.mark_failed(error)
+        if row.attempts >= max_attempts():
+            return row.mark_failed(error)
+        # Stays pending with the reason, so the log shows why it is still trying.
+        row.error = str(error)
+        row.save(update_fields=["attempts", "error", "updated_at"])
+        raise NotificationDeliveryError(str(error)) from error
 
-    logger.info("Notification %s emailed to %s (%s)", row.pk, recipient.email, row.kind)
+    logger.info(
+        "Notification %s emailed to %s (%s) on attempt %s",
+        row.pk,
+        recipient.email,
+        row.kind,
+        row.attempts,
+    )
     return row.mark_sent()
 
 
@@ -265,10 +324,28 @@ def _record(*, recipient, kind, subject, body, url, instance, actor, context):
     if recipient.email:
         email_row = Notification.objects.create(channel="email", **shared)
         rows.append(email_row)
-        # Deferred: the alert only goes out if the workflow change commits.
-        transaction.on_commit(partial(deliver_email, email_row.pk))
+        queue_email(email_row)
 
     return rows
+
+
+def queue_email(row):
+    """
+    Hand one email row to the background queue.
+
+    Queued *inside* the caller's transaction rather than deferred with
+    ``on_commit``: the task row then commits atomically with the alert row, so a
+    crash immediately after COMMIT cannot lose the send. That is precisely what
+    ``on_commit`` could not promise — a callback lost that way left the alert
+    ``pending`` with nothing left to pick it up. A rolled-back change queues
+    nothing, because the task row rolls back with the alert it belongs to.
+
+    Imported lazily: ``pwms.tasks`` builds its background-task proxies from this
+    module's :func:`deliver_email`, so importing it at module level is a cycle.
+    """
+    from ..tasks import queue_notification_email
+
+    return queue_notification_email(row.pk, verbose_name=f"Alert: {row.subject}")
 
 
 def alert(*, kind, instance, recipients, subject, message, actor=None, context=None):

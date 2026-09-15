@@ -4,6 +4,7 @@ from .geography import City, Country
 from .groups import Group
 from .notifications import Notification
 from .permissions import GroupMembership, Role
+from .reports import ReportShare
 from .sharepoint import (
     SharepointDrive,
     SharepointFolder,
@@ -53,6 +54,7 @@ __all__ = [
     "InternationalAgreement",
     "InternationalResolution",
     "Notification",
+    "ReportShare",
     "Role",
     "SharepointDrive",
     "SharepointFolder",

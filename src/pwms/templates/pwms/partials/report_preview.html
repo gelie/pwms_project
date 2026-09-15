@@ -1,0 +1,293 @@
+{% comment %}
+  The report preview: summary figures, breakdowns and the detail tables. It is
+  the HTMX swap target of the filter form (see pwms/reports.html), so it carries
+  its own root id and re-renders whole. The share modal lives inside it because
+  its hidden filter inputs have to track the current filter set.
+{% endcomment %}
+<div id="report-preview">
+  <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+    <div>
+      <h2 class="h5 mb-0">{{ report.title }}</h2>
+      <p class="text-body-secondary small mb-0">
+        {{ report.total }} record{{ report.total|pluralize }}
+        · generated {{ report.generated_on|date:"d M Y H:i" }}
+        by {{ report.generated_by_label }}
+      </p>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <div class="dropdown">
+        <button class="btn btn-outline-secondary dropdown-toggle"
+                type="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false">{% lucide "download" size=16 %} Export</button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li>
+            <a class="dropdown-item"
+               href="{% url "pwms:reports_export" %}?{{ filter_query }}&format=xlsx">Excel workbook (.xlsx)</a>
+          </li>
+          <li>
+            <a class="dropdown-item"
+               href="{% url "pwms:reports_export" %}?{{ filter_query }}&format=pdf">PDF document (.pdf)</a>
+          </li>
+          <li>
+            <a class="dropdown-item"
+               href="{% url "pwms:reports_export" %}?{{ filter_query }}&format=html">Web page (.html)</a>
+          </li>
+          <li>
+            <a class="dropdown-item"
+               href="{% url "pwms:reports_export" %}?{{ filter_query }}&format=csv">Comma-separated (.csv)</a>
+          </li>
+        </ul>
+      </div>
+      {% if not is_shared %}
+        <button class="btn btn-primary"
+                type="button"
+                data-bs-toggle="modal"
+                data-bs-target="#report-share-modal">{% lucide "share-2" size=16 %} Share</button>
+      {% endif %}
+    </div>
+  </div>
+  {% if report.filter_summary %}
+    <div class="mb-3 d-flex flex-wrap gap-1 align-items-center">
+      <span class="text-body-secondary small me-1">Filters:</span>
+      {% for label in report.filter_summary %}
+        <span class="badge text-bg-light border">{{ label }}</span>
+      {% endfor %}
+    </div>
+  {% endif %}
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-xl-3">
+      <div class="dashboard-stat dashboard-stat--green">
+        <span class="dashboard-stat-icon">{% lucide "layers" size=22 %}</span>
+        <span class="dashboard-stat-value">{{ summary.total }}</span>
+        <span class="dashboard-stat-label">Workflows</span>
+        <span class="dashboard-stat-note">{{ summary.active }} open · {{ summary.completed }} closed</span>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="dashboard-stat dashboard-stat--orange">
+        <span class="dashboard-stat-icon">{% lucide "triangle-alert" size=22 %}</span>
+        <span class="dashboard-stat-value">{{ summary.overdue }}</span>
+        <span class="dashboard-stat-label">Overdue</span>
+        <span class="dashboard-stat-note">{{ summary.due_soon }} due within {{ summary.due_soon_days }} days</span>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="dashboard-stat dashboard-stat--gold">
+        <span class="dashboard-stat-icon">{% lucide "flame" size=22 %}</span>
+        <span class="dashboard-stat-value">{{ summary.high_priority }}</span>
+        <span class="dashboard-stat-label">High or urgent</span>
+        <span class="dashboard-stat-note">{{ summary.unassigned }} open unassigned</span>
+      </div>
+    </div>
+    <div class="col-6 col-xl-3">
+      <div class="dashboard-stat dashboard-stat--dark-gold">
+        <span class="dashboard-stat-icon">{% lucide "inbox" size=22 %}</span>
+        <span class="dashboard-stat-value">{{ summary.referrals_total }}</span>
+        <span class="dashboard-stat-label">Referrals</span>
+        <span class="dashboard-stat-note">{{ summary.referrals_open }} open · {{ summary.referrals_overdue }} overdue</span>
+      </div>
+    </div>
+  </div>
+  {% if filters.report_type == "overview" %}
+    <div class="row g-4 mb-4">
+      <div class="col-lg-6">
+        <div class="card h-100">
+          <div class="card-header d-flex align-items-center gap-2">
+            {% lucide "layers" size=16 %}
+            <span>By type</span>
+          </div>
+          <div class="card-body">
+            {% for row in report.by_type %}
+              <div class="dashboard-bar">
+                <div class="dashboard-bar-head">
+                  <span>{{ row.label }}</span>
+                  <span class="dashboard-bar-count">{{ row.count }}</span>
+                </div>
+                <div class="progress"
+                     role="progressbar"
+                     aria-label="{{ row.label }}"
+                     aria-valuenow="{{ row.percent }}"
+                     aria-valuemin="0"
+                     aria-valuemax="100">
+                  <div class="progress-bar dashboard-bar-fill"
+                       style="width: {{ row.percent }}%"></div>
+                </div>
+              </div>
+            {% empty %}
+              <p class="text-body-secondary mb-0">Nothing to chart for these filters.</p>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="card h-100">
+          <div class="card-header d-flex align-items-center gap-2">
+            {% lucide "circle-dot" size=16 %}
+            <span>By public status</span>
+          </div>
+          <div class="card-body">
+            {% for row in report.by_public_status %}
+              <div class="dashboard-bar">
+                <div class="dashboard-bar-head">
+                  <span>{{ row.label }}</span>
+                  <span class="dashboard-bar-count">{{ row.count }}</span>
+                </div>
+                <div class="progress"
+                     role="progressbar"
+                     aria-label="{{ row.label }}"
+                     aria-valuenow="{{ row.percent }}"
+                     aria-valuemin="0"
+                     aria-valuemax="100">
+                  <div class="progress-bar dashboard-bar-fill dashboard-bar-fill--gold"
+                       style="width: {{ row.percent }}%"></div>
+                </div>
+              </div>
+            {% empty %}
+              <p class="text-body-secondary mb-0">Nothing to chart for these filters.</p>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-4 mb-4">
+      <div class="col-lg-6">
+        <div class="card h-100">
+          <div class="card-header d-flex align-items-center gap-2">
+            {% lucide "flag" size=16 %}
+            <span>By priority</span>
+          </div>
+          <div class="card-body">
+            {% for row in report.by_priority %}
+              <div class="dashboard-bar">
+                <div class="dashboard-bar-head">
+                  <span>{{ row.label }}</span>
+                  <span class="dashboard-bar-count">{{ row.count }}</span>
+                </div>
+                <div class="progress"
+                     role="progressbar"
+                     aria-label="{{ row.label }}"
+                     aria-valuenow="{{ row.percent }}"
+                     aria-valuemin="0"
+                     aria-valuemax="100">
+                  <div class="progress-bar dashboard-bar-fill"
+                       style="width: {{ row.percent }}%"></div>
+                </div>
+              </div>
+            {% empty %}
+              <p class="text-body-secondary mb-0">Nothing to chart for these filters.</p>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-6">
+        <div class="card h-100">
+          <div class="card-header d-flex align-items-center gap-2">
+            {% lucide "users" size=16 %}
+            <span>By owner</span>
+          </div>
+          <div class="card-body">
+            {% for row in report.by_owner %}
+              <div class="dashboard-bar">
+                <div class="dashboard-bar-head">
+                  <span>{{ row.label }}</span>
+                  <span class="dashboard-bar-count">{{ row.count }}</span>
+                </div>
+                <div class="progress"
+                     role="progressbar"
+                     aria-label="{{ row.label }}"
+                     aria-valuenow="{{ row.percent }}"
+                     aria-valuemin="0"
+                     aria-valuemax="100">
+                  <div class="progress-bar dashboard-bar-fill dashboard-bar-fill--gold"
+                       style="width: {{ row.percent }}%"></div>
+                </div>
+              </div>
+            {% empty %}
+              <p class="text-body-secondary mb-0">Nothing to chart for these filters.</p>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+  {% if filters.report_type == "overview" or filters.report_type == "workflows" %}
+    {% include "pwms/partials/report_workflows_table.html" %}
+  {% endif %}
+  {% if filters.report_type == "overview" or filters.report_type == "activity" %}
+    {% include "pwms/partials/report_activity_table.html" %}
+  {% endif %}
+  {% if filters.report_type == "overview" or filters.report_type == "referrals" %}
+    {% include "pwms/partials/report_referrals_table.html" %}
+  {% endif %}
+  {% if not is_shared %}
+    <div class="modal fade"
+         id="report-share-modal"
+         tabindex="-1"
+         aria-labelledby="report-share-modal-label"
+         aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <form id="report-share-form"
+                method="post"
+                action="{% url "pwms:reports_share" %}">
+            {% csrf_token %}
+            {% for key, value in filter_params.items %}
+              {% if value %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endif %}
+            {% endfor %}
+            <div class="modal-header">
+              <h5 class="modal-title" id="report-share-modal-label">Share this report</h5>
+              <button type="button"
+                      class="btn-close"
+                      data-bs-dismiss="modal"
+                      aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <p class="text-body-secondary small">
+                The link opens this report read-only, exactly as it looks here, for
+                anyone signed in who holds it.
+              </p>
+              <div class="mb-3">
+                <label class="form-label" for="{{ share_form.title.id_for_label }}">{{ share_form.title.label }}</label>
+                {{ share_form.title }}
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ share_form.schedule.id_for_label }}">{{ share_form.schedule.label }}</label>
+                {{ share_form.schedule }}
+                <div class="form-text">
+                  A repeating share is emailed to the recipients below on this cadence,
+                  and can be cancelled at any time.
+                </div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ share_form.expires_days.id_for_label }}">{{ share_form.expires_days.label }}</label>
+                {{ share_form.expires_days }}
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ share_form.message.id_for_label }}">{{ share_form.message.label }}</label>
+                {{ share_form.message }}
+              </div>
+              <div class="form-check mb-2">
+                {{ share_form.send_email }}
+                <label class="form-check-label" for="{{ share_form.send_email.id_for_label }}">{{ share_form.send_email.label }}</label>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ share_form.recipients.id_for_label }}">{{ share_form.recipients.label }}</label>
+                {{ share_form.recipients }}
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ share_form.attach_format.id_for_label }}">{{ share_form.attach_format.label }}</label>
+                {{ share_form.attach_format }}
+              </div>
+              <div id="report-share-result" class="d-none" role="status"></div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+              <button type="submit" class="btn btn-primary">Create link</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+</div>

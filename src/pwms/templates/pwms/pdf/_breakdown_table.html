@@ -1,0 +1,26 @@
+{% comment %}
+  One breakdown table for the print/export document: label, count and share.
+  Included with `rows=<breakdown>`.
+{% endcomment %}
+<table>
+  <thead>
+    <tr>
+      <th>Label</th>
+      <th class="num">Count</th>
+      <th class="num">Share</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in rows %}
+      <tr>
+        <td>{{ item.label }}</td>
+        <td class="num">{{ item.count }}</td>
+        <td class="num">{{ item.percent }}%</td>
+      </tr>
+    {% empty %}
+      <tr>
+        <td class="empty" colspan="3">No data for these filters.</td>
+      </tr>
+    {% endfor %}
+  </tbody>
+</table>

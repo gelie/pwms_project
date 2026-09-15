@@ -15,10 +15,14 @@ created with.
 The report form also carries two child lists: the delegates attending the
 engagement (``DelegationParticipant`` rows) and the resolutions adopted there
 (``InternationalResolution`` instances nested through ``WorkflowRelationship``).
+
+One plain :class:`forms.Form` lives here too: :class:`ReportShareForm` collects
+the recipient list and expiry for sharing a report (see ``pwms.reporting``).
 """
 
 from django import forms
 from django.contrib.auth import get_user_model
+from django.core.validators import validate_email
 from django.forms import (
     BaseFormSet,
     BaseInlineFormSet,
@@ -37,6 +41,8 @@ from .models import (
     State,
     WorkflowType,
 )
+from .models.reports import SCHEDULE_CHOICES
+from .reporting.exports import ATTACHMENT_CHOICES
 from .services.permissions import EDIT, resolve
 
 User = get_user_model()
@@ -773,3 +779,98 @@ class ResolutionAdderForm(forms.Form):
             }
         ),
     )
+
+
+class ReportShareForm(forms.Form):
+    """Details for minting a report share: who to tell, how long, and how often.
+
+    A share always produces a link; emailing it, attaching a rendered copy and
+    repeating it are optional extras. Recipients are validated one by one so a
+    typo in a list is named rather than swallowed.
+    """
+
+    title = forms.CharField(
+        required=False,
+        max_length=255,
+        label="Share name",
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "e.g. Q3 oversight report",
+            }
+        ),
+    )
+    message = forms.CharField(
+        required=False,
+        label="Message",
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 3,
+                "placeholder": "Optional note to include with the link",
+            }
+        ),
+    )
+    expires_days = forms.ChoiceField(
+        required=False,
+        label="Link expires",
+        choices=(
+            ("", "Never"),
+            ("7", "In 7 days"),
+            ("30", "In 30 days"),
+            ("90", "In 90 days"),
+            ("365", "In a year"),
+        ),
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    schedule = forms.ChoiceField(
+        required=False,
+        label="Repeat",
+        choices=SCHEDULE_CHOICES,
+        initial="none",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    send_email = forms.BooleanField(
+        required=False,
+        label="Email the link",
+        widget=forms.CheckboxInput(attrs={"class": "form-check-input"}),
+    )
+    recipients = forms.CharField(
+        required=False,
+        label="Recipients",
+        widget=forms.TextInput(
+            attrs={
+                "class": "form-control",
+                "placeholder": "name@parliament.gov.za, other@example.org",
+            }
+        ),
+    )
+    attach_format = forms.ChoiceField(
+        required=False,
+        label="Attach a copy",
+        choices=(("", "Do not attach"),) + ATTACHMENT_CHOICES,
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+
+    def clean_recipients(self):
+        raw = self.cleaned_data.get("recipients", "")
+        addresses = [
+            address.strip()
+            for address in raw.replace(";", ",").split(",")
+            if address.strip()
+        ]
+        for address in addresses:
+            validate_email(address)
+        return ", ".join(addresses)
+
+    def clean(self):
+        data = super().clean()
+        scheduled = data.get("schedule") not in (None, "", "none")
+        # A repeating share has to be emailed *somewhere*, so a schedule implies
+        # the address list even when "Email the link" was left clear.
+        if (data.get("send_email") or scheduled) and not data.get("recipients"):
+            self.add_error(
+                "recipients",
+                "Add at least one address to email the report to.",
+            )
+        return data

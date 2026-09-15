@@ -197,6 +197,10 @@ DJANGO_FLATPICKR = {
 # Development delivery: outbound alerts are printed to the console rather than
 # sent (see pwms.notifications). Swapping in the SMTP backend is the only change
 # needed to start delivering them for real.
+#
+# Alert email is *queued*, not sent inline, so `manage.py process_tasks` (the
+# django-background-tasks worker configured below) has to be running for
+# anything to go out. That worker is also what retries a transient failure.
 MAILERS = {
     "default": {
         "BACKEND": "django.core.mail.backends.console.EmailBackend",

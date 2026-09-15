@@ -1,6 +1,8 @@
+import logging
 from collections import Counter
 from datetime import timedelta
 from typing import ClassVar
+from urllib.parse import urlencode
 
 from django import forms
 from django.contrib import messages
@@ -12,7 +14,12 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Case, CharField, IntegerField, Q, Value, When
-from django.http import Http404, HttpResponseRedirect
+from django.http import (
+    Http404,
+    HttpResponseBadRequest,
+    HttpResponseRedirect,
+    JsonResponse,
+)
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -28,6 +35,7 @@ from .forms import (
     DelegationReportForm,
     InternationalAgreementForm,
     InternationalResolutionForm,
+    ReportShareForm,
     ResolutionAdderForm,
 )
 from .models import (
@@ -49,6 +57,23 @@ from .models import (
     WorkflowType,
 )
 from .notifications import notify_workflow_created
+from .reporting import (
+    ATTACHMENT_CHOICES,
+    DATE_FIELD_CHOICES,
+    EXPORT_FORMATS,
+    PERIOD_CHOICES,
+    REPORT_TYPE_CHOICES,
+    SORT_CHOICES,
+    ReportFilters,
+    absolute_share_url,
+    build_report,
+    create_share,
+    report_for_share,
+    resolve_share,
+    response_for,
+    response_for_instrument,
+    send_share_email,
+)
 from .services import attachments as attachments_service
 from .services.permissions import (
     DELETE,
@@ -59,6 +84,8 @@ from .services.permissions import (
     resolve,
     visible_instances,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @login_not_required
@@ -1116,8 +1143,231 @@ def bill_version_update(request, public_id, version_public_id):
     )
 
 
+# --- reporting -------------------------------------------------------------
+#
+# A report is a permission-scoped projection of the workflow registers, built by
+# ``pwms.reporting``. The page renders a filter form plus an initial preview; the
+# preview endpoint re-renders just that region for HTMX; the export endpoint
+# streams the same figures as xlsx / pdf / html / csv; and the share endpoints
+# pin a filter set behind a token so it can be handed on by link or email.
+
+
+#: Filter values that are falsy for a URL — dropped when rebuilding a query.
+_EMPTY_FILTER_VALUES = (None, "", False)
+
+
+def _filter_query(filters):
+    """The filter set as a query string (for export and share links)."""
+    params = {
+        key: value
+        for key, value in filters.to_dict().items()
+        if value not in _EMPTY_FILTER_VALUES
+    }
+    return urlencode(params)
+
+
+def _report_context(request, report, *, share=None, is_shared=False):
+    """Everything the reports page, its preview partial and the share modal read."""
+    filters = report.filters
+    query = _filter_query(filters)
+    if share is not None:
+        query = f"{query}&share={share.token}" if query else f"share={share.token}"
+    return {
+        "report": report,
+        "filters": filters,
+        "report_types": REPORT_TYPE_CHOICES,
+        "period_choices": PERIOD_CHOICES,
+        "date_field_choices": DATE_FIELD_CHOICES,
+        "sort_choices": SORT_CHOICES,
+        "export_formats": EXPORT_FORMATS,
+        "attachment_choices": ATTACHMENT_CHOICES,
+        "filter_params": filters.to_dict(),
+        "filter_query": query,
+        "share_form": ReportShareForm(initial={"title": report.title}),
+        "share": share,
+        "is_shared": is_shared,
+    }
+
+
 def reports(request):
-    return render(request, "pwms/reports.html")
+    """The report builder: filters, a live preview, exports and sharing."""
+    filters = ReportFilters.from_request(request)
+    report = build_report(request.user, filters)
+    return render(request, "pwms/reports.html", _report_context(request, report))
+
+
+def reports_preview(request):
+    """Just the report preview, so the filter form can swap it over HTMX."""
+    filters = ReportFilters.from_request(request)
+    report = build_report(request.user, filters)
+    return render(
+        request, "pwms/partials/report_preview.html", _report_context(request, report)
+    )
+
+
+def reports_export(request):
+    """Download the current report as xlsx / pdf / html / csv.
+
+    ``?share=<token>`` exports a shared report as its creator saw it, so a file
+    downloaded from a share link matches the page it was downloaded from.
+    """
+    token = request.GET.get("share", "")
+    if token:
+        share = resolve_share(token)
+        if share is None:
+            raise Http404("No such report link.")
+        report = report_for_share(share) if share.is_active else None
+        if report is None:
+            return HttpResponseBadRequest("This report link is no longer active.")
+    else:
+        report = build_report(request.user, ReportFilters.from_request(request))
+
+    try:
+        return response_for(report, request.GET.get("format", "xlsx"))
+    except ValueError:
+        return HttpResponseBadRequest("Unknown export format.")
+
+
+@require_POST
+def reports_share(request):
+    """Mint a share for the current filters, optionally emailing and repeating it."""
+    filters = ReportFilters.from_mapping(request.POST)
+    report = build_report(request.user, filters)
+
+    form = ReportShareForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse(
+            {"success": False, "errors": form.errors.get_json_data()}, status=400
+        )
+
+    data = form.cleaned_data
+    scheduled = data["schedule"] not in ("", "none")
+    # A repeating share is emailed now and thereafter, so either choice implies
+    # the address list — the form rejects one without the other.
+    email_to = data["recipients"] if (data["send_email"] or scheduled) else ""
+    share = create_share(
+        user=request.user,
+        filters=filters,
+        title=data["title"] or report.title,
+        recipients=email_to,
+        message=data["message"],
+        expires_days=data["expires_days"] or None,
+        schedule=data["schedule"] or "none",
+        schedule_format=data["attach_format"],
+    )
+    link = absolute_share_url(share, request)
+
+    sent = 0
+    if email_to:
+        try:
+            sent = send_share_email(
+                share,
+                request=request,
+                report=report,
+                attachment_format=data["attach_format"],
+            )
+        except Exception as error:
+            logger.exception("Report share %s could not be emailed", share.pk)
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": f"The link was created, but the email failed: {error}",
+                    "link": link,
+                    "sent": 0,
+                    "schedule": share.schedule,
+                },
+                status=502,
+            )
+
+    return JsonResponse(
+        {
+            "success": True,
+            "link": link,
+            "sent": sent,
+            "title": share.title,
+            "schedule": share.schedule,
+            "next_send_at": (
+                share.next_send_at.isoformat() if share.next_send_at else None
+            ),
+            "expires_at": share.expires_at.isoformat() if share.expires_at else None,
+        }
+    )
+
+
+def report_shared(request, token):
+    """Open a shared report read-only, exactly as its creator saw it."""
+    share = resolve_share(token)
+    if share is None:
+        raise Http404("No such report link.")
+    if not share.is_active:
+        return render(
+            request,
+            "pwms/report-shared.html",
+            {"share": share, "inactive": True},
+            status=410,
+        )
+
+    report = report_for_share(share)
+    if report is None:
+        return render(
+            request,
+            "pwms/report-shared.html",
+            {"share": share, "unreadable": True},
+            status=410,
+        )
+
+    share.record_access()
+    return render(
+        request,
+        "pwms/report-shared.html",
+        _report_context(request, report, share=share, is_shared=True),
+    )
+
+
+# --- instrument documents --------------------------------------------------
+
+
+def _workflow_by_public_id(public_id):
+    """
+    Resolve a workflow instance by public id, across the concrete models.
+
+    ``public_id`` is a UUIDv7 that is unique *per table* rather than globally, so
+    the lookup spans the whole register. The tables are disjoint, so the first
+    hit is the instance; a miss is a 404.
+    """
+    for model in _WORKFLOW_MODELS:
+        instance = (
+            model.objects.select_related(
+                "workflow_type",
+                "workflow_type__group",
+                "current_state",
+                "owner",
+                "assigned_to",
+            )
+            .filter(public_id=public_id)
+            .first()
+        )
+        if instance is not None:
+            return instance
+    raise Http404("No such workflow instance.")
+
+
+def workflow_document(request, public_id):
+    """
+    One instrument as a formal, filed-style document.
+
+    ``?format=pdf`` (the default) or ``?format=html``. VIEW on the instance is
+    required, exactly as for its detail page, so the document can never disclose
+    a record the reader could not open.
+    """
+    instance = _workflow_by_public_id(public_id)
+    require(request.user, instance, VIEW)
+    try:
+        return response_for_instrument(
+            instance, request.user, request.GET.get("format", "pdf")
+        )
+    except ValueError:
+        return HttpResponseBadRequest("Unknown document format.")
 
 
 def about(request):

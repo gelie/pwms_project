@@ -1,0 +1,75 @@
+{% extends "pwms/pdf/_formal_base.html" %}
+{% comment %}
+  One workflow instance as a formal, filed-style document — a delegation report,
+  international resolution, international agreement or bill.
+
+  The document is data-driven on purpose: `pwms.reporting.instruments` shapes
+  the facts (`sections`), the free text (`notes`) and the lists (`tables`), so
+  this template stays generic and every per-instrument rule lives in Python with
+  the models it reads.
+
+  A cell is `{"text": ..., "class": ...}` so a table can flag an overdue row
+  without the template knowing what "overdue" means.
+{% endcomment %}
+
+{% block preamble %}
+  <div class="metadata">
+    <div>
+      <strong>Generated:</strong> {{ generated_on|date:"F d, Y H:i" }}
+      · <strong>By:</strong> {{ generated_by_label }}
+      · <strong>Status:</strong> {{ document.state }}
+      · <strong>Priority:</strong> {{ document.priority }}
+    </div>
+  </div>
+{% endblock preamble %}
+
+{% block document %}
+  {% for section in document.sections %}
+    <div class="section">
+      <h2>{{ section.title }}</h2>
+      <table class="fields">
+        <tbody>
+          {% for field in section.fields %}
+            <tr>
+              <th scope="row">{{ field.label }}</th>
+              <td{% if field.class %} class="{{ field.class }}"{% endif %}>{{ field.value }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endfor %}
+  {% for note in document.notes %}
+    <div class="section">
+      <h2>{{ note.title }}</h2>
+      <p class="note">{{ note.text }}</p>
+    </div>
+  {% endfor %}
+  {% for table in document.tables %}
+    <div class="section">
+      <h2>{{ table.title }}</h2>
+      <table>
+        <thead>
+          <tr>
+            {% for header in table.headers %}<th>{{ header }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in table.rows %}
+            <tr>
+              {% for cell in row %}
+                <td{% if cell.class %} class="{{ cell.class }}"{% endif %}>{{ cell.text }}</td>
+              {% endfor %}
+            </tr>
+          {% empty %}
+            <tr>
+              <td class="empty" colspan="{{ table.headers|length }}">{{ table.empty }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endfor %}
+{% endblock document %}
+
+{% block footer_note %}instrument document · {{ document_title }}{% endblock footer_note %}
