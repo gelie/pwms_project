@@ -14,6 +14,7 @@ arrive together and are tested here:
   responsible-minister / sponsor foreign keys that use them.
 """
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
@@ -285,6 +286,42 @@ class ResponsibleMinisterValidatorTests(TestCase):
         self._agreement(
             responsible_minister_name="Minister of Health (former)"
         ).full_clean()
+
+
+class IdentityNumberStorageTests(TestCase):
+    """Identity numbers have to be stored, encrypted and searchable.
+
+    ``User.set_idno`` reads its keys through ``getattr(settings, ..., None)``, so
+    a settings module that never declares them turns it into a silent no-op:
+    ``idno_hmac`` stays empty on every row, nothing is encrypted, and
+    ``sync_users_oracle.deactivate_missing_users`` is left with an empty candidate
+    set because it matches on ``idno_hmac``. That is what had happened, so these
+    tests deliberately run against the real settings rather than an
+    ``override_settings`` substitute, and they fail if the wiring is lost again.
+    """
+
+    def test_settings_declare_both_identity_number_keys(self):
+        for name in ("IDNO_HMAC_KEY", "IDNO_ENC_KEY"):
+            self.assertTrue(hasattr(settings, name), f"settings.{name} is not declared")
+            self.assertTrue(getattr(settings, name), f"settings.{name} is empty")
+
+    def test_set_idno_stores_a_digest_and_a_recoverable_value(self):
+        user = User.objects.create_user(username="idno-holder")
+        user.set_idno("9001015800086")
+        user.save()
+
+        stored = User.objects.get(pk=user.pk)
+        self.assertEqual(len(stored.idno_hmac), 64)  # hex-encoded SHA-256
+        self.assertNotEqual(stored.idno_hmac, "9001015800086")
+        self.assertNotEqual(stored.idno_encrypted, "9001015800086")
+        self.assertEqual(stored.get_idno(), "9001015800086")
+
+    def test_digest_is_deterministic_so_the_sync_can_look_identities_up(self):
+        """``process_single_user`` finds an existing row by recomputing this."""
+        digest = User._compute_idno_hmac("9001015800087")
+
+        self.assertEqual(digest, User._compute_idno_hmac("9001015800087"))
+        self.assertEqual(len(digest), 64)
 
 
 @override_settings(IDNO_HMAC_KEY="test-identity-key")

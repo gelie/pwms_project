@@ -99,6 +99,10 @@ PG_PASSWORD=
 PG_HOST=localhost
 PG_PORT=5432
 IDNO_HMAC_KEY=change-me-too
+# Identity numbers are stored as a keyed digest plus an encrypted value, so both
+# keys are required. IDNO_ENC_KEY must be a Fernet key — generate one with:
+#   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+IDNO_ENC_KEY=change-me-too
 EOF
 
 # 3. Create the schema

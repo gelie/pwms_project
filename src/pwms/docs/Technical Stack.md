@@ -16,6 +16,7 @@
 | Package | Purpose |
 | --- | --- |
 | `django.contrib.*` | admin, auth, sessions, messages, contenttypes, staticfiles |
+| `django-auth-ldap` (+ `python-ldap`) | Active Directory sign-in; `pwms.backends.GracefulLDAPBackend` maps an authenticated AD account onto its existing ERP user |
 | `django-auditlog` | automatic CRUD audit trail (`LogEntry`); middleware captures the acting user |
 | `django-background-tasks` | async background task queue (deadline/notification jobs) |
 | `django-mptt` | hierarchical `Group` trees (Houses → Committees → …) |
@@ -45,6 +46,15 @@
   `drf_spectacular`, `django_flatpickr`, `lucide`, `mptt`, `django_htmx`,
   `django_bootstrap5`, `pwms`.
 - `AUTH_USER_MODEL = "pwms.User"`.
+- `AUTHENTICATION_BACKENDS`: `pwms.backends.GracefulLDAPBackend` (Active
+  Directory) then `pwms.backends.FallbackModelBackend` (local database). The
+  directory is authoritative for credentials; the local backend covers
+  identities that have no AD account and a break-glass superuser during an
+  outage, and it is also what answers Django's `is_superuser`/staff permission
+  checks. LDAP stays inert unless `AUTH_LDAP_SERVER_URI` and
+  `AUTH_LDAP_BASE_DN` are set, so a checkout without a directory boots and signs
+  in locally. Authorisation is *not* taken from AD: it remains
+  `Role`/`GroupMembership` (see `pwms.models.permissions`).
 - `ROOT_URLCONF = "pwms.root_urls"` — see [System Design → URL map](#) and
   [API Reference](./API%20Reference.md).
 - `REST_FRAMEWORK`: Session + Basic authentication, `IsAuthenticated` default,
@@ -53,7 +63,11 @@
 - `auditlog.middleware.AuditlogMiddleware` runs after auth so changes are attributed to the logged-in user.
 - Logging: console/file handler writing to the configured `LOG_DIR` (`pwms.log`).
 - Environment variables (`python-decouple`): `SECRET_KEY`, `DEBUG`, `PG_DB`,
-  `PG_USERNAME`, `PG_PASSWORD`, `PG_HOST`, `PG_PORT`, `IDNO_HMAC_KEY`.
+  `PG_USERNAME`, `PG_PASSWORD`, `PG_HOST`, `PG_PORT`, `IDNO_HMAC_KEY`,
+  `IDNO_ENC_KEY` (both required - they key the at-rest identity numbers, see
+  `User.set_idno`), and the optional LDAP set (`AUTH_LDAP_SERVER_URI`,
+  `AUTH_LDAP_BIND_DN`, `AUTH_LDAP_BIND_PASSWORD`, `AUTH_LDAP_BASE_DN`,
+  `AUTH_LDAP_START_TLS`).
 
 > The app is enabled via a single `AppConfig` (`pwms.apps.PwmsConfig`) whose
 > `ready()` registers the concrete workflow model with `auditlog`. It is the only

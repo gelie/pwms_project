@@ -1126,11 +1126,14 @@ class LoginForm(AuthenticationForm):
     """Authentication form wired to the project's Bootstrap form styling."""
 
     username = UsernameField(
-        label=_("Username"),
+        # AD resolves the account name, the user principal name and the mail
+        # address (see AUTH_LDAP_USER_SEARCH), so people can sign in with either
+        # their account name or their email address.
+        label=_("Username or email"),
         widget=forms.TextInput(
             attrs={
                 "class": "form-control",
-                "placeholder": _("Username"),
+                "placeholder": _("Username or email"),
                 "autocomplete": "username",
                 "autofocus": True,
             }
