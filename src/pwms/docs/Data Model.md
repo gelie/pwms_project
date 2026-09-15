@@ -649,3 +649,56 @@ plus all 13,529 South African populated places.
 > Contains data from [GeoNames](https://www.geonames.org/), licensed
 > [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Keep that
 > attribution wherever this data is published.
+
+---
+
+## 8. SharePoint documents — attachments & versions
+
+`pwms/models/attachments.py`, alongside the mirrored `Sharepoint*` tables in
+`pwms/models/sharepoint.py` (see [SharePoint Sync](./SharePoint%20Sync.md)).
+
+### `Attachment(BaseModel)`
+
+A document that lives in SharePoint and is linked to a record — in practice
+always a concrete workflow instance.
+
+| Field | Notes |
+| --- | --- |
+| `content_type` + `object_id` → `content_object` | **GFK** to the owning record. `object_id` is a `CharField` (unlike the integer target used elsewhere) so any pk type fits |
+| `name`, `mimetype`, `size` | file facts, as captured when attached |
+| `drive_id`, `item_id` | the SharePoint coordinates; `item_id` is what “the same file” means to a re-upload |
+| `download_url`, `sharepoint_web_url` | stored links — `get_sharepoint_url()` prefers the stable web URL, since a Graph download URL expires |
+| `sharepoint_site`, `sharepoint_drive`, `sharepoint_folder` (FKs) | resolved against the local mirror, so rendering an attachment needs no Graph call |
+| `sharepoint_folder_path` | human-readable folder path, taken from the mirrored folder |
+| `type` | `ATTACHMENT_TYPE_CHOICES` — what the document *is* (agenda, bill, gazette, memorandum, report, resolution, …); alphabetical, and the picker's dropdown |
+| `uploaded_by` (FK `User`, `SET_NULL`) | who filed it |
+
+Unique on `(content_type, object_id, item_id)`: a file may be attached once per
+record while remaining attachable to others. `AbstractLegislativeWorkflow`
+declares the reverse as `attachments` — a `GenericRelation`, so it is a query
+accessor, not a column, and needed no migration.
+
+### `AttachmentVersion(BaseModel)`
+
+One version of an attachment's SharePoint item: a local mirror of SharePoint's
+own history, refreshed on demand by `sync_versions()` rather than on a schedule.
+
+| Field | Notes |
+| --- | --- |
+| `attachment` (FK, `related_name="versions"`, cascade) | the document the version belongs to |
+| `version_id` | SharePoint's version label, e.g. `2.0` |
+| `size`, `modified_at`, `modified_by` | as SharePoint reports them |
+| `is_current` | the newest mirrored version; exactly one is normally flagged |
+
+Unique on `(attachment, version_id)` and ordered `-modified_at`. A sync never
+deletes: a version SharePoint no longer reports is kept, because history is
+evidence.
+
+### Document events
+
+Attaching, detaching and revising append to the owning record's domain event log
+(§5) through the seeded `EventType`s `document-attached`, `document-detached` and
+`document-version-added` (migration `0031`). The payload carries a snapshot of
+the document, so a detach's trail outlives the `Attachment` row it describes —
+see [SharePoint Sync § the document audit
+trail](./SharePoint%20Sync.md#the-document-audit-trail).

@@ -1,0 +1,36 @@
+{% comment %}
+Recent document activity for the record: who attached, detached or revised a
+document, and when.
+
+Each row is an append-only ``WorkflowEvent`` written by
+``pwms.services.attachments``, so the trail outlives the attachment itself — a
+detach event keeps the document's name and SharePoint coordinates in its payload
+after the ``Attachment`` row is gone.
+
+Rendered inside the ``#attachment-list`` fragment, so it refreshes with the table
+after every attach/detach.
+
+Context: attachment_events.
+{% endcomment %}
+{% if attachment_events %}
+  <h3 class="h6 mt-3">Document activity</h3>
+  <ul class="list-unstyled small mb-0">
+    {% for event in attachment_events %}
+      <li class="d-flex flex-wrap align-items-center gap-2 border-bottom py-1">
+        <span class="badge text-bg-secondary">{{ event.event_type.name }}</span>
+        <span>{{ event.payload.name|default:"—" }}</span>
+        <span class="text-body-secondary">
+          {% if event.actor %}
+            {{ event.actor.get_full_name|default:event.actor.get_username }}
+          {% else %}
+            System
+          {% endif %}
+          · {{ event.occurred_at|date:"Y-m-d H:i" }}
+        </span>
+        {% if event.document_url %}
+          <a href="{{ event.document_url }}" target="_blank" rel="noopener">open</a>
+        {% endif %}
+      </li>
+    {% endfor %}
+  </ul>
+{% endif %}

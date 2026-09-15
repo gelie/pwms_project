@@ -123,6 +123,41 @@ urlpatterns = [
     # Country / city lookup for the engagement location pickers
     path("country-search/", views.country_search, name="country_search"),
     path("city-search/", views.city_search, name="city_search"),
+    # Attachments: the SharePoint document picker plus its link/upload/delete
+    # actions. Each route names its target record, so the same views serve every
+    # concrete workflow subclass (see pwms.views._attachment_target).
+    path(
+        "attachments/browser/",
+        views.attachment_browser,
+        name="attachment_browser",
+    ),
+    path(
+        "attachments/tree/",
+        views.attachment_tree_children,
+        name="attachment_tree_children",
+    ),
+    path(
+        "attachments/folder/",
+        views.attachment_folder,
+        name="attachment_folder",
+    ),
+    path("attachments/link/", views.attachment_link, name="attachment_link"),
+    path("attachments/upload/", views.attachment_upload, name="attachment_upload"),
+    path(
+        "attachments/<uuid:public_id>/delete/",
+        views.attachment_delete,
+        name="attachment_delete",
+    ),
+    path(
+        "attachments/<uuid:public_id>/versions/",
+        views.attachment_versions,
+        name="attachment_versions",
+    ),
+    path(
+        "attachments/versions/<uuid:public_id>/download/",
+        views.attachment_version_download,
+        name="attachment_version_download",
+    ),
     path("groups/mine/", views.my_groups, name="my_groups"),
     path("groups/all/", views.all_groups, name="all_groups"),
     path("groups/<int:pk>/", views.group_detail, name="group_detail"),

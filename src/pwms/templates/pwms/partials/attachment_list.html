@@ -1,0 +1,90 @@
+{% comment %}
+The attachments area for one record: the documents table, the recent document
+activity, and — when a change was just made — an out-of-band status alert.
+
+Rendered standalone as the HTMX response to a link/upload/delete, and included
+by ``pwms/partials/attachment_section.html`` for the first paint. The response
+root and the include target are both ``#attachment-list``; callers swap it with
+``outerHTML``.
+
+Context: attachments, attachment_events, can_attach, attachment_content_type,
+         attachment_object_id, attachment_status (optional: {level, message}).
+{% endcomment %}
+<div id="attachment-list">
+  <div class="table-responsive">
+    <table class="table table-striped align-middle">
+      <caption class="visually-hidden">Documents attached to this record</caption>
+      <thead>
+        <tr>
+          <th scope="col">Document</th>
+          <th scope="col">Type</th>
+          <th scope="col">Size</th>
+          <th scope="col">Folder</th>
+          <th scope="col">Added by</th>
+          <th scope="col">Added</th>
+          <th scope="col"><span class="visually-hidden">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for attachment in attachments %}
+          <tr>
+            <td>
+              {% if attachment.get_sharepoint_url %}
+                <a href="{{ attachment.get_sharepoint_url }}" target="_blank" rel="noopener">{{ attachment.name }}</a>
+              {% else %}
+                {{ attachment.name }}
+              {% endif %}
+            </td>
+            <td>
+              <span class="badge text-bg-secondary">{{ attachment.get_type_display }}</span>
+            </td>
+            <td>{{ attachment.size|filesizeformat }}</td>
+            <td class="small text-body-secondary">{{ attachment.sharepoint_folder_path|default:"—" }}</td>
+            <td>
+              {% if attachment.uploaded_by %}
+                {{ attachment.uploaded_by.get_full_name|default:attachment.uploaded_by.get_username }}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>{{ attachment.created_at|date:"Y-m-d H:i" }}</td>
+            <td class="text-end">
+              <div class="d-inline-flex gap-1">
+                {# Reads only: anyone who may view the record may inspect versions. #}
+                <button type="button"
+                        class="btn btn-sm btn-outline-secondary"
+                        hx-get="{% url "pwms:attachment_versions" attachment.public_id %}"
+                        hx-target="#attachment-versions"
+                        hx-swap="innerHTML">{% lucide "history" size=14 %} Versions</button>
+                {% if can_attach %}
+                  <form method="post"
+                        hx-post="{% url "pwms:attachment_delete" attachment.public_id %}"
+                        hx-target="#attachment-list"
+                        hx-swap="outerHTML"
+                        hx-confirm="Detach this document? The file stays in SharePoint.">
+                    {% csrf_token %}
+                    <input type="hidden" name="content_type" value="{{ attachment_content_type }}">
+                    <input type="hidden" name="object_id" value="{{ attachment_object_id }}">
+                    <button type="submit"
+                            class="btn btn-sm btn-outline-danger"
+                            aria-label="Detach {{ attachment.name }}">{% lucide "trash-2" size=14 %}</button>
+                  </form>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="7" class="py-4 text-center text-muted">No documents attached.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% include "pwms/partials/attachment_activity.html" %}
+</div>
+{% if attachment_status %}
+  <div id="attachment-status" hx-swap-oob="true">
+    <div class="alert alert-{{ attachment_status.level }} py-2 mb-3" role="alert">{{ attachment_status.message }}</div>
+  </div>
+{% endif %}

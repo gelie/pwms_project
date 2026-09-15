@@ -17,6 +17,15 @@ class SharepointSite(BaseModel):
     url = models.URLField()
     site_id = models.CharField(max_length=200)
     is_personal_site = models.BooleanField(default=False)
+    # Local curation flag: only enabled sites are offered by the document
+    # picker. Deliberately never written by ``populate_sites``, so re-running
+    # the tenant sync cannot undo an administrator's choice here.
+    enabled = models.BooleanField(
+        default=True,
+        help_text=(
+            "Uncheck to hide this site (and its drives) from the attachment picker."
+        ),
+    )
     user = models.ForeignKey(User, on_delete=models.CASCADE, blank=True, null=True)
     # When this record was last refreshed from Sharepoint.
     last_synced_at = models.DateTimeField(

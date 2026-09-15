@@ -1,0 +1,48 @@
+{% comment %}
+The SharePoint document picker, swapped into ``#attachment-browser``.
+
+Left: an expandable tree of the user's sites, their drives and their folders
+(each level loads lazily). Right: the documents in the selected folder, with an
+"Attach" action per file and an upload form aimed at that same folder.
+
+Context: attachment_sites, attachment_content_type, attachment_object_id.
+{% endcomment %}
+<div class="card">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-medium">{% lucide "folder-open" size=16 %} Browse SharePoint</span>
+    <button type="button"
+            class="btn-close"
+            aria-label="Close"
+            onclick="document.getElementById('attachment-browser').replaceChildren()"></button>
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-12 col-lg-5">
+        <p class="small text-body-secondary mb-2">Sites you are a member of</p>
+        <ul class="list-unstyled mb-0" id="attachment-tree">
+          {% for site in attachment_sites %}
+            <li>
+              <div class="d-flex align-items-center gap-1">
+                <button type="button"
+                        class="btn btn-link btn-sm p-0 text-decoration-none"
+                        aria-label="Expand {{ site.name }}"
+                        hx-get="{% url "pwms:attachment_tree_children" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}&site_id={{ site.site_id|urlencode }}"
+                        hx-target="#site-{{ site.pk }}-children"
+                        hx-swap="innerHTML">{% lucide "chevron-right" size=14 %}</button>
+                <span class="fw-medium text-truncate">{{ site.name }}</span>
+              </div>
+              <ul class="list-unstyled ms-3" id="site-{{ site.pk }}-children"></ul>
+            </li>
+          {% empty %}
+            <li class="small text-muted">You are not a member of any SharePoint site.</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-12 col-lg-7">
+        <div id="attachment-folder-contents" class="border rounded-3 p-3">
+          <p class="small text-muted mb-0">Select a folder to see its documents.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

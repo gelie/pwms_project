@@ -8,6 +8,8 @@ from mptt.admin import MPTTModelAdmin
 
 from .forms import DelegationParticipantInlineFormSet
 from .models import (
+    Attachment,
+    AttachmentVersion,
     Bill,
     BillVersion,
     City,
@@ -151,11 +153,16 @@ class SharepointSiteAdmin(admin.ModelAdmin):
     list_display = (
         "name",
         "url",
-        "site_id",
+        "enabled",
         "is_personal_site",
         "last_synced_at",
     )
-    list_filter = ("is_personal_site",)
+    # ``enabled`` is curated straight from the changelist, so a SharePoint admin
+    # can hide libraries from the attachment picker without opening each site.
+    # ``site_id`` is dropped from the list (long, and not meant for scanning) but
+    # stays searchable below and still appears on the change form.
+    list_editable = ("enabled",)
+    list_filter = ("enabled", "is_personal_site")
     search_fields = ("name", "url", "site_id")
     ordering = ("name",)
     inlines = (SharepointSiteMemberInline,)
@@ -540,6 +547,35 @@ class DelegationReportUpdateInline(admin.TabularInline):
     ordering = ("-update_date",)
 
 
+class AttachmentInline(GenericTabularInline):
+    """
+    SharePoint documents attached to a workflow instance.
+
+    Read-only: attachments are created from the record's page (the picker
+    uploads/links through Graph), so the admin only reviews them. Deleting a row
+    detaches the document; the file itself stays in SharePoint.
+    """
+
+    model = Attachment
+    extra = 0
+    fields = (
+        "name",
+        "type",
+        "size",
+        "sharepoint_folder_path",
+        "uploaded_by",
+        "created_at",
+    )
+    readonly_fields = fields
+    ordering = ("-created_at",)
+    verbose_name = "attachment"
+    verbose_name_plural = "attachments"
+    classes = ("collapse",)
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
 @admin.register(InternationalResolution)
 class InternationalResolutionAdmin(admin.ModelAdmin):
     """Admin for international-resolution workflow instances."""
@@ -568,6 +604,7 @@ class InternationalResolutionAdmin(admin.ModelAdmin):
         WorkflowEventInline,
         WorkflowReferralInline,
         WorkflowGroupAccessInline,
+        AttachmentInline,
     ]
 
 
@@ -608,6 +645,7 @@ class InternationalAgreementAdmin(admin.ModelAdmin):
         WorkflowEventInline,
         WorkflowReferralInline,
         WorkflowGroupAccessInline,
+        AttachmentInline,
     ]
 
     @admin.display(boolean=True, description="Overdue")
@@ -679,6 +717,7 @@ class BillAdmin(admin.ModelAdmin):
         WorkflowEventInline,
         WorkflowReferralInline,
         WorkflowGroupAccessInline,
+        AttachmentInline,
     ]
 
     @admin.display(description="Public status")
@@ -767,6 +806,7 @@ class DelegationReportAdmin(admin.ModelAdmin):
         WorkflowEventInline,
         WorkflowReferralInline,
         WorkflowGroupAccessInline,
+        AttachmentInline,
     ]
 
     @admin.display(boolean=True, description="Overdue")
@@ -993,6 +1033,48 @@ class SharepointFolderAdmin(admin.ModelAdmin):
     search_fields = ("name", "site__name", "drive__name")
     autocomplete_fields = ("site", "drive", "parent_folder")
     ordering = ("site", "drive", "name")
+
+
+class AttachmentVersionInline(admin.TabularInline):
+    """
+    SharePoint version rows mirrored onto an attachment.
+
+    Read-only: the rows mirror upstream history, refreshed from the record's page
+    (or by a re-upload), and are never hand-edited here.
+    """
+
+    model = AttachmentVersion
+    extra = 0
+    can_delete = False
+    fields = ("version_id", "size", "modified_at", "modified_by", "is_current")
+    readonly_fields = fields
+    ordering = ("-modified_at",)
+    verbose_name = "version"
+    verbose_name_plural = "versions"
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(Attachment)
+class AttachmentAdmin(admin.ModelAdmin):
+    """Admin for SharePoint document attachments."""
+
+    list_display = (
+        "name",
+        "type",
+        "size",
+        "content_type",
+        "object_id",
+        "uploaded_by",
+        "created_at",
+    )
+    list_filter = ("type", "content_type")
+    search_fields = ("name", "item_id", "drive_id")
+    autocomplete_fields = ("uploaded_by", "sharepoint_site", "sharepoint_drive")
+    readonly_fields = ("public_id", "created_at", "updated_at")
+    ordering = ("-created_at",)
+    inlines = (AttachmentVersionInline,)
 
 
 # --- Reference data: countries & cities (loaded by load_places) ----------------

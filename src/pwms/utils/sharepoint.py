@@ -1,4 +1,5 @@
 import logging
+from urllib.parse import quote
 
 import httpx
 from django.conf import settings
@@ -379,6 +380,84 @@ async def get_folder_items(token_data: dict, drive_id: str, folder_id: str):
             )
         except Exception as e:
             raise Exception(f"Unexpected error in folder items request: {e!s}")
+
+
+async def get_item(token_data: dict, drive_id: str, item_id: str):
+    """Get the metadata for a single drive item (file or folder)."""
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise Exception("No access_token found in token data")
+
+    url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}"
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    async with httpx.AsyncClient() as client:
+        response = None
+        try:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            raise Exception(
+                f"Item metadata request failed: {e!s}, response: {getattr(response, 'text', 'no response') if response else 'no response'}"
+            )
+        except Exception as e:
+            raise Exception(f"Unexpected error in item metadata request: {e!s}")
+
+
+async def get_item_versions(token_data: dict, drive_id: str, item_id: str):
+    """List the version history of a drive item, following ``@odata.nextLink``.
+
+    SharePoint answers with one entry per version, newest first by convention,
+    carrying ``id`` (the version label, e.g. ``"2.0"``), ``size``,
+    ``lastModifiedDateTime`` and ``lastModifiedBy``.
+    """
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise Exception("No access_token found in token data")
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+    url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}/versions"
+    versions = []
+
+    async with httpx.AsyncClient() as client:
+        while url:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            versions.extend(data.get("value") or [])
+            url = data.get("@odata.nextLink")
+
+    return {"value": versions}
+
+
+async def get_version_download_url(
+    token_data: dict, drive_id: str, item_id: str, version_id: str
+):
+    """Resolve the pre-authenticated download URL for one version of an item.
+
+    Graph answers ``GET .../versions/{id}/content`` with a redirect to a
+    short-lived, pre-authenticated URL. Rather than streaming the file through
+    the app, the caller hands that URL to the browser; an empty string means
+    Graph answered directly and no link could be resolved.
+    """
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise Exception("No access_token found in token data")
+
+    url = (
+        f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}"
+        f"/versions/{quote(str(version_id), safe='')}/content"
+    )
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    async with httpx.AsyncClient() as client:
+        response = await client.get(url, headers=headers)
+        location = response.headers.get("location")
+        if response.is_redirect and location:
+            return location
+        response.raise_for_status()
+        return ""
 
 
 async def upload_file(

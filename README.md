@@ -11,8 +11,9 @@ ContentType-linked RBAC layer, and everything that happens to an instrument is
 **fully audited** (CRUD history + state-transition events).
 
 > **Status:** active early development (`0.1.0`). The workflow/RBAC/audit core,
-> DRF audit API, OpenAPI docs, and a django-ninja evaluation spike are in place.
-> Email, notifications and SharePoint integration are planned — see
+> in-app alerts and email dispatch, SharePoint document attachments, the DRF
+> audit API, OpenAPI docs, and a django-ninja evaluation spike are in place.
+> Remaining work is tracked in
 > [Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md).
 
 ---
@@ -140,9 +141,9 @@ install. See
 
 ## Roadmap
 
-Email, notifications and SharePoint integration are next on the roadmap. See
+Email & notifications and SharePoint document attachments have shipped; see
 [Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md)
-for detail.
+for what remains (document versioning, background-task email, reporting).
 
 ---
 

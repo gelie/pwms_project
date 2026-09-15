@@ -1,0 +1,51 @@
+{% comment %}
+One expanded level of the picker's tree, swapped into a site's or folder's child
+``<ul>``. Renders a site's drives (``attachment_drives``) or a folder's
+subfolders (``attachment_subfolders``); ``attachment_error`` is shown instead
+when the level could not be read.
+
+Context: attachment_content_type, attachment_object_id, plus one of
+         attachment_drives / attachment_subfolders / attachment_error.
+{% endcomment %}
+{% if attachment_error %}
+  <li class="small text-danger">{{ attachment_error }}</li>
+{% endif %}
+{% for drive in attachment_drives %}
+  <li>
+    <div class="d-flex align-items-center gap-1">
+      <button type="button"
+              class="btn btn-link btn-sm p-0 text-decoration-none"
+              aria-label="Expand {{ drive.name }}"
+              hx-get="{% url "pwms:attachment_tree_children" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}&drive_id={{ drive.drive_id|urlencode }}"
+              hx-target="#drive-{{ drive.pk }}-children"
+              hx-swap="innerHTML">{% lucide "chevron-right" size=14 %}</button>
+      <button type="button"
+              class="btn btn-link btn-sm p-0 text-decoration-none text-truncate"
+              hx-get="{% url "pwms:attachment_folder" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}&drive_id={{ drive.drive_id|urlencode }}&folder_id=root&folder_name=Root"
+              hx-target="#attachment-folder-contents"
+              hx-swap="innerHTML">{% lucide "hard-drive" size=14 %} {{ drive.name }}</button>
+    </div>
+    <ul class="list-unstyled ms-3" id="drive-{{ drive.pk }}-children"></ul>
+  </li>
+{% endfor %}
+{% for folder in attachment_subfolders %}
+  <li>
+    <div class="d-flex align-items-center gap-1">
+      <button type="button"
+              class="btn btn-link btn-sm p-0 text-decoration-none"
+              aria-label="Expand {{ folder.name }}"
+              hx-get="{% url "pwms:attachment_tree_children" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}&drive_id={{ attachment_drive_id|urlencode }}&folder_id={{ folder.id|urlencode }}"
+              hx-target="#folder-{{ folder.id }}-children"
+              hx-swap="innerHTML">{% lucide "chevron-right" size=14 %}</button>
+      <button type="button"
+              class="btn btn-link btn-sm p-0 text-decoration-none text-truncate"
+              hx-get="{% url "pwms:attachment_folder" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}&drive_id={{ attachment_drive_id|urlencode }}&folder_id={{ folder.id|urlencode }}&folder_name={{ folder.name|urlencode }}&parent_folder_id={{ attachment_parent_folder_id|urlencode }}"
+              hx-target="#attachment-folder-contents"
+              hx-swap="innerHTML">{% lucide "folder" size=14 %} {{ folder.name }}</button>
+    </div>
+    <ul class="list-unstyled ms-3" id="folder-{{ folder.id }}-children"></ul>
+  </li>
+{% endfor %}
+{% if not attachment_drives and not attachment_subfolders and not attachment_error %}
+  <li class="small text-muted ps-2">No folders.</li>
+{% endif %}

@@ -186,6 +186,9 @@ Notes on scope:
 - Re-runnable any number of times.
 - Rows are never hard-deleted by this command: sites/drives are upserted,
   members are deactivated instead of removed.
+- Locally curated columns are excluded from the sync's update list, so a re-run
+  never undoes an administrator's change — in particular
+  `SharepointSite.enabled`, the flag that gates the attachment picker above.
 - Updates are conditional on the remote timestamp (sites).
 - Writes happen inside `transaction.atomic()` per batch.
 - Sites that the permissions API rejects are skipped and counted, without
@@ -203,10 +206,114 @@ Notes on scope:
 | Site permissions | `GET /sites/{id}/permissions` | `get_site_permissions` |
 | Drive root children | `GET /sites/{id}/drive/root/children` | `get_site_details` |
 | Drive items / folders | `GET /drives/{id}/root/children`, `/items/{fid}/children` | `get_drive_items`, `get_folder_items` |
+| Item metadata | `GET /drives/{id}/items/{iid}` | `get_item` |
+| Item versions | `GET /drives/{id}/items/{iid}/versions` | `get_item_versions` |
+| Version content | `GET …/versions/{vid}/content` (302) | `get_version_download_url` |
 | File upload / folders | `PUT …:/content`, `POST …/createUploadSession`, `POST …/children` | `upload_file`, `create_folder` |
 
-The item/upload helpers exist for the planned document-library work but are not
-yet driven by a management command.
+The item/upload helpers are driven by the attachment picker (below) rather than
+by a management command.
+
+---
+
+## Attachments (documents on workflow records)
+
+Every workflow instance (`DelegationReport`, `InternationalResolution`,
+`InternationalAgreement`, `Bill`) has an **Attachments** section on its detail
+page. It is a lazy HTMX picker that browses SharePoint and attaches documents to
+the record through `pwms.Attachment` — a generic FK (`content_type` +
+`object_id`), so one table serves every concrete subclass.
+
+The three flows the picker supports:
+
+1. **Browse** — the tree lists the sites the user is an active
+   `SharepointSiteMember` of (superusers see every enabled, non-personal
+   mirrored site), expanding to their drives and folder hierarchy. Only
+   **enabled** sites are offered: `SharepointSite.enabled` is a local curation
+   flag (uncheck it in the admin to hide a library from the picker) and it binds
+   everyone, superusers included. Sites and drives come from the local mirror; a
+   folder's children are read from Graph on demand (`get_folder_items`).
+2. **Select** — opening a folder lists its documents; **Attach** links an
+   existing file (`get_item` for its metadata) as a new `Attachment`.
+3. **Upload & attach** — the folder's upload form sends a local file straight to
+   SharePoint (`upload_file`) and records the returned item as an attachment in
+   the same step.
+4. **Version history** — a document's row opens a panel listing SharePoint's own
+   versions (label, size, author, timestamp), refreshed from
+   `get_item_versions` each time it is opened; each version links to a download
+   that resolves its pre-authenticated SharePoint URL.
+5. **Activity** — every attach, detach and superseding upload is appended to the
+   record's domain event log (see below), and the section lists the recent ones.
+
+Graph is authenticated with the same DB-cached application token as the sync
+(`get_application_token`), so no interactive login is involved. Access is
+narrowed twice: the **record's** RBAC (`edit`, via
+`pwms.services.permissions.resolve`) gates the mutating picker calls and `view`
+gates reading a version history, while **site membership** gates the SharePoint
+content itself.
+
+### Endpoints
+
+| Route | Method | Purpose |
+| --- | --- | --- |
+| `attachments/browser/` | GET | The picker shell (tree + document panel) |
+| `attachments/tree/` | GET | One expanded tree level: a site's drives, or a folder's subfolders |
+| `attachments/folder/` | GET | The documents in a selected folder, plus its upload form |
+| `attachments/link/` | POST | Attach an existing document |
+| `attachments/upload/` | POST | Upload a file into the selected folder and attach it |
+| `attachments/<public_id>/delete/` | POST | Detach a document (the file stays in SharePoint) |
+| `attachments/<public_id>/versions/` | GET | Version history for one attachment, refreshed from SharePoint |
+| `attachments/versions/<public_id>/download/` | GET | Redirect to that version's pre-authenticated SharePoint URL |
+
+The `content_type` (`"app.model"`) + `object_id` parameters name the target
+record, so the routes are shared by every workflow subclass. Deleting an
+attachment removes only the local row; it never deletes the file.
+
+Code: the `attachment_*` views in `pwms/views.py`, the service in
+`pwms/services/attachments.py`, the models in `pwms/models/attachments.py`, and
+the fragments in `pwms/templates/pwms/partials/attachment_*.html`.
+
+### Version history
+
+`populate_sites` mirrors *sites*, not documents, so version history is mirrored
+on demand: `sync_versions()` reads `get_item_versions` and upserts one
+`pwms.AttachmentVersion` per remote version (unique on attachment + version id),
+flagging the newest `is_current`. The panel is served by that same call, so
+opening it always shows fresh data; a version SharePoint no longer reports is
+left in place rather than deleted.
+
+Downloading a version never streams the file through the app:
+`get_version_download_url` reads the `Location` header of Graph's redirect and
+`attachments/versions/<public_id>/download/` forwards the browser to that
+short-lived, pre-authenticated URL.
+
+Re-uploading a document with the same folder + filename returns the *same*
+SharePoint item, so `upload_document()` refreshes the existing attachment in
+place (size, MIME type, URLs) instead of raising “already attached”, and records
+the change as a new version. Its original attachment **type** is kept — a
+revision does not reclassify a document.
+
+### The document audit trail
+
+Attaching, detaching and revising are recorded as `WorkflowEvent`s on the target
+record's **append-only domain event log** (see
+[Data Model §5](./Data%20Model.md#5-auditing)), through three seeded
+`EventType`s — `document-attached`, `document-detached` and
+`document-version-added` (migration `0031`). They surface as the section's
+“Document activity” list, and in the record's event log generally.
+
+This is deliberately *not* inferred from `Attachment.created_at`: a detach
+deletes the row, so the event payload carries a **snapshot** of the document
+(name, item id, drive, folder path, URL) that outlives it, alongside the `actor`
+and timestamp. Detaching removes only the local link — the file and its version
+history stay in SharePoint. Recording is best effort: a target with no event log,
+or a registry whose event type has been removed, is warned about and skipped so
+a document can still be filed.
+
+> **Dependency:** browsing is membership-based, so it needs the
+> `SharepointSiteMember` rows written by `populate_sites`. Until the app token
+> can read site permissions (see [Site members](#site-members-sharepointsitemember)),
+> only superusers see a populated tree.
 
 ---
 

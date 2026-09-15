@@ -1,0 +1,65 @@
+{% comment %}
+SharePoint version history for one attachment, swapped into
+``#attachment-versions`` when a row's "Versions" button is used.
+
+The panel refreshes the local mirror from SharePoint on every open (and on
+"Refresh"), then lists the versions with a link that resolves that version's
+pre-authenticated download URL.
+
+Context: attachment, versions, attachment_error (when Graph could not be read).
+{% endcomment %}
+<div class="card">
+  <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <span class="fw-medium">{% lucide "history" size=16 %} Version history — {{ attachment.name }}</span>
+    <span class="d-flex align-items-center gap-2">
+      <button type="button"
+              class="btn btn-sm btn-outline-secondary"
+              hx-get="{% url "pwms:attachment_versions" attachment.public_id %}"
+              hx-target="#attachment-versions"
+              hx-swap="innerHTML">Refresh</button>
+      <button type="button"
+              class="btn-close"
+              aria-label="Close"
+              onclick="document.getElementById('attachment-versions').replaceChildren()"></button>
+    </span>
+  </div>
+  <div class="card-body">
+    {% if attachment_error %}
+      <div class="alert alert-warning py-2 mb-0" role="alert">{{ attachment_error }}</div>
+    {% elif versions %}
+      <div class="table-responsive">
+        <table class="table table-sm table-striped align-middle mb-0">
+          <caption class="visually-hidden">SharePoint version history</caption>
+          <thead>
+            <tr>
+              <th scope="col">Version</th>
+              <th scope="col">Saved</th>
+              <th scope="col">By</th>
+              <th scope="col">Size</th>
+              <th scope="col"><span class="visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for version in versions %}
+              <tr>
+                <td>
+                  v{{ version.version_id }}
+                  {% if version.is_current %}<span class="badge text-bg-success">Current</span>{% endif %}
+                </td>
+                <td>{{ version.modified_at|date:"Y-m-d H:i"|default:"—" }}</td>
+                <td>{{ version.modified_by|default:"—" }}</td>
+                <td>{{ version.size|filesizeformat }}</td>
+                <td class="text-end">
+                  <a class="btn btn-sm btn-outline-secondary"
+                     href="{% url "pwms:attachment_version_download" version.public_id %}">{% lucide "download" size=14 %} Download</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="small text-muted mb-0">SharePoint reports no version history for this document.</p>
+    {% endif %}
+  </div>
+</div>

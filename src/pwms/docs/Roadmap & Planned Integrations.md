@@ -84,7 +84,7 @@ recorded.
 
 ---
 
-## SharePoint integration (🧩 → 🔜)
+## SharePoint integration (✅ shipped · 🔜 restore & version pinning)
 
 **Goal:** store/share instrument documents (drafts, gazettes, supporting files)
 with a parliamentary document library.
@@ -97,6 +97,23 @@ with a parliamentary document library.
 - Best-effort `SharepointSiteMember` sync is implemented but currently skipped
   — the app token lacks `Sites.Manage.All` / `Sites.FullControl.All`. Full
   details: [SharePoint Sync](./SharePoint%20Sync.md).
+- **Document attachments (2026-09-15)** — every workflow detail page has an
+  **Attachments** section backed by an HTMX SharePoint picker: browse the user's
+  sites as an expandable tree, link an existing document, or upload a local file
+  into the selected folder and attach it in one step. Attachments are
+  `pwms.Attachment` rows (generic FK to the instance, so one table serves every
+  subclass); the file itself stays in SharePoint and detaching removes only the
+  link. Code: `pwms/models/attachments.py`, `pwms/services/attachments.py`, the
+  `attachment_*` views, and `pwms/templates/pwms/partials/attachment_*.html`.
+- **Document versioning & audit trail (2026-09-15)** — each attachment's row
+  opens a version-history panel listing SharePoint's own versions (label, size,
+  author, timestamp), mirrored into `pwms.AttachmentVersion` on open and each
+  downloadable by resolving Graph's pre-authenticated redirect (the file is never
+  streamed through the app). Re-uploading a revision refreshes the attachment in
+  place instead of failing. Attach, detach and revise are recorded explicitly as
+  `document-*` `WorkflowEvent`s on the record's append-only event log, and shown
+  as the section's “Document activity” list.
+  Tests: `pwms/tests_attachments.py` (63 tests).
 
 **Groundwork / considerations**
 
@@ -117,6 +134,11 @@ with a parliamentary document library.
 
 **Acceptance:** attach documents to a workflow instance, version them, and keep
 an audit trail of upload/download; permissions mirror PWMS group access.
+
+**Remaining (🔜)** — *restoring* a superseded version (Graph's
+`versions/{id}/restore` needs a write-scoped app permission the registration does
+not hold yet; the version list and per-version download ship today) and *pinning*
+a version to a record, so “the version tabled” survives later revisions.
 
 ---
 

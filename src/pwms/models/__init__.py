@@ -1,3 +1,4 @@
+from .attachments import Attachment, AttachmentVersion
 from .base import BaseModel
 from .geography import City, Country
 from .groups import Group
@@ -36,6 +37,8 @@ from .workflows import (
 
 __all__ = [
     "AbstractLegislativeWorkflow",
+    "Attachment",
+    "AttachmentVersion",
     "BaseModel",
     "Bill",
     "BillVersion",

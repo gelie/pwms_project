@@ -1,4 +1,4 @@
-from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
@@ -232,6 +232,13 @@ class AbstractLegislativeWorkflow(BaseModel):
             ("urgent", "Urgent"),
         ],
         default="medium",
+    )
+
+    # Reverse side of ``Attachment``'s generic link, so an instance reaches its
+    # documents as ``instance.attachments``. Not a column: nothing to migrate.
+    attachments = GenericRelation(
+        "Attachment",
+        related_query_name="%(class)s_attachments",
     )
 
     # -- lifecycle / RBAC helpers -------------------------------------------

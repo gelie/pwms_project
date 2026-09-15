@@ -1,0 +1,93 @@
+{% comment %}
+The documents in the selected SharePoint folder, swapped into
+``#attachment-folder-contents``.
+
+Each document has an "Attach" form that links the existing file to the current
+record; the form below uploads a local file into this folder and attaches it in
+the same step. Both report back into the ``#attachment-list`` fragment.
+
+Context: attachment_drive, attachment_files, attachment_folder_id,
+         attachment_folder_name, attachment_parent_folder_id, attachment_types,
+         attachment_content_type, attachment_object_id, attachment_error.
+{% endcomment %}
+{% if attachment_error %}
+  <div class="alert alert-danger py-2 mb-0" role="alert">{{ attachment_error }}</div>
+{% else %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <h3 class="h6 mb-0">
+      {% lucide "folder-open" size=16 %}
+      {{ attachment_drive.name }}{% if attachment_folder_name != "Root" %} / {{ attachment_folder_name }}{% endif %}
+    </h3>
+    <span class="small text-body-secondary">{{ attachment_files|length }} document{{ attachment_files|length|pluralize }}</span>
+  </div>
+  {% if attachment_files %}
+    <ul class="list-group list-group-flush mb-3">
+      {% for file in attachment_files %}
+        <li class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2 px-0">
+          <div class="text-truncate">
+            <a href="{{ file.web_url }}" target="_blank" rel="noopener" class="text-decoration-none">{{ file.name }}</a>
+            <span class="d-block small text-body-secondary">
+              {{ file.size|filesizeformat }}
+              {% if file.mimetype %}· {{ file.mimetype }}{% endif %}
+            </span>
+          </div>
+          <form method="post"
+                class="m-0"
+                hx-post="{% url "pwms:attachment_link" %}"
+                hx-target="#attachment-list"
+                hx-swap="outerHTML">
+            {% csrf_token %}
+            <input type="hidden" name="content_type" value="{{ attachment_content_type }}">
+            <input type="hidden" name="object_id" value="{{ attachment_object_id }}">
+            <input type="hidden" name="site_id" value="{{ attachment_drive.site.site_id }}">
+            <input type="hidden" name="drive_id" value="{{ attachment_drive.drive_id }}">
+            <input type="hidden" name="item_id" value="{{ file.id }}">
+            <input type="hidden" name="folder_id" value="{{ attachment_folder_id }}">
+            <input type="hidden" name="folder_name" value="{{ attachment_folder_name }}">
+            <input type="hidden" name="parent_folder_id" value="{{ attachment_parent_folder_id }}">
+            <input type="hidden" name="type" value="document">
+            <button type="submit" class="btn btn-sm btn-primary text-nowrap">{% lucide "paperclip" size=14 %} Attach</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="small text-muted">No documents in this folder.</p>
+  {% endif %}
+  <form method="post"
+        enctype="multipart/form-data"
+        class="border-top pt-3"
+        hx-post="{% url "pwms:attachment_upload" %}"
+        hx-encoding="multipart/form-data"
+        hx-target="#attachment-list"
+        hx-swap="outerHTML">
+    {% csrf_token %}
+    <input type="hidden" name="content_type" value="{{ attachment_content_type }}">
+    <input type="hidden" name="object_id" value="{{ attachment_object_id }}">
+    <input type="hidden" name="site_id" value="{{ attachment_drive.site.site_id }}">
+    <input type="hidden" name="drive_id" value="{{ attachment_drive.drive_id }}">
+    <input type="hidden" name="folder_id" value="{{ attachment_folder_id }}">
+    <input type="hidden" name="folder_name" value="{{ attachment_folder_name }}">
+    <input type="hidden" name="parent_folder_id" value="{{ attachment_parent_folder_id }}">
+    <label class="form-label" for="attachment-upload-file">Upload a document into this folder and attach it</label>
+    <div class="row g-2">
+      <div class="col-12 col-md-6">
+        <input type="file"
+               class="form-control"
+               id="attachment-upload-file"
+               name="file"
+               required>
+      </div>
+      <div class="col-6 col-md-3">
+        <select class="form-select" name="type" aria-label="Attachment type">
+          {% for value, label in attachment_types %}
+            <option value="{{ value }}" {% if value == "document" %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-6 col-md-3 d-grid">
+        <button type="submit" class="btn btn-primary">{% lucide "upload" size=16 %} Upload &amp; attach</button>
+      </div>
+    </div>
+  </form>
+{% endif %}

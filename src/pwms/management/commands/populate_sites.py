@@ -271,6 +271,10 @@ class Command(BaseCommand):
                 created_cnt = len(to_create)
                 self._log(self.style.SUCCESS, f"Created {created_cnt} new site(s)")
             if to_update:
+                # Only Graph-owned columns are mirrored. Locally curated fields
+                # (``enabled``, which gates the attachment picker) are
+                # deliberately absent, so a re-sync never undoes an
+                # administrator's choice.
                 SharepointSite.objects.bulk_update(
                     to_update,
                     [

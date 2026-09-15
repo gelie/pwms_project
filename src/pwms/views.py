@@ -8,9 +8,11 @@ from django.contrib.auth.decorators import login_not_required
 from django.contrib.auth.forms import AuthenticationForm, UsernameField
 from django.contrib.auth.views import LoginView as BaseLoginView
 from django.contrib.auth.views import LogoutView as BaseLogoutView
+from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Case, CharField, IntegerField, Q, Value, When
+from django.http import Http404, HttpResponseRedirect
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -30,6 +32,8 @@ from .forms import (
 )
 from .models import (
     AbstractLegislativeWorkflow,
+    Attachment,
+    AttachmentVersion,
     Bill,
     BillVersion,
     City,
@@ -45,6 +49,7 @@ from .models import (
     WorkflowType,
 )
 from .notifications import notify_workflow_created
+from .services import attachments as attachments_service
 from .services.permissions import (
     DELETE,
     EDIT,
@@ -546,6 +551,7 @@ def delegation_report_detail(request, public_id):
             "from_state", "to_state", "actor"
         ),
     }
+    context.update(_attachment_context(request, report))
     return render(request, "pwms/delegation-report-detail.html", context)
 
 
@@ -699,6 +705,7 @@ def international_resolution_detail(request, public_id):
             "from_state", "to_state", "actor"
         ),
     }
+    context.update(_attachment_context(request, resolution))
     return render(request, "pwms/international-resolution-detail.html", context)
 
 
@@ -847,6 +854,7 @@ def international_agreement_detail(request, public_id):
             "from_state", "to_state", "actor"
         ),
     }
+    context.update(_attachment_context(request, agreement))
     return render(request, "pwms/international-agreement-detail.html", context)
 
 
@@ -993,6 +1001,7 @@ def bill_detail(request, public_id):
             "from_state", "to_state", "actor"
         ),
     }
+    context.update(_attachment_context(request, bill))
     return render(request, "pwms/bill-detail.html", context)
 
 
@@ -1340,3 +1349,223 @@ def city_search(request):
         template_name="pwms/partials/city_search_results.html",
         context={"cities": cities.order_by("-population", "name")[:20]},
     )
+
+
+# --- Attachments (SharePoint documents) -------------------------------------
+# The picker is a lazy HTMX flow: a detail page renders the attachment list plus
+# an "Add attachment" button, which swaps in the SharePoint browser. Every
+# endpoint names its target record with a ``content_type`` ("app.model") plus an
+# ``object_id``, so one set of views serves every concrete workflow subclass.
+
+
+def _attachment_target(request, action):
+    """Resolve a request's ``content_type``/``object_id`` to an allowed record."""
+    raw_type = request.GET.get("content_type") or request.POST.get("content_type")
+    object_id = request.GET.get("object_id") or request.POST.get("object_id")
+    app_label, separator, model_name = (raw_type or "").partition(".")
+    content_type = (
+        ContentType.objects.filter(app_label=app_label, model=model_name).first()
+        if separator
+        else None
+    )
+    model = content_type.model_class() if content_type is not None else None
+    if model is None or not object_id:
+        raise Http404("Unknown attachment target.")
+    target = get_object_or_404(model, pk=object_id)
+    require(request.user, target, action)
+    return target
+
+
+def _attachment_context(request, target):
+    """Template context for the attachment section/partials of one record."""
+    meta = target._meta
+    return {
+        "attachment_target": target,
+        "attachment_content_type": f"{meta.app_label}.{meta.model_name}",
+        "attachment_object_id": str(target.pk),
+        "attachments": attachments_service.attachments_for(target),
+        "attachment_events": attachments_service.attachment_activity(target),
+        "can_attach": resolve(request.user, target, EDIT),
+    }
+
+
+def attachment_browser(request):
+    """Render the SharePoint document picker for a record (HTMX fragment)."""
+    target = _attachment_target(request, EDIT)
+    context = _attachment_context(request, target)
+    context["attachment_sites"] = attachments_service.member_sites(request.user)
+    return render(request, "pwms/partials/attachment_browser.html", context)
+
+
+def attachment_tree_children(request):
+    """One tree level: a site's drives, or a folder's subfolders."""
+    target = _attachment_target(request, EDIT)
+    context = _attachment_context(request, target)
+    folder_id = request.GET.get("folder_id") or attachments_service.ROOT
+    drive_id = request.GET.get("drive_id")
+    try:
+        if drive_id:
+            drive = attachments_service.require_drive_access(request.user, drive_id)
+            subfolders, _ = attachments_service.folder_children(
+                drive.drive_id, folder_id
+            )
+            context["attachment_subfolders"] = subfolders
+            context["attachment_drive_id"] = drive.drive_id
+            context["attachment_parent_folder_id"] = folder_id
+        else:
+            site = attachments_service.require_site_access(
+                request.user, request.GET.get("site_id")
+            )
+            context["attachment_drives"] = attachments_service.site_drives(site)
+    except attachments_service.AttachmentError as exc:
+        context["attachment_error"] = str(exc)
+    return render(request, "pwms/partials/attachment_tree_children.html", context)
+
+
+def attachment_folder(request):
+    """The files in a selected folder, with the upload form aimed at it."""
+    target = _attachment_target(request, EDIT)
+    context = _attachment_context(request, target)
+    folder_id = request.GET.get("folder_id") or attachments_service.ROOT
+    context.update(
+        {
+            "attachment_folder_id": folder_id,
+            "attachment_folder_name": request.GET.get("folder_name") or "Root",
+            "attachment_parent_folder_id": request.GET.get("parent_folder_id") or "",
+            "attachment_types": Attachment.ATTACHMENT_TYPE_CHOICES,
+        }
+    )
+    try:
+        drive = attachments_service.require_drive_access(
+            request.user, request.GET.get("drive_id")
+        )
+        _, files = attachments_service.folder_children(drive.drive_id, folder_id)
+    except attachments_service.AttachmentError as exc:
+        context["attachment_error"] = str(exc)
+        return render(request, "pwms/partials/attachment_folder_contents.html", context)
+    context["attachment_drive"] = drive
+    context["attachment_files"] = files
+    return render(request, "pwms/partials/attachment_folder_contents.html", context)
+
+
+@require_POST
+def attachment_link(request):
+    """Attach an existing SharePoint document to the current record."""
+    target = _attachment_target(request, EDIT)
+    try:
+        drive = attachments_service.require_drive_access(
+            request.user, request.POST.get("drive_id")
+        )
+        folder = attachments_service.resolve_folder(
+            drive,
+            request.POST.get("folder_id"),
+            request.POST.get("folder_name", ""),
+            request.POST.get("parent_folder_id", ""),
+        )
+        attachment = attachments_service.link_document(
+            obj=target,
+            user=request.user,
+            drive=drive,
+            item_id=request.POST.get("item_id", ""),
+            folder=folder,
+            attachment_type=request.POST.get("type", "document"),
+        )
+    except attachments_service.AttachmentError as exc:
+        return _attachment_response(request, target, error=str(exc))
+    return _attachment_response(
+        request, target, success=f'"{attachment.name}" attached.'
+    )
+
+
+@require_POST
+def attachment_upload(request):
+    """Upload a file into the selected folder and attach it in one step."""
+    target = _attachment_target(request, EDIT)
+    upload = request.FILES.get("file")
+    if upload is None:
+        return _attachment_response(request, target, error="No file was selected.")
+    try:
+        drive = attachments_service.require_drive_access(
+            request.user, request.POST.get("drive_id")
+        )
+        folder = attachments_service.resolve_folder(
+            drive,
+            request.POST.get("folder_id"),
+            request.POST.get("folder_name", ""),
+            request.POST.get("parent_folder_id", ""),
+        )
+        attachment, created = attachments_service.upload_document(
+            obj=target,
+            user=request.user,
+            drive=drive,
+            filename=upload.name,
+            content=upload.read(),
+            folder=folder,
+            attachment_type=request.POST.get("type", "document"),
+        )
+    except attachments_service.AttachmentError as exc:
+        return _attachment_response(request, target, error=str(exc))
+    if created:
+        message = f'"{attachment.name}" uploaded and attached.'
+    else:
+        # SharePoint kept the existing item and added a version to it.
+        message = f'"{attachment.name}" uploaded as a new version.'
+    return _attachment_response(request, target, success=message)
+
+
+@require_POST
+def attachment_delete(request, public_id):
+    """Detach a document from the record, leaving the file in SharePoint."""
+    attachment = get_object_or_404(Attachment, public_id=public_id)
+    target = attachment.content_object
+    if target is None:
+        raise Http404("Attachment is not linked to a record.")
+    require(request.user, target, EDIT)
+    name = attachment.name
+    # Detach through the service so the removal lands on the audit trail.
+    attachments_service.detach_document(attachment, actor=request.user)
+    return _attachment_response(request, target, success=f'"{name}" removed.')
+
+
+def attachment_versions(request, public_id):
+    """Version history for one attachment, refreshed from SharePoint."""
+    attachment = get_object_or_404(Attachment, public_id=public_id)
+    target = attachment.content_object
+    if target is None:
+        raise Http404("Attachment is not linked to a record.")
+    require(request.user, target, VIEW)
+    context = _attachment_context(request, target)
+    context["attachment"] = attachment
+    try:
+        context["versions"] = attachments_service.sync_versions(attachment)
+    except attachments_service.AttachmentError as exc:
+        # Show whatever was mirrored last rather than an empty panel.
+        context["attachment_error"] = str(exc)
+        context["versions"] = attachment.versions.all()
+    return render(request, "pwms/partials/attachment_versions.html", context)
+
+
+def attachment_version_download(request, public_id):
+    """Send the browser to SharePoint's pre-authenticated URL for one version."""
+    version = get_object_or_404(AttachmentVersion, public_id=public_id)
+    attachment = version.attachment
+    target = attachment.content_object
+    if target is None:
+        raise Http404("Attachment is not linked to a record.")
+    require(request.user, target, VIEW)
+    try:
+        url = attachments_service.version_download_url(attachment, version)
+    except attachments_service.AttachmentError as exc:
+        messages.error(request, str(exc))
+        return redirect(target.get_absolute_url() or reverse("pwms:dashboard"))
+    return HttpResponseRedirect(url)
+
+
+def _attachment_response(request, target, *, success="", error=""):
+    """Re-render the attachment list, announcing a change when there is one."""
+    context = _attachment_context(request, target)
+    if error:
+        context["attachment_status"] = {"level": "danger", "message": error}
+    elif success:
+        context["attachment_status"] = {"level": "success", "message": success}
+    return render(request, "pwms/partials/attachment_list.html", context)
