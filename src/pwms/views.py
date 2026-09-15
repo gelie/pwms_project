@@ -1119,7 +1119,7 @@ def about(request):
 
 def contact(request):
     """Contact page (sign-in required)."""
-    return render(request, "pwms/about.html")
+    return render(request, "pwms/contact.html")
 
 
 class LoginForm(AuthenticationForm):

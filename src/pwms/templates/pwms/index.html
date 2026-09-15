@@ -1,35 +1,131 @@
 {% extends "base.html" %}
+{% block title %}Home{% endblock title %}
 {% block content %}
-  <section class="mb-4">
-    <h1 class="mb-3">Welcome to PWMS</h1>
-    <p class="lh-lg mb-0">This is the home page of the Parliament Workflow Management System.</p>
-  </section>
-  <section class="mb-4">
-    <h2 class="mb-3">About the System</h2>
-    <p class="lh-lg mb-0">
-      The Parliament Workflow Management System (PWMS) is designed to support the
-      day-to-day operations of parliamentary business. It helps staff and members
-      track the lifecycle of motions, bills, and other parliamentary documents as
-      they move through each stage of the legislative process.
+  {% comment %}
+    This is the only page reachable without signing in, and also the landing
+    page after sign-in (settings.LOGIN_REDIRECT_URL), so it serves both: a short
+    introduction and sign-in prompt for visitors, and a launchpad for signed-in
+    users. What needs attention lives on the dashboard, not here.
+  {% endcomment %}
+  <div class="page-header">
+    <h1>
+      {% if user.is_authenticated %}
+        Welcome back
+      {% else %}
+        Welcome to PWMS
+      {% endif %}
+    </h1>
+    <p class="mb-0">
+      {% if user.is_authenticated %}
+        Signed in as {{ user.display_name }}.
+      {% else %}
+        The Parliament Workflow Management System — one auditable record of every
+        parliamentary instrument, through every stage of its lifecycle.
+      {% endif %}
     </p>
-  </section>
-  <section class="mb-4">
-    <h2 class="mb-3">Key Features</h2>
-    <ul class="lh-lg mb-0 ps-3">
-      <li class="mb-2">Create, review, and track motions and bills from drafting to resolution.</li>
-      <li class="mb-2">Manage committee assignments, agendas, and meeting outcomes.</li>
-      <li class="mb-2">Monitor workflow stages and approvals with a clear audit trail.</li>
-      <li class="mb-2">Search and access historical records of parliamentary business.</li>
-      <li class="mb-0">Role-based access to keep sensitive information secure.</li>
-    </ul>
-  </section>
-  <section class="mb-0">
-    <h2 class="mb-3">Getting Started</h2>
-    <p class="lh-lg mb-0">
-      Use the navigation menu to browse motions, committees, and sittings. New
-      users should review their assigned role to confirm which actions they are
-      permitted to perform. For assistance, contact the parliamentary IT support
-      team.
-    </p>
-  </section>
+  </div>
+  {% if user.is_authenticated %}
+    <section class="mb-4">
+      <h2 class="h4">Where to go</h2>
+      <div class="row g-3">
+        <div class="col-12 col-md-4">
+          <a class="card h-100" href="{% url "pwms:dashboard" %}">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <span class="d-flex align-items-center gap-2">{% lucide "layout-dashboard" size=16 %} Dashboard</span>
+              {% lucide "arrow-right" size=16 %}
+            </div>
+            <div class="card-body">
+              <p class="text-muted mb-0">
+                Work assigned to you, deadlines falling due, anything overdue, and
+                referrals your committees have yet to answer.
+              </p>
+            </div>
+          </a>
+        </div>
+        <div class="col-12 col-md-4">
+          <a class="card h-100" href="{% url "pwms:workflows" %}">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <span class="d-flex align-items-center gap-2">{% lucide "clipboard-list" size=16 %} Workflow register</span>
+              {% lucide "arrow-right" size=16 %}
+            </div>
+            <div class="card-body">
+              <p class="text-muted mb-0">
+                Every instrument you can access, in one list you can filter by type,
+                stage and priority.
+              </p>
+            </div>
+          </a>
+        </div>
+        <div class="col-12 col-md-4">
+          <a class="card h-100" href="{% url "pwms:my_groups" %}">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <span class="d-flex align-items-center gap-2">{% lucide "users" size=16 %} My groups</span>
+              {% lucide "arrow-right" size=16 %}
+            </div>
+            <div class="card-body">
+              <p class="text-muted mb-0">
+                The committees and units you belong to, and the roles you hold in
+                them — what your access is built from.
+              </p>
+            </div>
+          </a>
+        </div>
+      </div>
+    </section>
+    {% if creatable_workflow_types %}
+      <section class="mb-0">
+        <h2 class="h4">Start something new</h2>
+        <div class="list-group">
+          {% for entry in creatable_workflow_types %}
+            <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center gap-2"
+               href="{{ entry.url }}">
+              <span>{{ entry.name }}</span>
+              <span class="d-flex align-items-center gap-1 text-muted">{% lucide "plus" size=16 %} New</span>
+            </a>
+          {% endfor %}
+        </div>
+      </section>
+    {% endif %}
+  {% else %}
+    <div class="row g-4">
+      <div class="col-lg-7">
+        <section class="mb-4">
+          <h2 class="h4">What it is</h2>
+          <p class="mb-0">
+            PWMS keeps a single record of each parliamentary instrument —
+            delegation reports, international resolutions, international agreements
+            and bills — as it moves through the stages of its passage. Every
+            instrument has a current stage, a named owner and a deadline, and each
+            step it takes is recorded against the person who took it.
+          </p>
+        </section>
+        <section class="mb-0">
+          <h2 class="h4">What you see once signed in</h2>
+          <ul class="mb-0">
+            <li>Where each instrument has reached, who owns it and when it is due.</li>
+            <li>Referrals to committees, with the response deadline on each.</li>
+            <li>
+              Who may view, edit or progress an instrument — and in which stage.
+            </li>
+            <li>The full history of every change and every stage transition.</li>
+          </ul>
+        </section>
+      </div>
+      <div class="col-lg-5">
+        <div class="card">
+          <div class="card-header d-flex align-items-center gap-2">{% lucide "log-in" size=16 %} Sign in</div>
+          <div class="card-body">
+            <p>
+              Access follows your group membership, so signing in shows you the
+              instruments your role allows you to work on.
+            </p>
+            <a class="btn btn-primary w-100" href="{% url "pwms:login" %}">Sign in</a>
+            <p class="small text-muted mb-0 mt-3">
+              New to PWMS? <a href="{% url "pwms:about" %}">Read about the system</a>.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
 {% endblock content %}

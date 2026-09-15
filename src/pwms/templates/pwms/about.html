@@ -1,43 +1,201 @@
 {% extends "base.html" %}
 {% block title %}About{% endblock title %}
 {% block content %}
+  <div class="page-header">
+    <h1>About PWMS</h1>
+    <p class="mb-0">
+      The Parliament Workflow Management System — one auditable place to track
+      each parliamentary instrument through every stage of its lifecycle.
+    </p>
+  </div>
   <section class="mb-4">
-    <h1>About Us</h1>
+    <h2 class="h4">Why PWMS exists</h2>
     <p>
-      PWMS is a lightweight property and warehouse management system built to keep
-      your records accurate, your teams aligned, and your day-to-day operations simple.
+      Parliamentary instruments rarely move in a straight line. A bill is
+      introduced, referred to a committee, opened for public comment, deliberated,
+      reported on, debated, sent to the National Council of Provinces and finally
+      submitted for assent — and at each of those steps somebody different is
+      responsible for the next action. The same is true of delegation reports,
+      international resolutions and international agreements.
+    </p>
+    <p class="mb-0">
+      PWMS keeps that movement in one system, for the Parliament of the Republic
+      of South Africa. Every instrument has a type, a current stage, a named owner
+      and a deadline, so three questions can always be answered from a single
+      record: <em>where is this, who has it, and what has happened to it so far?</em>
     </p>
   </section>
   <section class="mb-4">
-    <h2>What We Do</h2>
+    <h2 class="h4">What it tracks</h2>
     <p>
-      We provide a single place to track inventory, manage properties, and monitor
-      the movement of goods. Instead of juggling spreadsheets and paper logs, you get
-      a clear, up-to-date view of everything that matters.
+      Four types of instrument today, each following the procedural stages set out
+      in its business requirements:
     </p>
-  </section>
-  <section class="mb-4">
-    <h2>Our Mission</h2>
-    <p>
-      Our mission is to make management software that stays out of your way. It should
-      be fast to set up, easy to learn, and reliable enough to trust with your most
-      important data.
-    </p>
-  </section>
-  <section class="mb-4">
-    <h2>What You Can Expect</h2>
-    <ul>
-      <li>Simple, intuitive screens with no unnecessary clutter</li>
-      <li>Accurate, searchable records available whenever you need them</li>
-      <li>Clear reporting so you can make informed decisions</li>
-      <li>Ongoing support and regular improvements</li>
+    <ul class="list-group mb-3">
+      <li class="list-group-item">
+        <div class="fw-semibold">Delegation reports</div>
+        <div>
+          Official parliamentary delegations, including the delegates who took part
+          and the resolutions they adopted.
+        </div>
+        <div class="small text-muted">
+          Awaiting PGIR approval → Submitted for tabling → Tabled and referred to
+          Committee → Closed – House approved
+        </div>
+      </li>
+      <li class="list-group-item">
+        <div class="fw-semibold">International resolutions</div>
+        <div>
+          Resolutions adopted by delegations and the work to implement them. A
+          resolution is nested under the delegation report it came from.
+        </div>
+        <div class="small text-muted">
+          Captured → Assigned → In Progress → Implemented → Closed
+        </div>
+      </li>
+      <li class="list-group-item">
+        <div class="fw-semibold">International agreements</div>
+        <div>
+          Agreements arising from South Africa's international obligations, from
+          tabling through committee scrutiny to adoption by the House.
+        </div>
+        <div class="small text-muted">
+          Submitted for tabling → Agreement Tabled – referred to Committee →
+          Committee considering and processing → Committee submitted report for
+          tabling → House adopted – referred to Department → Closed – House approved
+        </div>
+      </li>
+      <li class="list-group-item">
+        <div class="fw-semibold">Bills</div>
+        <div>
+          Legislation from introduction to assent, including public participation,
+          committee deliberation, the NCOP stage and mediation.
+        </div>
+        <div class="small text-muted">
+          Introduced → Referred to Committee → Public Participation → Committee
+          Deliberation → Committee Report → House Debate and Voting → NCOP
+          Consideration → Awaiting Presidential Assent → Signed into Law
+        </div>
+      </li>
     </ul>
-  </section>
-  <section class="mb-0">
-    <h2>Get In Touch</h2>
-    <p>
-      Have a question, a suggestion, or need a hand getting started?
-      <a href="{% url 'pwms:contact' %}">Contact us</a> and we will get back to you shortly.
+    <p class="mb-0">
+      Every stage also carries a citizen-facing <strong>public status</strong>, so a
+      detailed internal machine can publish a small, stable set of statuses —
+      <em>Introduced</em>, <em>Under Parliamentary Consideration</em>, <em>Signed
+      into Law</em> — without exposing each committee step along the way.
     </p>
   </section>
+  <section class="mb-4">
+    <h2 class="h4">How an instrument moves</h2>
+    <div class="row g-3">
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header">Stages and transitions</div>
+          <div class="card-body">
+            <p class="mb-0">
+              Each instrument follows a <strong>workflow type</strong> — a small
+              state machine of stages joined by the transitions allowed between
+              them. PWMS offers only the transitions valid from the current stage,
+              and can insist that evidence exists first: a document attached, an
+              ATC update published, no unanswered referrals, or all related
+              sub-workflows closed.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header">Deadlines and referrals</div>
+          <div class="card-body">
+            <p class="mb-0">
+              Every instrument carries an owner, an optional assignee, a deadline
+              and a priority. Work can be referred to a committee or another group
+              with a response deadline attached; an unanswered referral can hold an
+              instrument back, and an expired deadline is flagged as overdue rather
+              than quietly missed.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section class="mb-4">
+    <h2 class="h4">Who may do what</h2>
+    <div class="row g-3">
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header">Access follows your role</div>
+          <div class="card-body">
+            <p class="mb-0">
+              What you can see and do is decided by the groups you belong to, the
+              role you hold in them, and the stage the instrument has reached — so a
+              committee might be able to edit a draft but only read it once it has
+              been tabled. Creating an instrument is restricted to the roles its
+              workflow type names.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header">The people named on a record</div>
+          <div class="card-body">
+            <p class="mb-0">
+              The owner of an instrument can always view, edit and delete it, and
+              whoever the work is assigned to can always open it — an assignment is
+              a queue, not a promotion. Access flows down from a parent instrument
+              to the ones nested inside it, never the other way round.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+  <section class="mb-4">
+    <h2 class="h4">A record you can trust</h2>
+    <p>
+      Nothing is overwritten quietly. Every create, edit and delete of an
+      instrument is recorded with the acting user and a before/after change, and
+      every stage change is logged as a transition with its timestamp, user and any
+      comment.
+    </p>
+    <p class="mb-0">
+      Alongside those, an instrument keeps an append-only event timeline for
+      business facts such as a report document being attached or an ATC update
+      being published. Events are evidence: they are never edited, and a correction
+      is added as a new event rather than written over the old one.
+    </p>
+  </section>
+  <section class="mb-4">
+    <h2 class="h4">Finding your work</h2>
+    <p class="mb-0">
+      Your <a href="{% url "pwms:dashboard" %}">dashboard</a> gathers what needs
+      attention — work assigned to you, deadlines falling due, anything overdue,
+      and referrals your committees have yet to answer — alongside a breakdown of
+      the instruments within your reach. The
+      <a href="{% url "pwms:workflows" %}">workflow register</a> lists everything
+      you can see in one place, filterable by type, stage and priority, while each
+      type keeps its own register and detail page with its participants,
+      sub-workflows, referrals and history.
+    </p>
+  </section>
+  <section class="mb-4">
+    <h2 class="h4">Getting access and help</h2>
+    <p>
+      Access is not requested through the system itself: it follows your group
+      membership. An administrator records you as a member of a group with a role,
+      and what you can see and do follows from that — so when something is missing,
+      the first question is usually whether your membership is current.
+    </p>
+    <p class="mb-0">
+      For a problem with PWMS, or to be added to a group or role, see
+      <a href="{% url "pwms:contact" %}">Contact</a>.
+    </p>
+  </section>
+  <p class="small text-muted mb-0">
+    PWMS is in active development (version 0.1.0). The workflow engine, access
+    control and audit trail are in place, and referral deadline reminders are
+    emailed; broader notifications, document storage and further instruments are
+    on the roadmap.
+  </p>
 {% endblock content %}

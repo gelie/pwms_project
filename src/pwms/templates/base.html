@@ -33,7 +33,9 @@
     <script src="{% static "js/navbar.js" %}" defer></script>
     <script src="{% static "js/formset.js" %}" defer></script>
     <script src="{% static "js/htmx-lookup.js" %}" defer></script>
-    <title>PWMS</title>
+    {# Pages override this with their own name; the title block was previously
+       inert because <title> was hardcoded, so every tab read "PWMS". #}
+    <title>{% block title %}PWMS{% endblock title %}</title>
   </head>
   <body>
     {% include "header.html" %}
@@ -49,8 +51,7 @@
     </div>
     <div id="site-footer">
       <p>
-        Made with {% lucide "heart" fill="red" stroke="red" %}
-        for the Parliament of South Africa {% lucide "move-right" %} @<span id="current-year"></span>
+        <a style="color: var(--theme-yellow)" href="https://www.parliament.gov.za/">Parliament of South Africa</a> @ <span id="current-year"></span>
       </p>
     </div>
     <script>
