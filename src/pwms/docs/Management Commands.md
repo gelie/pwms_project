@@ -206,6 +206,7 @@ share takes it out of the queue immediately.
 | `fix_missing_group_access` | create `WorkflowGroupAccess` for instances missing it — **superseded by `sync_type_group_access`** | legacy |
 | `sync_type_group_access` | backfill `WorkflowGroupAccess` (owning group + viewer groups) from each instance's `WorkflowType` | ✅ live |
 | `show_workflow_hierarchy` | print the parent/child tree of workflow instances | ✅ live — see below |
+| `seed_demo_data` | empty the four workflow registers and reseed them with presentation-ready mock records | ✅ live — see below |
 | `validate_memberships` | integrity-check group memberships | pending repoint |
 
 ### Type-level group access
@@ -237,6 +238,38 @@ uses each instance's `parent_workflow` / `sub_workflows` helpers.
 | `--workflow-type NAME` | restrict to one workflow type name |
 
 Rows are colour-coded by status: overdue first, then `urgent` / `high` priority.
+
+### Demo / mockup data
+
+`seed_demo_data` is a **destructive** convenience command for demos and mockup
+walkthroughs. It deletes every delegation report, international resolution,
+international agreement and bill — together with everything keyed to them
+(RBAC rows, `TransitionLog` / `WorkflowEvent` / auditlog history, referrals,
+notifications, attachments and bill versions) — and repopulates the four
+registers with realistic records spread across each type's states.
+
+Records are walked through their real state machines with
+`perform_transition`, so every state change, document, referral and alert on
+the detail pages is genuine. Only the timestamps are back-dated, spread over
+the preceding months so the history, activity feed and deadline panels read
+like a live system. References (`DR-…`, `IA-…`, B-numbers) are numbered in
+date order, and a curated set of in-app alerts is written for the bell.
+
+Automatic alert fan-out is suppressed while seeding, so no mail is queued and
+no background worker is needed.
+
+| Option | Effect |
+| --- | --- |
+| `--force` | skip the confirmation prompt (required for unattended runs) |
+
+Users, groups, roles, workflow types, states and transitions are **not**
+touched — only the four registers and their dependants — so the command can be
+re-run at any time. Sign in as a superuser to see all four registers at once;
+a section member sees only the registers their group owns.
+
+```bash
+python manage.py seed_demo_data --force
+```
 
 ## Background tasks (the queue worker)
 
