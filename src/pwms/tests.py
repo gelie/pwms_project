@@ -2,6 +2,7 @@ import tempfile
 from datetime import date, timedelta
 from io import StringIO
 from pathlib import Path
+from unittest import mock
 
 from auditlog.context import set_actor
 from auditlog.models import LogEntry
@@ -56,6 +57,7 @@ from .services.permissions import (
     require,
     resolve,
 )
+from .services.progress import machine_for
 
 
 class WorkflowAuditingTests(TestCase):
@@ -3248,6 +3250,49 @@ class DashboardViewTests(TestCase):
         response = self._dashboard()
         self.assertContains(response, "Due soon report")
         self.assertNotContains(response, "Nothing falls due in the next 7 days.")
+
+    def test_rows_show_how_far_each_workflow_has_travelled(self):
+        """
+        Each work-list row repeats the detail page's Progress measure, so where a
+        record stands is visible without opening it.
+        """
+        resolution_type = WorkflowType.objects.get(name="International Resolution")
+        self.overdue_resolution.current_state = resolution_type.states.get(
+            name="In Progress"
+        )
+        self.overdue_resolution.save(update_fields=["current_state"])
+
+        response = self._dashboard()
+
+        # "In Progress" is half way to "Closed" on the resolution machine.
+        self.assertContains(response, 'aria-valuenow="50"')
+        self.assertContains(response, "In Progress · 50%")
+        # The dashboard gets the thin bar, not the detail page's ring.
+        self.assertContains(response, 'class="progress-bar-thin"')
+        self.assertNotContains(response, "progress-ring")
+
+    def test_state_graph_is_read_once_per_workflow_type(self):
+        """
+        One machine per workflow type is shared by every row, so a row's progress
+        costs no graph read of its own.
+        """
+        with mock.patch("pwms.views.machine_for", wraps=machine_for) as build:
+            self._dashboard()
+        baseline = build.call_count
+
+        report_type = WorkflowType.objects.get(name="Delegation Report")
+        DelegationReport.objects.create(
+            workflow_type=report_type,
+            current_state=report_type.get_initial_state(),
+            title="Another overdue report",
+            owner=self.viewer,
+            deadline=timezone.now() - timedelta(days=2),
+        )
+        with mock.patch("pwms.views.machine_for", wraps=machine_for) as build:
+            self._dashboard()
+
+        self.assertGreater(baseline, 0)
+        self.assertEqual(build.call_count, baseline)
 
     def test_awaiting_referral_shows_for_my_committee(self):
         response = self._dashboard()

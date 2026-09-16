@@ -93,7 +93,7 @@ def _transition_entry(log):
         kind="transition",
         label="State change",
         timestamp=log.timestamp,
-        actor=_actor_label(log.actor),
+        actor=actor_label(log.actor),
         from_state=log.from_state.name if log.from_state else "",
         to_state=log.to_state.name if log.to_state else "",
         action=log.action,
@@ -108,7 +108,7 @@ def _audit_entry(entry, instance):
         kind=kind,
         label=label,
         timestamp=entry.timestamp,
-        actor=_actor_label(entry.actor),
+        actor=actor_label(entry.actor),
         ip_address=entry.remote_addr,
         # Only an update carries a useful diff: a create dumps every field's
         # initial value, and a delete records none.
@@ -183,7 +183,8 @@ def _m2m_summary(value):
     return f"{verb}: {objects}" if objects else verb
 
 
-def _actor_label(user):
+def actor_label(user):
+    """The label a person carries in a history row ("System" when nobody)."""
     if user is None:
         return SYSTEM_ACTOR
     return getattr(user, "display_name", None) or user.get_username()

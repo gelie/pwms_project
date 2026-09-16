@@ -53,6 +53,19 @@
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link"
+              id="tab-progress"
+              data-bs-toggle="tab"
+              data-bs-target="#pane-progress"
+              type="button"
+              role="tab"
+              aria-controls="pane-progress"
+              aria-selected="false">
+        {% lucide "gauge" size=16 %}<span>Progress</span>
+        <span class="workflow-tab-count">{{ progress.percent }}%</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link"
               id="tab-related"
               data-bs-toggle="tab"
               data-bs-target="#pane-related"
@@ -240,6 +253,151 @@
           </section>
         </div>
       </div>
+    </div>
+
+    {# --- Progress ----------------------------------------------------- #}
+    <div class="tab-pane fade"
+         id="pane-progress"
+         role="tabpanel"
+         aria-labelledby="tab-progress"
+         tabindex="0">
+      {% if not progress.has_machine %}
+        <section class="workflow-card workflow-card--pad">
+          <p class="workflow-muted mb-0">
+            This workflow type has no states configured, so there is no progress to show.
+          </p>
+        </section>
+      {% else %}
+        <section class="workflow-card workflow-card--pad">
+          <div class="row g-4 align-items-center">
+            <div class="col-md-auto">
+               <!--The ring is one SVG circle whose dash offset CSS derives from the
+                 percentage, so no chart library is needed. -->
+              <div class="progress-ring"
+                   style="--percent: {{ progress.percent }}; --ring-color: {{ object.current_state.color }}">
+                <svg viewBox="0 0 120 120"
+                     role="img"
+                     aria-label="{{ progress.percent }} percent complete">
+                  <circle class="progress-ring__track" cx="60" cy="60" r="52"></circle>
+                  <circle class="progress-ring__value" cx="60" cy="60" r="52"></circle>
+                </svg>
+                <span class="progress-ring__text">
+                  <span class="progress-ring__number">{{ progress.percent }}%</span>
+                  <span class="progress-ring__caption">complete</span>
+                </span>
+              </div>
+            </div>
+            <div class="col">
+              <h2 class="workflow-card-title">{% lucide "gauge" size=16 %} Where this record stands</h2>
+              <p class="progress-headline">
+                {% if progress.is_closed %}
+                  Closed — the record has reached a terminal state.
+                {% elif progress.steps_left is not None %}
+                  {{ progress.steps_left }} step{{ progress.steps_left|pluralize }} left to
+                  <strong>{{ progress.target }}</strong>.
+                {% else %}
+                  No route to a terminal state is defined for this workflow type.
+                {% endif %}
+              </p>
+              <dl class="workflow-facts">
+                <div class="workflow-fact">
+                  <dt>Current state</dt>
+                  <dd>
+                    <span class="badge badge-state">{{ object.current_state.name }}</span>
+                  </dd>
+                </div>
+                <div class="workflow-fact">
+                  <dt>Public status</dt>
+                  <dd>{{ object.current_state.get_public_name_display }}</dd>
+                </div>
+                <div class="workflow-fact">
+                  <dt>States visited</dt>
+                  <dd>{{ progress.completed }} of {{ progress.total }}</dd>
+                </div>
+                <div class="workflow-fact">
+                  <dt>Started</dt>
+                  <dd>{{ progress.started_at|date:"d M Y H:i" }}</dd>
+                </div>
+                <div class="workflow-fact">
+                  <dt>Last movement</dt>
+                  <dd>{{ progress.last_moved_at|date:"d M Y H:i"|default:"No transitions yet" }}</dd>
+                </div>
+                <div class="workflow-fact">
+                  <dt>In this state</dt>
+                  <dd>{{ progress.days_in_state }} day{{ progress.days_in_state|pluralize }}</dd>
+                </div>
+              </dl>
+            </div>
+          </div>
+        </section>
+
+        <section class="workflow-card workflow-card--pad">
+          <h2 class="workflow-card-title">{% lucide "route" size=16 %} State sequence</h2>
+          <ol class="progress-steps">
+            {% for step in progress.steps %}
+              <li class="progress-step progress-step--{{ step.status }}">
+                <span class="progress-step__marker" style="--step-color: {{ step.state.color }}">
+                  {% if step.is_done %}{% lucide "check" size=14 %}{% else %}{{ forloop.counter }}{% endif %}
+                </span>
+                <span class="progress-step__body">
+                  <span class="progress-step__name">
+                    {{ step.state.name }}
+                    {% if step.state.is_terminal %}<span class="badge badge-muted">Terminal</span>{% endif %}
+                  </span>
+                  <span class="progress-step__meta">
+                    {{ step.state.get_public_name_display }}
+                    {% if step.entered_at %}· entered {{ step.entered_at|date:"d M Y" }}{% endif %}
+                  </span>
+                </span>
+              </li>
+            {% endfor %}
+          </ol>
+        </section>
+
+        <section class="workflow-card">
+          <div class="workflow-card-head">
+            <span class="d-flex align-items-center gap-2">{% lucide "history" size=16 %} Journey</span>
+            <span class="badge badge-muted">{{ progress.moves|length }}</span>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-striped table-hover align-middle mb-0">
+              <caption class="visually-hidden">Transitions this record has made, oldest first</caption>
+              <thead>
+                <tr>
+                  <th scope="col">When</th>
+                  <th scope="col">Move</th>
+                  <th scope="col">By</th>
+                  <th scope="col">Comment</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for move in progress.moves %}
+                  <tr>
+                    <td class="text-nowrap">
+                      <time datetime="{{ move.timestamp|date:"c" }}">{{ move.timestamp|date:"d M Y H:i" }}</time>
+                    </td>
+                    <td>
+                      <span class="workflow-transition">
+                        {{ move.from_state|default:"—" }}
+                        {% lucide "arrow-right" size=12 %}
+                        {{ move.to_state|default:"—" }}
+                      </span>
+                    </td>
+                    <td>{{ move.actor }}</td>
+                    <td>{{ move.notes|default:"—" }}</td>
+                  </tr>
+                {% empty %}
+                  <tr>
+                    <td colspan="4" class="text-center workflow-muted py-4">
+                      This record has not moved from its first state yet.
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      {% endif %}
     </div>
 
     {# --- Related ----------------------------------------------------- #}

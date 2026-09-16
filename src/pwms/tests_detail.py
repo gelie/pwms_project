@@ -30,11 +30,13 @@ from .models import (
     WorkflowType,
 )
 from .services.history import _audit_entry, instance_timeline
+from .services.progress import workflow_progress
 from .utils.diagrams import workflow_type_stem
 
 #: The pane ids the shared detail template renders, in tab order.
 DETAIL_PANES = (
     "overview",
+    "progress",
     "related",
     "notes",
     "timeline",
@@ -97,14 +99,23 @@ class DetailPageTestCase(TestCase):
         fields.update(overrides)
         return InternationalAgreement.objects.create(**fields)
 
-    def add_transition(self, instance, *, actor=None, notes="", ip="127.0.0.1"):
+    def add_transition(
+        self,
+        instance,
+        *,
+        from_state=None,
+        to_state=None,
+        actor=None,
+        notes="",
+        ip="127.0.0.1",
+    ):
         """A state-change row for ``instance`` (the views do not perform one yet)."""
         return TransitionLog.objects.create(
             content_type=ContentType.objects.get_for_model(instance),
             object_id=instance.pk,
             action="STATE_TRANSITION",
-            from_state=instance.current_state,
-            to_state=instance.current_state,
+            from_state=from_state or instance.current_state,
+            to_state=to_state or instance.current_state,
             actor=actor,
             ip_address=ip,
             notes=notes,
@@ -200,6 +211,125 @@ class TimelineServiceTests(DetailPageTestCase):
         self.assertEqual(change.after, "Added: Committee X, Committee Y")
 
 
+class ProgressServiceTests(DetailPageTestCase):
+    """``workflow_progress`` says where a record is, and how far is left."""
+
+    def make_resolution(self, state_name):
+        workflow_type = self.types["International Resolution"]
+        return InternationalResolution.objects.create(
+            workflow_type=workflow_type,
+            current_state=workflow_type.states.get(name=state_name),
+            title="A resolution",
+            resolution_number=f"IR-PROGRESS-{state_name}",
+            owner=self.user,
+        )
+
+    def make_bill(self, state_name):
+        workflow_type = self.types["Bill"]
+        return Bill.objects.create(
+            workflow_type=workflow_type,
+            current_state=workflow_type.states.get(name=state_name),
+            title="A bill",
+            bill_number=f"B PROGRESS {state_name}",
+            owner=self.user,
+        )
+
+    def test_linear_machine_starts_at_zero(self):
+        progress = workflow_progress(self.make_resolution("Captured"))
+
+        self.assertTrue(progress.has_machine)
+        self.assertEqual(progress.percent, 0)
+        self.assertEqual(progress.steps_left, 4)
+        self.assertEqual(progress.target, "Closed")
+        self.assertFalse(progress.is_closed)
+        self.assertEqual((progress.completed, progress.total), (0, 5))
+
+    def test_progress_is_measured_to_the_terminal_state(self):
+        progress = workflow_progress(self.make_resolution("In Progress"))
+
+        self.assertEqual(progress.steps_left, 2)
+        self.assertEqual(progress.percent, 50)
+
+    def test_terminal_state_is_complete(self):
+        progress = workflow_progress(self.make_resolution("Closed"))
+
+        self.assertTrue(progress.is_closed)
+        self.assertEqual(progress.steps_left, 0)
+        self.assertEqual(progress.percent, 100)
+
+    def test_branch_is_measured_along_the_route(self):
+        """
+        A bill at NCOP Consideration is two steps from Signed into Law — 75% of
+        the eight transitions from Introduced — although the state list holds
+        twelve states and a one-step withdrawal exit.
+        """
+        progress = workflow_progress(self.make_bill("NCOP Consideration"))
+
+        self.assertEqual(progress.target, "Signed into Law")
+        self.assertEqual(progress.steps_left, 2)
+        self.assertEqual(progress.percent, 75)
+
+    def test_early_exit_does_not_read_as_complete(self):
+        """
+        Withdrawn is one step from Introduced, so measuring against the *nearest*
+        terminal would call a brand-new bill finished.
+        """
+        progress = workflow_progress(self.make_bill("Introduced"))
+
+        self.assertEqual(progress.steps_left, 8)
+        self.assertEqual(progress.percent, 0)
+
+    def test_withdrawn_bill_is_closed(self):
+        progress = workflow_progress(self.make_bill("Withdrawn"))
+
+        self.assertTrue(progress.is_closed)
+        self.assertEqual(progress.percent, 100)
+
+    def test_steps_mark_done_current_and_upcoming(self):
+        workflow_type = self.types["International Resolution"]
+        resolution = self.make_resolution("In Progress")
+        self.add_transition(
+            resolution,
+            from_state=workflow_type.states.get(name="Captured"),
+            to_state=workflow_type.states.get(name="Assigned"),
+            actor=self.user,
+        )
+
+        progress = workflow_progress(resolution)
+
+        self.assertEqual(
+            [(step.state.name, step.status) for step in progress.steps],
+            [
+                ("Captured", "done"),
+                ("Assigned", "done"),
+                ("In Progress", "current"),
+                ("Implemented", "upcoming"),
+                ("Closed", "upcoming"),
+            ],
+        )
+        self.assertEqual(progress.completed, 2)
+
+    def test_journey_lists_the_moves_oldest_first(self):
+        workflow_type = self.types["International Resolution"]
+        resolution = self.make_resolution("Assigned")
+        self.add_transition(
+            resolution,
+            from_state=workflow_type.states.get(name="Captured"),
+            to_state=workflow_type.states.get(name="Assigned"),
+            actor=self.user,
+            notes="Captured at the ATC",
+        )
+
+        progress = workflow_progress(resolution)
+
+        self.assertEqual([move.to_state for move in progress.moves], ["Assigned"])
+        move = progress.moves[0]
+        self.assertEqual(move.from_state, "Captured")
+        self.assertEqual(move.actor, self.user.display_name)
+        self.assertEqual(move.notes, "Captured at the ATC")
+        self.assertEqual(progress.started_at, move.timestamp)
+
+
 class WorkflowDetailViewTests(DetailPageTestCase):
     """Each instrument's detail page renders as the tabbed shell."""
 
@@ -247,6 +377,19 @@ class WorkflowDetailViewTests(DetailPageTestCase):
                 )
                 self.assertEqual(response.status_code, 200)
                 self.assertContains(response, 'id="pane-timeline"')
+
+    def test_progress_tab_shows_the_completion(self):
+        report = self.make_report()
+
+        response = self.client.get(
+            reverse("pwms:delegation_report_detail", args=[report.public_id])
+        )
+
+        self.assertContains(response, 'id="pane-progress"')
+        self.assertContains(response, 'aria-label="0 percent complete"')
+        # The whole sequence is rendered, terminal state included.
+        self.assertContains(response, "Awaiting PGIR approval")
+        self.assertContains(response, "Closed – House approved")
 
     def test_timeline_tab_shows_transitions_and_crud_together(self):
         report = self.make_report()

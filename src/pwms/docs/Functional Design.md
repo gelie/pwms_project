@@ -324,13 +324,22 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
   carry a free-text filter.
 - **Detail pages are tabbed**: one header plus a tab per concern — Overview (key
   information, ownership, description, type-specific facts and system
-  information), Related (the hierarchy plus each type's own tables: participants,
-  BR03 updates, bill versions), Notes, **Timeline**, Attachments, Diagram and
-  Referrals (which also lists the transitions available from the current state).
-  Every instrument fills the same shared shell
+  information), **Progress**, Related (the hierarchy plus each type's own tables:
+  participants, BR03 updates, bill versions), Notes, **Timeline**, Attachments,
+  Diagram and Referrals (which also lists the transitions available from the
+  current state). Every instrument fills the same shared shell
   (`templates/pwms/workflow-detail.html`), and `static/js/workflow-tabs.js`
   mirrors the open tab into the URL hash so a refresh — or a shared link —
   returns to it.
+- **Progress**: a completion ring plus the type's state sequence, each state
+  marked done / current / upcoming from the record's own transitions, and the
+  journey it took (who moved it, when, with what comment). The percentage is
+  measured along the *route to completion* over the transition graph rather than
+  by counting states, so a branched machine reports honestly — a bill at *NCOP
+  Consideration* is 75% of the way to *Signed into Law*, not “7 of 12 states”
+  (`pwms.services.progress`). The dashboard's work lists (*Assigned to you*,
+  *Due soon*, *Overdue*, *Awaiting your committees*) repeat the same measure as a
+  thin bar on each row, so where a record stands is visible without opening it.
 - **Unified Timeline**: `TransitionLog` state changes and the auditlog CRUD trail
   (create / update / delete, with the fields that changed) are merged into one
   newest-first table rather than the two separate tables the page used to carry.

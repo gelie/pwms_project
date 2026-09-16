@@ -153,6 +153,9 @@
                       {{ row.object.workflow_type.name }}
                       {% if row.identifier %}· {{ row.identifier }}{% endif %}
                     </span>
+                    {% if row.percent is not None %}
+                      {% include "pwms/partials/progress_bar.html" with percent=row.percent state=row.object.current_state %}
+                    {% endif %}
                   </span>
                   <span class="dashboard-deadline {% if row.object.is_overdue %}is-overdue{% endif %}">
                     {{ row.object.deadline|date:"d M Y"|default:"No deadline" }}
@@ -187,6 +190,9 @@
                       {{ row.object.workflow_type.name }}
                       {% if row.identifier %}· {{ row.identifier }}{% endif %}
                     </span>
+                    {% if row.percent is not None %}
+                      {% include "pwms/partials/progress_bar.html" with percent=row.percent state=row.object.current_state %}
+                    {% endif %}
                   </span>
                   <span class="dashboard-deadline">{{ row.object.deadline|date:"d M Y" }}</span>
                 </a>
@@ -221,6 +227,9 @@
                       {{ row.object.workflow_type.name }}
                       {% if row.identifier %}· {{ row.identifier }}{% endif %}
                     </span>
+                    {% if row.percent is not None %}
+                      {% include "pwms/partials/progress_bar.html" with percent=row.percent state=row.object.current_state %}
+                    {% endif %}
                   </span>
                   <span class="dashboard-deadline is-overdue">{{ row.object.deadline|date:"d M Y" }}</span>
                 </a>
@@ -253,6 +262,9 @@
                       {{ row.referral.referred_to.name }}
                       {% if row.referral.referred_by %}· from {{ row.referral.referred_by.display_name }}{% endif %}
                     </span>
+                    {% if row.percent is not None %}
+                      {% include "pwms/partials/progress_bar.html" with percent=row.percent state=row.workflow.current_state label="Workflow completion" %}
+                    {% endif %}
                   </span>
                   <span class="dashboard-deadline {% if row.referral.is_overdue %}is-overdue{% endif %}">
                     {{ row.referral.due_date|date:"d M Y"|default:"No due date" }}

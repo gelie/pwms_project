@@ -203,13 +203,16 @@ dropdown. List pages have a free-text filter.
 
 ✅ **Tabbed detail pages & unified timeline shipped (2026-09-16)** — every
 instrument's detail page is now a header plus one tab per concern (Overview,
-Related, Notes, Timeline, Attachments, Diagram, Referrals), built on the shared
-`templates/pwms/workflow-detail.html` shell; `static/js/workflow-tabs.js` keeps
-the open tab in the URL hash, so a refresh or a shared link returns to it. The
-**Timeline** tab merges `TransitionLog` state changes with the auditlog CRUD
-trail into one newest-first table (`pwms/services/history.py`), and the
-**Diagram** tab serves the type's generated state machine
-(`pwms/utils/diagrams.py`, `pwms:workflow_diagram`).
+Progress, Related, Notes, Timeline, Attachments, Diagram, Referrals), built on
+the shared `templates/pwms/workflow-detail.html` shell;
+`static/js/workflow-tabs.js` keeps the open tab in the URL hash, so a refresh or
+a shared link returns to it. The **Timeline** tab merges `TransitionLog` state
+changes with the auditlog CRUD trail into one newest-first table
+(`pwms/services/history.py`), the **Diagram** tab serves the type's generated
+state machine (`pwms/utils/diagrams.py`, `pwms:workflow_diagram`), and the
+**Progress** tab adds a completion ring, the state sequence and the journey taken
+(`pwms/services/progress.py`). The dashboard's work lists repeat that percentage
+as a thin bar on each row.
 
 Remaining (🔜):
 

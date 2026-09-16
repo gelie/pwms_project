@@ -86,6 +86,7 @@ from .services.permissions import (
     resolve,
     visible_instances,
 )
+from .services.progress import machine_for, workflow_progress
 from .utils.diagrams import workflow_type_diagram_path
 
 logger = logging.getLogger(__name__)
@@ -129,6 +130,11 @@ def dashboard(request):
     now = timezone.now()
     due_soon_cutoff = now + timedelta(days=DUE_SOON_DAYS)
 
+    # The machine (a type's states + transition graph) is read once per workflow
+    # type rather than once per row: a row's percentage needs nothing but the
+    # type's machine and the row's own current state, never its logs.
+    machines = {}
+
     open_instances = [i for i in accessible if not i.current_state.is_terminal]
     assigned = _dashboard_by_deadline(
         [i for i in accessible if i.assigned_to_id == user.pk], now
@@ -143,7 +149,7 @@ def dashboard(request):
         now,
     )
 
-    referral_rows = _dashboard_referrals(user, by_key, now)
+    referral_rows = _dashboard_referrals(user, by_key, now, machines)
     total = len(accessible)
     context = {
         "total_count": total,
@@ -152,9 +158,9 @@ def dashboard(request):
         "overdue_count": len(overdue),
         "due_soon_count": len(due_soon),
         "unassigned_count": sum(1 for i in open_instances if i.assigned_to_id is None),
-        "assigned_rows": _dashboard_rows(assigned),
-        "overdue_rows": _dashboard_rows(overdue),
-        "due_soon_rows": _dashboard_rows(due_soon),
+        "assigned_rows": _dashboard_rows(assigned, machines),
+        "overdue_rows": _dashboard_rows(overdue, machines),
+        "due_soon_rows": _dashboard_rows(due_soon, machines),
         "type_breakdown": _dashboard_breakdown(
             Counter(i.workflow_type.name for i in accessible), total
         ),
@@ -189,16 +195,36 @@ def _dashboard_by_deadline(instances, now):
     return sorted(instances, key=lambda i: (i.deadline is None, i.deadline or now))
 
 
-def _dashboard_rows(instances):
+def _dashboard_rows(instances, machines):
     """Presentation rows for one dashboard list, capped at ``DASHBOARD_ROWS``."""
-    return [
-        {
-            "object": instance,
-            "url": _workflow_detail_url(instance),
-            "identifier": _workflow_identifier(instance),
-        }
-        for instance in instances[:DASHBOARD_ROWS]
-    ]
+    rows = []
+    for instance in instances[:DASHBOARD_ROWS]:
+        machine = _machine_for(machines, instance)
+        rows.append(
+            {
+                "object": instance,
+                "url": _workflow_detail_url(instance),
+                "identifier": _workflow_identifier(instance),
+                "percent": (
+                    machine.percent(instance.current_state_id) if machine else None
+                ),
+            }
+        )
+    return rows
+
+
+def _machine_for(cache, instance):
+    """
+    The instance's :class:`WorkflowMachine`, built at most once per type.
+
+    ``None`` when the type has no machine configured, which is what the template
+    treats as “no progress to show”.
+    """
+    key = instance.workflow_type_id
+    if key not in cache:
+        machine = machine_for(instance.workflow_type)
+        cache[key] = machine if machine.has_machine else None
+    return cache[key]
 
 
 def _dashboard_breakdown(counter, total):
@@ -211,7 +237,7 @@ def _dashboard_breakdown(counter, total):
     ]
 
 
-def _dashboard_referrals(user, by_key, now):
+def _dashboard_referrals(user, by_key, now, machines):
     """Open referrals to the user's committees, on workflows they may view."""
     group_ids = user.memberships.filter(is_active=True).values_list(
         "group_id", flat=True
@@ -223,11 +249,15 @@ def _dashboard_referrals(user, by_key, now):
         workflow = by_key.get((referral.content_type_id, referral.object_id))
         if workflow is None:
             continue
+        machine = _machine_for(machines, workflow)
         rows.append(
             {
                 "referral": referral,
                 "workflow": workflow,
                 "url": _workflow_detail_url(workflow),
+                "percent": (
+                    machine.percent(workflow.current_state_id) if machine else None
+                ),
             }
         )
     rows.sort(
@@ -437,6 +467,8 @@ def _workflow_detail_context(request, instance):
         # A generic alias the shared detail template renders from.
         "object": instance,
         "perms": permissions_for(request.user, instance),
+        # The Progress tab: where the record sits in its type's state machine.
+        "progress": workflow_progress(instance),
         # The tab renders the newest rows and says how many there are in total.
         "timeline": timeline[:TIMELINE_PREVIEW_LIMIT],
         "timeline_total": len(timeline),

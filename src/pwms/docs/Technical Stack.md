@@ -21,7 +21,7 @@
 | `django-background-tasks` | async background task queue; `pwms/tasks.py` registers alert-email delivery and the scheduled-report drain, served by `manage.py process_tasks` |
 | `django-mptt` | hierarchical `Group` trees (Houses → Committees → …) |
 | `lucide` | server-rendered UI icons; Bootstrap 5 itself is **vendored** under `static/` (`bootstrap.min.css` + `bootstrap.bundle.min.js`), not loaded via the `django-bootstrap5` template tags |
-| `django-chartjs` | (declared/installed; not yet used on a page) charting for dashboards |
+| `django-chartjs` | (declared/installed, but not used) charting; the detail page's progress ring is inline SVG + CSS, so no chart library is shipped to the browser yet |
 | `django-htmx` | progressive enhancement / partial-page updates |
 | `django-flatpickr` | date-time pickers in templates/forms |
 | `djangorestframework` (DRF) | REST API layer |
@@ -113,7 +113,8 @@
   `pwms/tests_notifications.py` (alerts + email dispatch),
   `pwms/tests_attachments.py` (SharePoint attachments & versioning),
   `pwms/tests_reports.py` (report builder, exports, sharing, scheduling),
-  `pwms/tests_detail.py` (the tabbed detail page, the merged timeline, diagrams),
+  `pwms/tests_detail.py` (the tabbed detail page, the merged timeline, progress,
+  diagrams),
   `pwms/tests_authentication.py` (AD/LDAP sign-in + fallback) and
   `pwms/tests_executive.py` (executive-branch identity rules).
 - Run from the repo root; `pwms.*` test modules resolve through the editable

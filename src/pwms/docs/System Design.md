@@ -99,7 +99,8 @@ pwms_project/                     # repo root (git) — run manage.py from here
     ├── services/
     │   ├── permissions.py        # unified permission resolver (UI + API)
     │   ├── attachments.py        # SharePoint attachment service
-    │   └── history.py            # merged TransitionLog + auditlog timeline
+    │   ├── history.py            # merged TransitionLog + auditlog timeline
+    │   └── progress.py           # where a record sits in its state machine
     ├── management/commands/      # sync, jobs, diagrams (see Management Commands)
     ├── utils/                    # audit_helpers.py, sharepoint.py, diagrams.py
     ├── migrations/

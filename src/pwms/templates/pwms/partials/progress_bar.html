@@ -1,0 +1,27 @@
+{% comment %}
+  A thin completion bar for one workflow instance — the list-page counterpart of
+  the detail page's Progress tab, where a full ring and stepper would be too much.
+
+  Include with:
+    percent=<0-100>   how far along the record's route to completion it is
+    state=<State>     optional; its colour fills the bar and its name labels it
+    label=<text>      optional accessible name (defaults to "Completion")
+
+  The caller decides whether there is anything to show: a workflow type with no
+  states configured has no percentage, and rendering "0%" for it would read as
+  "not started" rather than "not measurable".
+{% endcomment %}
+<span class="progress-bar-thin"
+      style="--percent: {{ percent|default:0 }}; --bar-color: {{ state.color|default:'var(--theme-green)' }}">
+  <span class="progress-bar-thin__track"
+        role="progressbar"
+        aria-valuenow="{{ percent|default:0 }}"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-label="{{ label|default:'Completion' }}">
+    <span class="progress-bar-thin__fill"></span>
+  </span>
+  <span class="progress-bar-thin__label">
+    {% if state %}{{ state.name }} · {% endif %}{{ percent|default:0 }}%
+  </span>
+</span>

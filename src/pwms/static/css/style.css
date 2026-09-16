@@ -1195,6 +1195,191 @@ html.password-toggle-ready .password-toggle {
     color: light-dark(#5b5240, #d3ccc0);
 }
 
+/* ------------------------------------------------------------------ *
+   Progress tab: a completion ring and the state sequence.
+
+   The ring is a single SVG circle whose dash offset comes from the percentage,
+   so the whole visualisation is CSS + inline SVG — no chart library, nothing to
+   load from a CDN, and it themes itself like the rest of the page.
+ * ------------------------------------------------------------------ */
+.progress-ring {
+    position: relative;
+    width: 132px;
+    height: 132px;
+}
+
+.progress-ring svg {
+    width: 100%;
+    height: 100%;
+    /* Start the arc at twelve o'clock rather than three. */
+    transform: rotate(-90deg);
+}
+
+.progress-ring__track {
+    fill: none;
+    stroke: light-dark(#e9e4d8, #3a3226);
+    stroke-width: 10;
+}
+
+.progress-ring__value {
+    fill: none;
+    stroke: var(--ring-color, var(--theme-green));
+    stroke-width: 10;
+    stroke-linecap: round;
+    /* r = 52, so the circumference is 2 * pi * 52. */
+    stroke-dasharray: 326.73;
+    stroke-dashoffset: calc(326.73 - (326.73 * var(--percent, 0) / 100));
+    transition: stroke-dashoffset 0.4s ease;
+}
+
+.progress-ring__text {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.15;
+}
+
+.progress-ring__number {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--bs-body-color);
+}
+
+.progress-ring__caption {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    color: var(--bs-secondary-color);
+}
+
+.progress-headline {
+    margin-bottom: 1rem;
+    font-family: var(--bs-font-serif);
+    font-size: 1.05rem;
+}
+
+/* The state sequence. A vertical stepper rather than a horizontal one: the
+   bill machine has twelve states, and a horizontal row would either scroll or
+   squeeze the labels past reading. */
+.progress-steps {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.progress-step {
+    position: relative;
+    display: flex;
+    gap: 0.875rem;
+    padding-bottom: 1.1rem;
+}
+
+.progress-step:last-child {
+    padding-bottom: 0;
+}
+
+/* The connector to the next step. It is coloured only once the instance has
+   left this state, so the line reads as "progress made". */
+.progress-step:not(:last-child)::before {
+    content: "";
+    position: absolute;
+    left: 0.8rem;
+    top: 1.9rem;
+    bottom: 0.1rem;
+    width: 2px;
+    background-color: light-dark(#e0d9c8, #3a3226);
+}
+
+.progress-step--done:not(:last-child)::before {
+    background-color: var(--step-color, var(--theme-green));
+}
+
+.progress-step__marker {
+    z-index: 1;
+    display: inline-flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    width: 1.7rem;
+    height: 1.7rem;
+    border: 2px solid light-dark(#d9d0bb, #3a3226);
+    border-radius: 50%;
+    background-color: var(--bs-body-bg);
+    color: var(--bs-secondary-color);
+    font-size: 0.72rem;
+    font-weight: 700;
+}
+
+.progress-step--done .progress-step__marker {
+    border-color: var(--step-color, var(--theme-green));
+    background-color: var(--step-color, var(--theme-green));
+    color: #fff;
+}
+
+.progress-step--current .progress-step__marker {
+    border-color: var(--step-color, var(--theme-green));
+    color: var(--step-color, var(--theme-green));
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--step-color, var(--theme-green)) 22%, transparent);
+}
+
+.progress-step__body {
+    display: flex;
+    flex-direction: column;
+    padding-top: 0.15rem;
+}
+
+.progress-step__name {
+    font-weight: 600;
+}
+
+.progress-step--current .progress-step__name {
+    color: var(--step-color, var(--theme-green));
+}
+
+.progress-step--upcoming .progress-step__name {
+    color: var(--bs-secondary-color);
+    font-weight: 400;
+}
+
+.progress-step__meta {
+    font-size: 0.8rem;
+    color: var(--bs-secondary-color);
+}
+
+/* The list-page counterpart of the ring: a thin completion bar for the
+   dashboard's work lists, so progress is visible without opening a record. */
+.progress-bar-thin {
+    display: block;
+    max-width: 260px;
+    margin-top: 0.4rem;
+}
+
+.progress-bar-thin__track {
+    display: block;
+    height: 4px;
+    border-radius: 999px;
+    background-color: light-dark(#e9e4d8, #3a3226);
+    overflow: hidden;
+}
+
+.progress-bar-thin__fill {
+    display: block;
+    width: calc(var(--percent, 0) * 1%);
+    height: 100%;
+    border-radius: 999px;
+    background-color: var(--bar-color, var(--theme-green));
+    transition: width 0.4s ease;
+}
+
+.progress-bar-thin__label {
+    display: block;
+    margin-top: 0.15rem;
+    font-size: 0.7rem;
+    color: var(--bs-secondary-color);
+}
+
 .notes-header {
     display: flex;
     justify-content: space-between;
