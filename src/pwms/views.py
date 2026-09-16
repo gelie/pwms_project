@@ -15,6 +15,7 @@ from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.db.models import Case, CharField, IntegerField, Q, Value, When
 from django.http import (
+    FileResponse,
     Http404,
     HttpResponseBadRequest,
     HttpResponseRedirect,
@@ -75,6 +76,7 @@ from .reporting import (
     send_share_email,
 )
 from .services import attachments as attachments_service
+from .services.history import TIMELINE_PREVIEW_LIMIT, instance_timeline
 from .services.permissions import (
     DELETE,
     EDIT,
@@ -84,6 +86,7 @@ from .services.permissions import (
     resolve,
     visible_instances,
 )
+from .utils.diagrams import workflow_type_diagram_path
 
 logger = logging.getLogger(__name__)
 
@@ -410,6 +413,43 @@ def _workflow_detail_url(instance):
     return None
 
 
+def _workflow_detail_context(request, instance):
+    """
+    Context every workflow detail page shares.
+
+    ``timeline`` is the merged TransitionLog + auditlog history (see
+    :mod:`pwms.services.history`); ``diagram_*`` drives the Diagram tab, which
+    serves the image ``manage.py generate_diagrams`` wrote for the type.
+
+    Neighbours in the hierarchy are separate instances with their own access, so
+    only the ones the reader may actually open are advertised.
+    """
+    parent = instance.parent_workflow
+    parent_viewable = parent is not None and resolve(request.user, parent, VIEW)
+    children = [
+        {"object": child, "url": _workflow_detail_url(child)}
+        for child in instance.sub_workflows
+        if resolve(request.user, child, VIEW)
+    ]
+    timeline = instance_timeline(instance)
+    diagram_path = workflow_type_diagram_path(instance.workflow_type)
+    return {
+        # A generic alias the shared detail template renders from.
+        "object": instance,
+        "perms": permissions_for(request.user, instance),
+        # The tab renders the newest rows and says how many there are in total.
+        "timeline": timeline[:TIMELINE_PREVIEW_LIMIT],
+        "timeline_total": len(timeline),
+        "parent": parent if parent_viewable else None,
+        "parent_url": _workflow_detail_url(parent) if parent_viewable else None,
+        "children": children,
+        "diagram_available": diagram_path is not None,
+        "diagram_url": reverse(
+            "pwms:workflow_diagram", kwargs={"public_id": instance.public_id}
+        ),
+    }
+
+
 def _deny_uncreatable_workflow_type(request):
     """
     Reject (HTTP 403) a POST naming a workflow type the user may not create in.
@@ -559,25 +599,14 @@ def delegation_report_detail(request, public_id):
         public_id=public_id,
     )
     require(request.user, report, VIEW)
-    # Contained resolutions are separate instances with their own access, so
-    # only advertise the ones the user may actually open.
-    resolutions = [
-        {"object": item, "url": _workflow_detail_url(item)}
-        for item in report.sub_workflows
-        if resolve(request.user, item, VIEW)
-    ]
     context = {
         "report": report,
-        "perms": permissions_for(request.user, report),
         "participants": report.participants.select_related("user"),
-        "resolutions": resolutions,
         "updates": report.updates.select_related("resulting_state", "recorded_by"),
         "referrals": report.referrals().select_related("referred_to", "referred_by"),
         "transitions": report.get_available_transitions(),
-        "transition_logs": report.audit_logs().select_related(
-            "from_state", "to_state", "actor"
-        ),
     }
+    context.update(_workflow_detail_context(request, report))
     context.update(_attachment_context(request, report))
     return render(request, "pwms/delegation-report-detail.html", context)
 
@@ -715,23 +744,14 @@ def international_resolution_detail(request, public_id):
         public_id=public_id,
     )
     require(request.user, resolution, VIEW)
-    parent = resolution.parent_workflow
-    # The parent is a separate instance: don't reveal or link it unless the user
-    # may view it too.
-    parent_viewable = parent is not None and resolve(request.user, parent, VIEW)
     context = {
         "resolution": resolution,
-        "perms": permissions_for(request.user, resolution),
-        "parent": parent if parent_viewable else None,
-        "parent_url": _workflow_detail_url(parent) if parent_viewable else None,
         "referrals": resolution.referrals().select_related(
             "referred_to", "referred_by"
         ),
         "transitions": resolution.get_available_transitions(),
-        "transition_logs": resolution.audit_logs().select_related(
-            "from_state", "to_state", "actor"
-        ),
     }
+    context.update(_workflow_detail_context(request, resolution))
     context.update(_attachment_context(request, resolution))
     return render(request, "pwms/international-resolution-detail.html", context)
 
@@ -866,21 +886,12 @@ def international_agreement_detail(request, public_id):
         public_id=public_id,
     )
     require(request.user, agreement, VIEW)
-    parent = agreement.parent_workflow
-    # The parent is a separate instance: don't reveal or link it unless the user
-    # may view it too.
-    parent_viewable = parent is not None and resolve(request.user, parent, VIEW)
     context = {
         "agreement": agreement,
-        "perms": permissions_for(request.user, agreement),
-        "parent": parent if parent_viewable else None,
-        "parent_url": _workflow_detail_url(parent) if parent_viewable else None,
         "referrals": agreement.referrals().select_related("referred_to", "referred_by"),
         "transitions": agreement.get_available_transitions(),
-        "transition_logs": agreement.audit_logs().select_related(
-            "from_state", "to_state", "actor"
-        ),
     }
+    context.update(_workflow_detail_context(request, agreement))
     context.update(_attachment_context(request, agreement))
     return render(request, "pwms/international-agreement-detail.html", context)
 
@@ -1012,22 +1023,13 @@ def bill_detail(request, public_id):
         public_id=public_id,
     )
     require(request.user, bill, VIEW)
-    parent = bill.parent_workflow
-    # The parent is a separate instance: don't reveal or link it unless the user
-    # may view it too.
-    parent_viewable = parent is not None and resolve(request.user, parent, VIEW)
     context = {
         "bill": bill,
-        "perms": permissions_for(request.user, bill),
-        "parent": parent if parent_viewable else None,
-        "parent_url": _workflow_detail_url(parent) if parent_viewable else None,
         "referrals": bill.referrals().select_related("referred_to", "referred_by"),
         "versions": bill.versions.select_related("recorded_by"),
         "transitions": bill.get_available_transitions(),
-        "transition_logs": bill.audit_logs().select_related(
-            "from_state", "to_state", "actor"
-        ),
     }
+    context.update(_workflow_detail_context(request, bill))
     context.update(_attachment_context(request, bill))
     return render(request, "pwms/bill-detail.html", context)
 
@@ -1368,6 +1370,26 @@ def workflow_document(request, public_id):
         )
     except ValueError:
         return HttpResponseBadRequest("Unknown document format.")
+
+
+def workflow_diagram(request, public_id):
+    """
+    The state-machine diagram for an instance's workflow *type*.
+
+    ``manage.py generate_diagrams`` renders one image per enabled type; this
+    serves the SVG a detail page's Diagram tab embeds. Keyed by an instance's
+    public id so it matches the other instrument routes, and VIEW on the
+    instance is required. A type whose diagram has never been generated is a
+    404 (the tab renders an empty state rather than a broken image).
+    """
+    instance = _workflow_by_public_id(public_id)
+    require(request.user, instance, VIEW)
+    path = workflow_type_diagram_path(instance.workflow_type)
+    if path is None:
+        raise Http404("No diagram has been generated for this workflow type.")
+    # No filename= argument: the browser must render it inline, and an <img>-
+    # loaded SVG cannot run any script it may carry.
+    return FileResponse(path.open("rb"), content_type="image/svg+xml")
 
 
 def about(request):

@@ -156,8 +156,8 @@ Then open:
 
 ```bash
 .venv/bin/python manage.py test pwms.tests pwms.tests_api pwms.tests_attachments \
-  pwms.tests_authentication pwms.tests_executive pwms.tests_ninja \
-  pwms.tests_notifications pwms.tests_reports
+  pwms.tests_authentication pwms.tests_detail pwms.tests_executive \
+  pwms.tests_ninja pwms.tests_notifications pwms.tests_reports
 ```
 
 Run from the repo root; `pwms.*` test modules are importable via the editable

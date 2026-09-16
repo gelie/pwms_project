@@ -30,6 +30,8 @@
     {# Not deferred: sets <html data-theme> during parsing, before the first paint. #}
     <script src="{% static "js/theme.js" %}"></script>
     <script src="{% static "js/bootstrap.bundle.min.js" %}" defer></script>
+    {# Depends on the Bootstrap bundle above (deferred scripts run in order). #}
+    <script src="{% static "js/workflow-tabs.js" %}" defer></script>
     <script src="{% static "js/navbar.js" %}" defer></script>
     <script src="{% static "js/formset.js" %}" defer></script>
     <script src="{% static "js/htmx-lookup.js" %}" defer></script>

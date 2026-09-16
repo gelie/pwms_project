@@ -67,10 +67,11 @@ responses, so they are deliberately absent from the schema above:
 They are session-authenticated like every other site route. See
 [Search Lookups](./Search%20Lookups.md) for the contract they follow.
 
-The app's other dynamic pages — the dashboard, the SharePoint attachment picker,
-the alerts page, the report builder / exports and the per-instrument documents —
-are likewise server-rendered HTML under `/pwms/`, not JSON API endpoints (see
-[Functional Design](./Functional%20Design.md) and
+The app's other dynamic pages — the dashboard, the workflow detail pages with
+their tabs, the SharePoint attachment picker, the alerts page, the report builder
+/ exports, the per-instrument documents and the state-machine diagrams — are
+likewise server-rendered HTML (or images) under `/pwms/`, not JSON API endpoints
+(see [Functional Design](./Functional%20Design.md) and
 [System Design → URL map](./System%20Design.md#2-url-map)).
 
 ---

@@ -117,6 +117,10 @@ palette; transitions that require a comment render as amber dashed arrows.
 Mermaid exports are plain ` ```mermaid ` blocks, so GitHub and VS Code render
 them inline with no build step.
 
+The rendered image is also what a workflow instance's **Diagram** tab serves
+(`GET /pwms/instruments/{public_id}/diagram.svg`), so re-running this command is
+what refreshes that tab.
+
 ## Bills
 
 | Command | Purpose | Status |

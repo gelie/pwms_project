@@ -228,9 +228,11 @@ and exposed through the API:
 
 Consumers:
 
-- Each instance's **detail page** renders the history next to the record: the
-  field-level audit trail plus the append-only `WorkflowEvent` timeline
-  (documents, referrals, …).
+- Each instance's **detail page** renders the history in its **Timeline** tab:
+  state changes and the field-level CRUD audit merged into one newest-first table
+  ([§9](#9-web-ui--api), `pwms.services.history`). Domain events
+  (`WorkflowEvent`) surface where they belong — e.g. document events as the
+  Attachments section's “Document activity”.
 - The **REST API** exposes the auditlog CRUD trail for each instrument
   (`GET …/audit/`, see [API Reference](./API%20Reference.md)).
 
@@ -319,9 +321,22 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
   toggle), groups (all/mine/detail), and full CRUD for the concrete workflow
   instances — Delegation Reports, International Resolutions, International
   Agreements and Bills — reached from the navbar *Workflows* dropdown. List pages
-  carry a free-text filter; detail pages show the workflow metadata, participants,
-  resolutions, agreement details, the bill profile and public status, BR03
-  updates, referrals, the audit trail, and the **Attachments** section.
+  carry a free-text filter.
+- **Detail pages are tabbed**: one header plus a tab per concern — Overview (key
+  information, ownership, description, type-specific facts and system
+  information), Related (the hierarchy plus each type's own tables: participants,
+  BR03 updates, bill versions), Notes, **Timeline**, Attachments, Diagram and
+  Referrals (which also lists the transitions available from the current state).
+  Every instrument fills the same shared shell
+  (`templates/pwms/workflow-detail.html`), and `static/js/workflow-tabs.js`
+  mirrors the open tab into the URL hash so a refresh — or a shared link —
+  returns to it.
+- **Unified Timeline**: `TransitionLog` state changes and the auditlog CRUD trail
+  (create / update / delete, with the fields that changed) are merged into one
+  newest-first table rather than the two separate tables the page used to carry.
+- **Diagram**: the Diagram tab embeds the type's generated state machine
+  (`GET /pwms/instruments/{public_id}/diagram.svg`), and names the command that
+  renders it when the image is absent.
 - **Alerts** in the site chrome: the navbar bell, the alerts page and read state
   ([§6](#6-alerts-notifications--email)).
 - **Reports**: the builder, exports, per-instrument documents and the read-only

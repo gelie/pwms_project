@@ -113,6 +113,7 @@
   `pwms/tests_notifications.py` (alerts + email dispatch),
   `pwms/tests_attachments.py` (SharePoint attachments & versioning),
   `pwms/tests_reports.py` (report builder, exports, sharing, scheduling),
+  `pwms/tests_detail.py` (the tabbed detail page, the merged timeline, diagrams),
   `pwms/tests_authentication.py` (AD/LDAP sign-in + fallback) and
   `pwms/tests_executive.py` (executive-branch identity rules).
 - Run from the repo root; `pwms.*` test modules resolve through the editable
@@ -120,8 +121,8 @@
 
 ```bash
 .venv/bin/python manage.py test pwms.tests pwms.tests_api pwms.tests_attachments \
-  pwms.tests_authentication pwms.tests_executive pwms.tests_ninja \
-  pwms.tests_notifications pwms.tests_reports
+  pwms.tests_authentication pwms.tests_detail pwms.tests_executive \
+  pwms.tests_ninja pwms.tests_notifications pwms.tests_reports
 ```
 
 - Tests run on a throwaway test database (PostgreSQL test DB).

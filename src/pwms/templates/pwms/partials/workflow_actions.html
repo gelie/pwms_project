@@ -1,0 +1,21 @@
+{% comment %}
+  Edit / Delete for a workflow detail page's toolbar.
+
+  Include with:
+    object=<the workflow instance>
+    edit_url=<URL name of its update view>
+    delete_url=<URL name of its delete view>
+
+  Each button appears only when the reader holds that permission on the
+  instance. The Document menu and any type-specific action (e.g. a bill's
+  "Record version") are rendered by the page that includes this, so the toolbar
+  reads in a predictable order.
+{% endcomment %}
+{% if perms.edit %}
+  <a class="btn btn-sm btn-outline-secondary"
+     href="{% url edit_url object.public_id %}">{% lucide "pencil" size=16 %} Edit</a>
+{% endif %}
+{% if perms.delete %}
+  <a class="btn btn-sm btn-outline-danger"
+     href="{% url delete_url object.public_id %}">{% lucide "trash-2" size=16 %} Delete</a>
+{% endif %}

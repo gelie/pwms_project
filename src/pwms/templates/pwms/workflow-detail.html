@@ -1,0 +1,551 @@
+{% extends "base.html" %}
+
+{% comment %}
+  Shared shell for every workflow instance detail page.
+
+  The page used to be one long scroll of stacked tables. It is now a header plus
+  one tab per concern, so a reader starts on the Overview and opens only the part
+  they came for. The panes are ordinary Bootstrap tabs (the bundle is already
+  loaded); workflow-tabs.js mirrors the open tab into the URL hash, so a refresh
+  — or a link pasted into an email — returns to the same tab.
+
+  Children fill the blocks below. Each block notes what it expects.
+{% endcomment %}
+
+{% block title %}{{ object.identifier }}{% endblock title %}
+
+{% block content %}
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:workflows" %}">Workflows</a>
+      </li>
+      {% block breadcrumb %}{% endblock breadcrumb %}
+    </ol>
+  </nav>
+
+  <div class="workflow-hero">
+    <div class="workflow-hero-text">
+      <h1 class="workflow-hero-title">{{ object.title }}</h1>
+      <p class="workflow-hero-sub mb-2">{% block subtitle %}{{ object.identifier }}{% endblock subtitle %}</p>
+      <div class="workflow-hero-badges">
+        <span class="badge badge-state">{{ object.current_state.name }}</span>
+        <span class="badge badge-muted">{{ object.get_priority_display }} priority</span>
+        {% if object.is_overdue %}
+          <span class="badge badge-danger">{{ object.overdue_identifier }}</span>
+        {% endif %}
+        {% block badges %}{% endblock badges %}
+      </div>
+    </div>
+    <div class="workflow-hero-actions">{% block actions %}{% endblock actions %}</div>
+  </div>
+
+  <ul class="nav nav-tabs workflow-tabs" id="workflow-tabs" role="tablist">
+    <li class="nav-item" role="presentation">
+      <button class="nav-link active"
+              id="tab-overview"
+              data-bs-toggle="tab"
+              data-bs-target="#pane-overview"
+              type="button"
+              role="tab"
+              aria-controls="pane-overview"
+              aria-selected="true">{% lucide "circle-dot" size=16 %}<span>Overview</span></button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link"
+              id="tab-related"
+              data-bs-toggle="tab"
+              data-bs-target="#pane-related"
+              type="button"
+              role="tab"
+              aria-controls="pane-related"
+              aria-selected="false">{% lucide "git-branch" size=16 %}<span>Related</span></button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link"
+              id="tab-notes"
+              data-bs-toggle="tab"
+              data-bs-target="#pane-notes"
+              type="button"
+              role="tab"
+              aria-controls="pane-notes"
+              aria-selected="false">{% lucide "notebook-pen" size=16 %}
+                <span>Notes <span class="workflow-tab-count">{{ notes|length }}</span></button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link"
+              id="tab-attachments"
+              data-bs-toggle="tab"
+              data-bs-target="#pane-attachments"
+              type="button"
+              role="tab"
+              aria-controls="pane-attachments"
+              aria-selected="false">
+        {% lucide "paperclip" size=16 %}<span>Attachments</span>
+        <span class="workflow-tab-count">{{ attachments|length }}</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link"
+              id="tab-referrals"
+              data-bs-toggle="tab"
+              data-bs-target="#pane-referrals"
+              type="button"
+              role="tab"
+              aria-controls="pane-referrals"
+              aria-selected="false">
+        {% lucide "send" size=16 %}<span>Referrals</span>
+        <span class="workflow-tab-count">{{ referrals|length }}</span>
+      </button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link"
+              id="tab-diagram"
+              data-bs-toggle="tab"
+              data-bs-target="#pane-diagram"
+              type="button"
+              role="tab"
+              aria-controls="pane-diagram"
+              aria-selected="false">{% lucide "workflow" size=16 %}<span>Diagram</span></button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link"
+              id="tab-timeline"
+              data-bs-toggle="tab"
+              data-bs-target="#pane-timeline"
+              type="button"
+              role="tab"
+              aria-controls="pane-timeline"
+              aria-selected="false">
+        {% lucide "history" size=16 %}<span>Timeline</span>
+        <span class="workflow-tab-count">{{ timeline_total }}</span>
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content workflow-tab-content" id="workflow-tab-content">
+    {# --- Overview ---------------------------------------------------- #}
+    <div class="tab-pane fade show active"
+         id="pane-overview"
+         role="tabpanel"
+         aria-labelledby="tab-overview"
+         tabindex="0">
+      <div class="row g-4">
+        <div class="col-lg-6">
+          <section class="workflow-card workflow-card--pad">
+            <h2 class="workflow-card-title">{% lucide "info" size=16 %} Key information</h2>
+            <dl class="workflow-facts">
+              <div class="workflow-fact">
+                <dt>Type</dt>
+                <dd>{{ object.workflow_type.name }}</dd>
+              </div>
+              <div class="workflow-fact">
+                <dt>Priority</dt>
+                <dd>{{ object.get_priority_display }}</dd>
+              </div>
+              <div class="workflow-fact">
+                <dt>State</dt>
+                <dd>
+                  <span class="badge badge-state">{{ object.current_state.name }}</span>
+                </dd>
+              </div>
+              <div class="workflow-fact">
+                <dt>Due</dt>
+                <dd>{{ object.deadline|date:"d M Y H:i"|default:"—" }}</dd>
+              </div>
+              {% block overview_key %}{% endblock overview_key %}
+            </dl>
+          </section>
+        </div>
+        <div class="col-lg-6">
+          <section class="workflow-card workflow-card--pad">
+            <h2 class="workflow-card-title">{% lucide "user" size=16 %} Ownership</h2>
+            <dl class="workflow-facts">
+              <div class="workflow-fact">
+                <dt>Group</dt>
+                <dd>{{ object.workflow_type.group.name|default:"—" }}</dd>
+              </div>
+              <div class="workflow-fact">
+                <dt>Owner</dt>
+                <dd class="workflow-owner">
+                  <span class="workflow-avatar">{{ object.owner.display_name|slice:":1" }}</span>
+                  <span>{{ object.owner.display_name }}</span>
+                </dd>
+              </div>
+              <div class="workflow-fact">
+                <dt>Assigned to</dt>
+                <dd>
+                  {% if object.assigned_to %}
+                    <span class="workflow-owner">
+                      <span class="workflow-avatar">{{ object.assigned_to.display_name|slice:":1" }}</span>
+                      <span>{{ object.assigned_to.display_name }}</span>
+                    </span>
+                    {% if object.assigned_to_email %}
+                      <span class="workflow-muted d-block">{{ object.assigned_to_email }}</span>
+                    {% endif %}
+                  {% else %}
+                    —
+                  {% endif %}
+                </dd>
+              </div>
+            </dl>
+          </section>
+        </div>
+      </div>
+
+      <section class="workflow-card workflow-card--pad">
+        <h2 class="workflow-card-title">{% lucide "file-text" size=16 %} Description</h2>
+        <div class="workflow-prose">
+          {% if object.description %}
+            {{ object.description|linebreaks }}
+          {% else %}
+            <p class="workflow-muted mb-0">No description recorded.</p>
+          {% endif %}
+        </div>
+      </section>
+
+      {% block overview_extra %}{% endblock overview_extra %}
+
+      <div class="row g-4">
+        <div class="col-lg-6">
+          <section class="workflow-card workflow-card--pad">
+            <h2 class="workflow-card-title">{% lucide "clock" size=16 %} Record</h2>
+            <dl class="workflow-facts">
+              <div class="workflow-fact">
+                <dt>Created</dt>
+                <dd>{{ object.created_at|date:"d M Y H:i" }}</dd>
+              </div>
+              <div class="workflow-fact">
+                <dt>Last updated</dt>
+                <dd>{{ object.updated_at|date:"d M Y H:i" }}</dd>
+              </div>
+            </dl>
+          </section>
+        </div>
+        <div class="col-lg-6">
+          <section class="workflow-card workflow-card--pad">
+            <h2 class="workflow-card-title">{% lucide "hash" size=16 %} System information</h2>
+            <dl class="workflow-facts">
+              <div class="workflow-fact">
+                <dt>Workflow ID</dt>
+                <dd>
+                  <code class="workflow-code">{{ object.public_id }}</code>
+                </dd>
+              </div>
+              <div class="workflow-fact">
+                <dt>Hierarchy level</dt>
+                <dd>{{ object.hierarchy_level }}</dd>
+              </div>
+            </dl>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    {# --- Related ----------------------------------------------------- #}
+    <div class="tab-pane fade"
+         id="pane-related"
+         role="tabpanel"
+         aria-labelledby="tab-related"
+         tabindex="0">
+      <section class="workflow-card workflow-card--pad">
+        <h2 class="workflow-card-title">{% lucide "git-branch" size=16 %} Hierarchy</h2>
+        {% if parent or children %}
+          <dl class="workflow-facts">
+            <div class="workflow-fact">
+              <dt>Parent</dt>
+              <dd>
+                {% if parent %}
+                  {% if parent_url %}
+                    <a href="{{ parent_url }}">{{ parent }}</a>
+                  {% else %}
+                    {{ parent }}
+                  {% endif %}
+                {% else %}
+                  —
+                {% endif %}
+              </dd>
+            </div>
+            <div class="workflow-fact">
+              <dt>Relationship</dt>
+              <dd>{{ object.relationship_type|default:"—" }}</dd>
+            </div>
+          </dl>
+          {% if children %}
+            <div class="table-responsive mt-3">
+              <table class="table table-striped table-hover align-middle mb-0">
+                <caption class="visually-hidden">Workflows attached to this record</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Reference</th>
+                    <th scope="col">Title</th>
+                    <th scope="col">Type</th>
+                    <th scope="col">State</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% for row in children %}
+                    <tr>
+                      <td>
+                        {% if row.url %}
+                          <a href="{{ row.url }}">{{ row.object.identifier|default:"—" }}</a>
+                        {% else %}
+                          {{ row.object.identifier|default:"—" }}
+                        {% endif %}
+                      </td>
+                      <td>{{ row.object.title }}</td>
+                      <td>{{ row.object.workflow_type.name }}</td>
+                      <td>
+                        <span class="badge badge-state">{{ row.object.current_state.name }}</span>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+            </div>
+          {% endif %}
+        {% else %}
+          <p class="workflow-muted mb-0">
+            This record stands alone — it has no parent and no attached workflows.
+          </p>
+        {% endif %}
+      </section>
+      {% block related %}{% endblock related %}
+    </div>
+
+    {# --- Notes ------------------------------------------------------- #}
+    <div class="tab-pane fade"
+         id="pane-notes"
+         role="tabpanel"
+         aria-labelledby="tab-notes"
+         tabindex="0">{% block notes %}{% endblock notes %}</div>
+
+    {# --- Timeline ---------------------------------------------------- #}
+    <div class="tab-pane fade"
+         id="pane-timeline"
+         role="tabpanel"
+         aria-labelledby="tab-timeline"
+         tabindex="0">
+      <section class="workflow-card">
+        <div class="workflow-card-head">
+          <span class="d-flex align-items-center gap-2">{% lucide "history" size=16 %} Timeline</span>
+          <span class="badge badge-muted">{{ timeline_total }}</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-striped table-hover align-middle mb-0">
+            <caption class="visually-hidden">
+              State changes and create / update / delete history, newest first
+            </caption>
+            <thead>
+              <tr>
+                <th scope="col">When</th>
+                <th scope="col">Event</th>
+                <th scope="col">Detail</th>
+                <th scope="col">Actor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for entry in timeline %}
+                <tr>
+                  <td class="text-nowrap">
+                    <time datetime="{{ entry.timestamp|date:"c" }}">{{ entry.timestamp|date:"d M Y H:i" }}</time>
+                  </td>
+                  <td>
+                    <span class="badge badge-timeline badge-timeline--{{ entry.kind }}">{{ entry.label }}</span>
+                  </td>
+                  <td>
+                    {% if entry.kind == "transition" %}
+                      <span class="workflow-transition">
+                        {{ entry.from_state|default:"—" }}
+                        {% lucide "arrow-right" size=12 %}
+                        {{ entry.to_state|default:"—" }}
+                      </span>
+                      {% if entry.action %}
+                        <span class="workflow-muted d-block">{{ entry.action }}</span>
+                      {% endif %}
+                      {% if entry.notes %}
+                        <span class="workflow-muted d-block">{{ entry.notes }}</span>
+                      {% endif %}
+                    {% elif entry.changes %}
+                      <ul class="workflow-changes">
+                        {% for change in entry.changes|slice:":4" %}
+                          <li>
+                            <span class="workflow-changes-field">{{ change.field }}</span>
+                            {% if change.before %}
+                              <span class="workflow-changes-old">{{ change.before }}</span>
+                              {% lucide "arrow-right" size=11 %}
+                            {% endif %}
+                            <span class="workflow-changes-new">{{ change.after|default:"—" }}</span>
+                          </li>
+                        {% endfor %}
+                      </ul>
+                      {% with extra=entry.changes|length|add:"-4" %}
+                        {% if extra > 0 %}
+                          <span class="workflow-muted">+{{ extra }} more field{{ extra|pluralize }}</span>
+                        {% endif %}
+                      {% endwith %}
+                    {% else %}
+                      <span class="workflow-muted">—</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    <span>{{ entry.actor }}</span>
+                    {% if entry.ip_address %}
+                      <span class="workflow-muted d-block small">{{ entry.ip_address }}</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="4" class="text-center workflow-muted py-4">
+                    Nothing has been recorded against this record yet.
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if timeline_total > timeline|length %}
+          <div class="workflow-card-foot">
+            Showing the {{ timeline|length }} most recent of {{ timeline_total }} entries.
+          </div>
+        {% endif %}
+      </section>
+    </div>
+
+    {# --- Attachments -------------------------------------------------- #}
+    <div class="tab-pane fade"
+         id="pane-attachments"
+         role="tabpanel"
+         aria-labelledby="tab-attachments"
+         tabindex="0">
+      <section class="workflow-card workflow-card--pad">
+        {% include "pwms/partials/attachment_section.html" %}
+      </section>
+    </div>
+
+    {# --- Diagram ------------------------------------------------------ #}
+    <div class="tab-pane fade"
+         id="pane-diagram"
+         role="tabpanel"
+         aria-labelledby="tab-diagram"
+         tabindex="0">
+      <section class="workflow-card workflow-card--pad">
+        <h2 class="workflow-card-title">
+          {% lucide "workflow" size=16 %} {{ object.workflow_type.name }} state machine
+        </h2>
+        {% if diagram_available %}
+          <p class="workflow-muted">
+            Rendered from this workflow type's states and transitions by
+            <code class="workflow-code">manage.py generate_diagrams</code>.
+          </p>
+          <div class="workflow-diagram">
+            <img src="{{ diagram_url }}"
+                 class="img-fluid"
+                 alt="States and transitions of {{ object.workflow_type.name }}">
+          </div>
+        {% else %}
+          <p class="workflow-muted mb-2">
+            No diagram has been generated for this workflow type yet.
+          </p>
+          <p class="workflow-muted mb-0">
+            Run <code class="workflow-code">manage.py generate_diagrams</code> to render one.
+          </p>
+        {% endif %}
+      </section>
+    </div>
+
+    {# --- Referrals ---------------------------------------------------- #}
+    <div class="tab-pane fade"
+         id="pane-referrals"
+         role="tabpanel"
+         aria-labelledby="tab-referrals"
+         tabindex="0">
+      <section class="workflow-card">
+        <div class="workflow-card-head">
+          <span class="d-flex align-items-center gap-2">{% lucide "send" size=16 %} Referrals
+          <span class="badge badge-muted">{{ referrals|length }}</span></span>
+          <button class="btn btn-outline-primary btn-sm">Add Referral</button>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-striped table-hover align-middle mb-0">
+            <caption class="visually-hidden">Groups this record was referred to</caption>
+            <thead>
+              <tr>
+                <th scope="col">Referred to</th>
+                <th scope="col">Referred by</th>
+                <th scope="col">Due date</th>
+                <th scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for referral in referrals %}
+                <tr>
+                  <td>
+                    <a href="{% url "pwms:group_detail" referral.referred_to.pk %}">{{ referral.referred_to.name }}</a>
+                  </td>
+                  <td>{{ referral.referred_by.display_name|default:"—" }}</td>
+                  <td>
+                    {{ referral.due_date|date:"d M Y H:i"|default:"—" }}
+                    {% if referral.is_overdue %}<span class="badge badge-danger">Overdue</span>{% endif %}
+                  </td>
+                  <td>
+                    <span class="badge badge-referral badge-referral--{{ referral.status }}">{{ referral.get_status_display }}</span>
+                  </td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="4" class="text-center workflow-muted py-4">
+                    This record has not been referred.
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="workflow-card">
+        <div class="workflow-card-head">
+          <span class="d-flex align-items-center gap-2">{% lucide "workflow" size=16 %} Available transitions</span>
+          <span class="badge badge-muted">{{ transitions|length }}</span>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-striped align-middle mb-0">
+            <caption class="visually-hidden">Transitions available from the current state</caption>
+            <thead>
+              <tr>
+                <th scope="col">Transition</th>
+                <th scope="col">To state</th>
+                <th scope="col">Comment required</th>
+                <th scope="col">Conditions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for transition in transitions %}
+                <tr>
+                  <td>{{ transition.name }}</td>
+                  <td>{{ transition.to_state.name }}</td>
+                  <td>{{ transition.requires_comment|yesno:"Yes,No" }}</td>
+                  <td>
+                    {% for condition in transition.conditions.all %}
+                      <span class="badge badge-muted">{{ condition.get_condition_type_display }}</span>
+                    {% empty %}
+                      —
+                    {% endfor %}
+                  </td>
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="4" class="text-center workflow-muted py-4">
+                    No transitions are defined from “{{ object.current_state.name }}”.
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </div>
+{% endblock content %}

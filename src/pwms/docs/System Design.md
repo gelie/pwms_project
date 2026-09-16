@@ -98,9 +98,10 @@ pwms_project/                     # repo root (git) — run manage.py from here
     │   └── sync_service.py       # MembershipSyncService (Oracle/legacy sync)
     ├── services/
     │   ├── permissions.py        # unified permission resolver (UI + API)
-    │   └── attachments.py        # SharePoint attachment service
+    │   ├── attachments.py        # SharePoint attachment service
+    │   └── history.py            # merged TransitionLog + auditlog timeline
     ├── management/commands/      # sync, jobs, diagrams (see Management Commands)
-    ├── utils/                    # audit_helpers.py, sharepoint.py
+    ├── utils/                    # audit_helpers.py, sharepoint.py, diagrams.py
     ├── migrations/
     ├── tests*.py                 # tests, tests_api, tests_ninja, tests_notifications, …
     └── docs/                     # this documentation
@@ -119,6 +120,7 @@ pwms_project/                     # repo root (git) — run manage.py from here
 | `/pwms/login/` , `/pwms/logout/` | session login/logout (web) | – |
 | `/pwms/workflows/…` | list / detail / create / update / delete per instrument (incl. bill versions) | session + RBAC |
 | `/pwms/instruments/{public_id}/document/` | one instrument as a formal PDF/HTML document | session + RBAC |
+| `/pwms/instruments/{public_id}/diagram.svg` | the workflow type's generated state-machine diagram | session + RBAC |
 | `/pwms/attachments/…` | SharePoint picker + link / upload / detach / version history | session + RBAC |
 | `/pwms/alerts/` , `/pwms/alerts/{public_id}/` | alerts page and open/read state | session |
 | `/pwms/reports/…` | report builder, HTMX preview, export, share | session + RBAC |

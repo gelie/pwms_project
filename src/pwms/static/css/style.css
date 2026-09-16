@@ -903,3 +903,301 @@ html.password-toggle-ready .password-toggle {
     color: var(--theme-gold);
     background-color: color-mix(in srgb, var(--theme-gold) 18%, transparent);
 }
+
+/* ------------------------------------------------------------------ *
+   Workflow detail page: a header, one tab per concern, and the cards the
+   tabs hold. Everything is driven by the theme variables, so light and dark
+   come out of the same rules.
+ * ------------------------------------------------------------------ */
+.workflow-hero {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 1.25rem 1.5rem;
+    border: 1px solid var(--bs-border-color);
+    border-left: 5px solid var(--theme-green);
+    background-color: var(--bs-body-bg);
+}
+
+.workflow-hero-title {
+    margin-bottom: 0.25rem;
+}
+
+.workflow-hero-sub {
+    color: var(--bs-secondary-color);
+    font-family: var(--bs-font-serif);
+}
+
+.workflow-hero-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    margin-top: 0.625rem;
+}
+
+.workflow-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Tabs. Bootstrap's nav-tabs are re-dressed to match the widget tabs the rest
+   of the site uses, but sized for a page rather than a sidebar. */
+.workflow-tabs {
+    flex-wrap: wrap;
+    gap: 0.125rem;
+    margin-bottom: 0;
+    padding: 0 0.5rem;
+    background-color: var(--theme-light-gold);
+    border-bottom: 3px solid var(--theme-dark-gold);
+}
+
+.workflow-tabs .nav-link {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    margin-bottom: 0;
+    padding: 0.7rem 0.875rem;
+    border: 0;
+    border-radius: 0;
+    background-color: transparent;
+    color: var(--theme-brown);
+    font-family: var(--bs-font-serif);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.workflow-tabs .nav-link:hover {
+    background-color: light-dark(#f3efe5, #2a2620);
+    color: var(--bs-body-color);
+}
+
+.workflow-tabs .nav-link.active,
+.workflow-tabs .nav-link.active:hover {
+    background-color: var(--theme-green);
+    color: #fff;
+}
+
+.workflow-tab-count {
+    min-width: 1.25rem;
+    padding: 0 0.375rem;
+    border-radius: 999px;
+    background-color: light-dark(#e2d9c4, #3a3226);
+    color: var(--bs-body-color);
+    font-size: 0.68rem;
+    text-align: center;
+}
+
+.workflow-tabs .nav-link.active .workflow-tab-count {
+    background-color: rgba(255, 255, 255, 0.25);
+    color: #fff;
+}
+
+.workflow-tab-content {
+    padding-top: 1.5rem;
+}
+
+/* Cards hold one topic each, so a panel can be read on its own. */
+.workflow-card {
+    margin-bottom: 1.5rem;
+    border: 1px solid var(--bs-border-color);
+    background-color: var(--bs-body-bg);
+}
+
+.workflow-card--pad {
+    background-color: var(--theme-light-gold);
+    padding: 1.25rem 1.5rem;
+}
+
+.workflow-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.75rem 1.25rem;
+    background-color: var(--theme-light-gold);
+    border-bottom: 1px solid var(--bs-border-color);
+    font-family: var(--bs-font-serif);
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.workflow-card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.875rem;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+}
+
+.workflow-card-foot {
+    padding: 0.625rem 1.25rem;
+    border-top: 1px solid var(--bs-border-color);
+    color: var(--bs-secondary-color);
+    font-size: 0.85rem;
+}
+
+/* Label/value rows. The label is quiet, the value takes the eye. */
+.workflow-facts {
+    margin: 0;
+}
+
+.workflow-fact {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.75rem;
+    padding: 0.55rem 0.75rem;
+}
+
+.workflow-fact + .workflow-fact {
+    border-top: 1px solid var(--bs-border-color-translucent);
+}
+
+.workflow-fact dt {
+    color: var(--bs-secondary-color);
+    font-weight: 400;
+}
+
+.workflow-fact dd {
+    margin: 0;
+    font-weight: 600;
+    text-align: right;
+}
+
+.workflow-owner {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.workflow-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 50%;
+    background-color: var(--theme-green);
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.workflow-prose p:last-child {
+    margin-bottom: 0;
+}
+
+.workflow-muted {
+    color: var(--bs-secondary-color);
+}
+
+.workflow-code {
+    color: var(--theme-brown);
+    font-size: 0.85em;
+}
+
+/* Timeline */
+.workflow-transition {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.375rem;
+    font-weight: 600;
+}
+
+.workflow-changes {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.workflow-changes li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.375rem;
+}
+
+.workflow-changes-field {
+    color: var(--bs-secondary-color);
+}
+
+.workflow-changes-old {
+    color: light-dark(#a15c5c, #d9a0a0);
+    text-decoration: line-through;
+}
+
+.workflow-changes-new {
+    font-weight: 600;
+}
+
+/* Diagram */
+.workflow-diagram {
+    overflow: auto;
+    padding: 0.75rem;
+    /* Graphviz renders on a transparent ground, so give it a light one in
+       both themes rather than letting dark mode show through. */
+    background-color: #fff;
+    border: 1px solid var(--bs-border-color);
+}
+
+.workflow-diagram img {
+    display: block;
+    max-height: 70vh;
+    margin: 0 auto;
+}
+
+/* Status badges. The palette is the theme's, so the same class reads correctly
+   in light and dark. */
+.badge-state,
+.badge-success,
+.badge-timeline--transition {
+    background-color: var(--theme-green);
+    color: #fff;
+}
+
+.badge-info,
+.badge-timeline--create {
+    background-color: var(--theme-dark-gold);
+    color: #fff;
+}
+
+.badge-danger,
+.badge-timeline--delete,
+.badge-referral--expired {
+    background-color: var(--theme-orange);
+    color: #fff;
+}
+
+.badge-referral--open {
+    background-color: var(--theme-yellow);
+    color: #121212;
+}
+
+.badge-referral--responded {
+    background-color: var(--theme-green);
+    color: #fff;
+}
+
+.badge-muted,
+.badge-timeline--update,
+.badge-referral--recalled,
+.badge-referral--cancelled {
+    background-color: light-dark(#e9e4d8, #3a3226);
+    color: light-dark(#5b5240, #d3ccc0);
+}
+
+.notes-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+}

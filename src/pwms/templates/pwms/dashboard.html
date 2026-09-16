@@ -13,7 +13,7 @@
         <h1 class="mb-1">Dashboard</h1>
         <p class="dashboard-hero-sub mb-0">
           {% if has_work %}
-            {{ total_count }} workflow{{ total_count|pluralize }} within your reach{% if assigned_count %} · {{ assigned_count }} assigned to you{% endif %}
+            {{ total_count }} workflow{{ total_count|pluralize }} accessible{% if assigned_count %} · {{ assigned_count }} assigned to you{% endif %}
           {% else %}
             Welcome, {{ request.user.display_name }}
           {% endif %}
@@ -46,7 +46,7 @@
         <div class="dashboard-stat dashboard-stat--green">
           <span class="dashboard-stat-icon">{% lucide "layers" size=22 %}</span>
           <span class="dashboard-stat-value">{{ total_count }}</span>
-          <span class="dashboard-stat-label">Within your reach</span>
+          <span class="dashboard-stat-label">Total workflows</span>
           <span class="dashboard-stat-note">{{ open_count }} open · {{ unassigned_count }} unassigned</span>
         </div>
       </div>

@@ -199,15 +199,24 @@ Per new model, the checklist is:
 ✅ **Workflow instance CRUD shipped (2026-09-11)** — list/detail/create/update/delete
 for `DelegationReport` and `InternationalResolution` (`pwms/views.py` + `pwms/forms.py`,
 templates in `src/pwms/templates/pwms/`), reached from the navbar *Workflows*
-dropdown. Detail pages show metadata, participants, resolutions, BR03 updates,
-referrals and the audit trail; list pages have a free-text filter.
+dropdown. List pages have a free-text filter.
+
+✅ **Tabbed detail pages & unified timeline shipped (2026-09-16)** — every
+instrument's detail page is now a header plus one tab per concern (Overview,
+Related, Notes, Timeline, Attachments, Diagram, Referrals), built on the shared
+`templates/pwms/workflow-detail.html` shell; `static/js/workflow-tabs.js` keeps
+the open tab in the URL hash, so a refresh or a shared link returns to it. The
+**Timeline** tab merges `TransitionLog` state changes with the auditlog CRUD
+trail into one newest-first table (`pwms/services/history.py`), and the
+**Diagram** tab serves the type's generated state machine
+(`pwms/utils/diagrams.py`, `pwms:workflow_diagram`).
 
 Remaining (🔜):
 
 - Extend the group-scoped RBAC (`WorkflowType.group` + `create_roles`) to
   view/edit/delete/transition in the web UI — it currently gates creation only.
-- Timeline view merging `TransitionLog` + auditlog; available actions gated by
-  `instance.can(...)`; performing transitions from the web UI; referral actions.
+- Available actions gated by `instance.can(...)`; performing transitions from the
+  web UI; referral actions (raising/answering a referral without the admin).
 - Create/edit forms with date pickers (`django-flatpickr`), HTMX partials.
 - Committee/House dashboards and a search/filter layer (`django-filter` declared).
 - Admin improvements for managing workflow definitions and RBAC.
