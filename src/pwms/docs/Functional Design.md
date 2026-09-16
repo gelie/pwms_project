@@ -23,6 +23,11 @@ and the typical flows. It complements the structural documents
 - **Users** are created from the admin and/or synchronised from the legacy Oracle
   source (`sync_users_oracle*` commands). Users carry parliamentary profile data
   (title, party, constituency, membership dates, encrypted ID number).
+- **Sign-in** uses Active Directory (LDAP) when configured, falling back to the
+  local database for identities with no AD account and a break-glass superuser
+  during an outage; the login form has a show/hide password toggle. The
+directory holds credentials only — authorisation stays with
+  `Role`/`GroupMembership`.
 - **Groups** form an MPTT hierarchy: Parliament → Houses → Portfolio / Select /
   Ad-hoc / Joint Committees → sub-units (offices, divisions, parties, …).
 - **Roles** (`Role`) carry coarse workflow capability flags.
@@ -101,8 +106,9 @@ Definitions are reusable: they are exported/imported as JSON
 
 ### 3.2 Instances
 
-A workflow instance (today: **DelegationReport** and **InternationalResolution**,
-the latter nested inside a report) is created with:
+A workflow instance (today: **DelegationReport**, **InternationalResolution** —
+which may nest inside a report — **InternationalAgreement** and **Bill**) is
+created with:
 
 - a workflow **type** and its **initial state**;
 - an **owner** and optionally an **assignee**;
@@ -129,7 +135,8 @@ To move an instance forward, a user performs an available transition:
 2. `current_state` advances to the transition's `to_state`.
 3. A `TransitionLog` entry is written (who, from → to, comment, IP).
 4. The field change is also captured by auditlog.
-5. (Planned) role-based notification emails are dispatched.
+5. Alerts are written for the transition's audience and alert email is queued
+   (see [§6](#6-alerts-notifications--email)).
 
 Alongside state changes, the instance keeps an **append-only event timeline**
 (`WorkflowEvent`, e.g. *Report document attached*, *ATC update published*) via
@@ -209,7 +216,8 @@ not permitted, and the DRF audit-history endpoint enforces `view` through
 
 ## 5. Auditing & history
 
-Every workflow instance has a **complete history**, viewable through the API:
+Every workflow instance has a **complete history**, rendered on its detail page
+and exposed through the API:
 
 | Event | Source | Example |
 | --- | --- | --- |
@@ -219,57 +227,148 @@ Every workflow instance has a **complete history**, viewable through the API:
 | state transition | TransitionLog | `STATE_TRANSITION: Drafting → Gazetted` by alice@… |
 
 Consumers:
-- Web/Admin views (planned) to render history timelines.
-- REST API `GET …/audit/` returning both audit sources (currently auditlog).
+
+- Each instance's **detail page** renders the history next to the record: the
+  field-level audit trail plus the append-only `WorkflowEvent` timeline
+  (documents, referrals, …).
+- The **REST API** exposes the auditlog CRUD trail for each instrument
+  (`GET …/audit/`, see [API Reference](./API%20Reference.md)).
 
 ---
 
-## 6. Web UI & API
+## 6. Alerts, notifications & email
 
-- **Server-rendered pages** (Bootstrap 5 + lucide icons): home/about,
-  login/logout, groups (all/mine/detail), and full CRUD for the concrete workflow
+People are told when something happens or is due, without watching a page:
+
+- A **`Notification`** row is written per (recipient, channel, event): an
+  `in_app` row that backs the navbar bell, and — when the recipient has an email
+  address — an `email` row that is both the message and the delivery log.
+- Dispatch happens on explicit **domain methods**, never on `save()`:
+  `perform_transition()`, `refer()`,
+  `WorkflowReferral.respond()` / `recall()` / `mark_expired()` and the create
+  views. Fixtures, imports and admin writes notify nobody.
+- **Audience is RBAC-aware**: the type's officer roles, the roles a transition
+  names (`notify_roles` plus the roles allowed to act next), and the people the
+  record names (`owner`, `assigned_to`) — minus the actor and anyone who cannot
+  VIEW the instance. A referral notifies the referred group's active members plus
+  the named people.
+- **Email is queued, not sent inline**: the row's background task is written in
+  the *same transaction* as the row, so a rolled-back workflow change queues
+  nothing and a crash after COMMIT cannot lose the send. `manage.py
+  process_tasks` delivers it, retrying transient failures and marking a row
+  `failed` once the attempts are spent.
+- The **bell** in the site chrome shows the unread count and the newest alerts;
+  the **alerts page** (`/pwms/alerts/`) lists them and marks them read.
+- `check_referral_deadlines` sends the 24-hour and 1-hour reminders and logs the
+  expiry alert (see [Management Commands](./Management%20Commands.md)).
+
+Details: [Roadmap § Email & notifications](./Roadmap%20&%20Planned%20Integrations.md).
+
+## 7. Document attachments (SharePoint)
+
+Every workflow detail page carries an **Attachments** section: an HTMX picker
+that browses the user's SharePoint sites, links an existing document, or uploads
+a local file into the chosen folder and attaches it in one step.
+
+- An attachment is a `pwms.Attachment` row — a generic FK to the instance, so one
+  table serves every subclass. The file itself stays in SharePoint; detaching
+  removes only the link.
+- Each row opens a **version history** panel (SharePoint's own versions, mirrored
+  into `pwms.AttachmentVersion` when opened and each downloadable through a
+  pre-authenticated redirect), and re-uploading a revision refreshes the
+  attachment in place instead of failing.
+- Attach, detach and revise are recorded as `document-*` `WorkflowEvent`s on the
+  record's append-only audit trail and listed as the section's “Document
+  activity”.
+- Access is narrowed twice: the **record's** RBAC gates the picker calls, while
+  SharePoint site membership gates the content itself.
+
+Details: [SharePoint Sync § Attachments](./SharePoint%20Sync.md#attachments-documents-on-workflow-records).
+
+## 8. Reporting, exports & sharing
+
+The registers can be turned into figures people can filter, preview, forward and
+file — without ever widening anyone's access.
+
+- The **report builder** (`/pwms/reports/`) spans all four registers, with
+  filters for report type, free text, workflow type, state, priority, owner,
+  group, period or explicit date range, overdue-only / due-soon / unassigned-only,
+  and sort order.
+- Every figure comes from the same **permission-scoped** queryset the lists use
+  (`visible_instances`), so a report — and its export — can never show a row the
+  reader could not open.
+- The live **preview** swaps in over HTMX (and degrades to a plain GET); it
+  carries summary stats, breakdowns, the workflow register, a merged activity
+  feed and referrals.
+- **Exports** are xlsx, pdf, html and csv; **per-instrument documents** render a
+  single record as a formal, filed-style document (`/pwms/instruments/<id>/document/`).
+- **Sharing** mints a token-addressed read-only link (optionally expiring) and
+  can email it — with the exported file attached — on a daily / weekly / monthly
+  schedule. A share always re-renders the **creator's** figures, so a link never
+  widens to the reader's access; opens are counted and a revoked or expired link
+  answers 410 Gone.
+
+Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations.md).
+
+---
+
+## 9. Web UI & API
+
+- **Server-rendered pages** (vendored Bootstrap 5 + lucide icons): a
+  **dashboard**, home/about/contact, login/logout (with a show/hide password
+  toggle), groups (all/mine/detail), and full CRUD for the concrete workflow
   instances — Delegation Reports, International Resolutions, International
   Agreements and Bills — reached from the navbar *Workflows* dropdown. List pages
   carry a free-text filter; detail pages show the workflow metadata, participants,
   resolutions, agreement details, the bill profile and public status, BR03
-  updates, referrals and the audit trail.
+  updates, referrals, the audit trail, and the **Attachments** section.
+- **Alerts** in the site chrome: the navbar bell, the alerts page and read state
+  ([§6](#6-alerts-notifications--email)).
+- **Reports**: the builder, exports, per-instrument documents and the read-only
+  shared view ([§8](#8-reporting-exports--sharing)).
 - **Django Admin** for administration (users, groups, roles, memberships,
-  workflow definitions).
+  workflow definitions, the SharePoint mirror, and notifications — read-only).
 - **REST API (DRF)** exposing audit history; browsable, plus Swagger/ReDoc docs.
 - **django-ninja spike** under `/ninja/` compares an alternative implementation —
   see [API Reference](./API%20Reference.md).
 
 ---
 
-## 7. Automation & data operations
+## 10. Automation & data operations
 
-`manage.py` commands provide (see [Management Commands](./Management%20Commands.md)):
+`manage.py` commands and background tasks provide (see
+[Management Commands](./Management%20Commands.md)):
 
 - **Synchronisation** from the legacy Oracle system (users, groups, roles,
   memberships) — basis for keeping identity data current.
+- **SharePoint sync** (`populate_sites`) mirrors sites, drives and best-effort
+  site members into the local tables the attachment picker reads.
 - **Committee scraping** (Parliament website) to import committee members.
 - **Notification / deadline jobs** — referral deadline reminders and expiry
-  (email delivered); delegate expirations and overdue alerts still to be
-  repointed to `pwms.models`.
+  (email delivered) and the scheduled report-share drain; delegate expirations,
+  overdue alerts and event-status jobs still to be repointed to `pwms.models`.
 - **Workflow tooling** — state import, workflow-type import/export, diagrams.
-- **Maintenance** — validate memberships, fix missing group access, update event
-  statuses, show hierarchy.
+- **Maintenance** — validate memberships, group-access backfill, bill versions,
+  show hierarchy.
 
 ---
 
-## 8. Security considerations
+## 11. Security considerations
 
+- Sign-in is **Active Directory** (LDAP) when configured, falling back to the
+  local database when the directory is unavailable; every site route is
+  login-required by default.
 - Admin and API both require authentication; the API defaults to
   `IsAuthenticated` (session/basic) and data endpoints deny anonymous access.
 - Sensitive personal data (ID numbers) is **encrypted at rest** and keyed by an
   HMAC for lookups (`cryptography`, `IDNO_HMAC_KEY`).
 - Full audit trails enable accountability for every state change and edit.
-- (Planned) notification content must respect access rules so MPs/staff only see
-  what they may.
+- Alert recipients are filtered through the same RBAC as the UI, so
+  notifications never leak a record to someone who cannot view it.
 
 ---
 
-## 9. Typical end-to-end flow
+## 12. Typical end-to-end flow
 
 ```mermaid
 flowchart LR

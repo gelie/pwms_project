@@ -1,0 +1,43 @@
+erDiagram
+    Group ||--o{ Group : "parent / children (MPTT)"
+    User ||--o{ GroupMembership : memberships
+    Group ||--o{ GroupMembership : members
+    Role ||--o{ GroupMembership : "role held"
+    User ||--o{ Role : "has via memberships"
+
+    WorkflowType ||--o{ State : states
+    WorkflowType ||--o{ Transition : transitions
+    WorkflowType ||--o{ WorkflowType : "parent_type / child_types"
+    WorkflowType }o--|| Group : "group (RBAC scope)"
+    WorkflowType }o--o{ Role : create_roles
+    State ||--o{ Transition : "from_state"
+    State ||--o{ Transition : "to_state"
+    Transition }o--o{ Role : allowed_roles
+    Transition }o--o{ Role : notify_roles
+    Transition }o--o{ EventType : required_event_types
+    Transition ||--o{ TransitionCondition : conditions
+
+    AbstractLegislativeWorkflow ||--|| WorkflowType : workflow_type
+    AbstractLegislativeWorkflow ||--|| State : current_state
+
+    WorkflowReferral }o--|| AbstractLegislativeWorkflow : "GFK content"
+    WorkflowReferral }o--|| Group : referred_to
+    DelegationReportUpdate }o--|| DelegationReport : updates
+    WorkflowEvent }o--|| AbstractLegislativeWorkflow : "GFK content"
+    WorkflowEvent }o--|| EventType : event_type
+
+    WorkflowRelationship }o--|| AbstractLegislativeWorkflow : "parent (GFK)"
+    WorkflowRelationship }o--|| AbstractLegislativeWorkflow : "child (GFK)"
+
+    InternationalResolution ||--o{ WorkflowGroupAccess : "GFK content"
+    WorkflowGroupAccess ||--o| Group : group
+    WorkflowGroupAccess ||--o{ WorkflowRolePermission : role_permissions
+    WorkflowGroupAccess ||--o{ WorkflowStatePermission : state_permissions
+    WorkflowRolePermission }o--|| Role : role
+    WorkflowRolePermission }o--o{ State : allowed_states
+    WorkflowStatePermission }o--|| State : state
+
+    InternationalResolution ||--o{ TransitionLog : "GFK content"
+    InternationalResolution ||--o{ auditlog.LogEntry : "GFK content (registered)"
+
+    ReportShare }o--|| User : "created_by (SET_NULL)"

@@ -31,7 +31,7 @@ flowchart TB
     subgraph Core["pwms.models"]
         Identity["User · Group (MPTT) · Role · GroupMembership"]
         Engine["WorkflowType · State · Transition"]
-        Instances["AbstractLegislativeWorkflow subclasses<br/>InternationalResolution"]
+        Instances["AbstractLegislativeWorkflow subclasses<br/>DelegationReport · InternationalResolution<br/>InternationalAgreement · Bill"]
         Rbac["WorkflowGroupAccess (GFK)<br/>WorkflowRolePermission<br/>WorkflowStatePermission"]
         AuditCore["auditlog.LogEntry + pwms.TransitionLog"]
     end
@@ -64,35 +64,45 @@ pwms_project/                     # repo root (git) — run manage.py from here
 ├── .env                          # python-decouple secrets
 ├── pyproject.toml / uv.lock      # uv-managed dependencies (distribution: pwms)
 ├── logs/                         # runtime logs
-├── docs/                         # project-level documentation
 └── src/pwms/                     # single top-level package (installed as `pwms`)
     ├── settings.py               # env-driven settings (python-decouple)
     ├── root_urls.py              # project URL root (admin, pwms, api, ninja, docs)
     ├── asgi.py / wsgi.py
+    ├── tasks.py                  # django-background-tasks entry points
     ├── templates/                # server-rendered UI (Bootstrap 5 + HTMX)
     ├── static/                   # CSS / JS / images
     ├── admin.py                  # admin registrations
     ├── apps.py                   # PwmsConfig; ready() registers auditlog
-    ├── urls.py / views.py        # app pages under /pwms/ (home, auth, groups, workflow CRUD)
-    ├── decorators.py             # shared decorators
+    ├── urls.py / views.py        # app pages under /pwms/ (dashboard, auth, groups,
+    │                             #   workflow CRUD, attachments, alerts, reports)
+    ├── backends.py               # GracefulLDAPBackend + local fallback
+    ├── middleware.py             # login-required-by-default middleware
+    ├── decorators.py / navigation.py
     ├── models/
     │   ├── base.py               # BaseModel (uuid7 public_id, timestamps)
     │   ├── users.py              # User
     │   ├── groups.py             # Group (MPTT)
     │   ├── permissions.py        # Role, GroupMembership
+    │   ├── geography.py          # Country, City (reference data)
     │   ├── sharepoint.py         # SharePoint sync models
-    │   └── workflows.py          # engine + instances + RBAC + TransitionLog
+    │   ├── attachments.py        # Attachment, AttachmentVersion
+    │   ├── notifications.py      # Notification (bell + delivery log)
+    │   ├── reports.py            # ReportShare
+    │   └── workflows.py          # engine + instances + RBAC + events
     ├── api/
     │   ├── urls.py / views.py / serializers.py   # DRF endpoints
     │   └── ninja.py              # django-ninja evaluation spike
+    ├── notifications/            # audience rules, dispatch, bell context
+    ├── reporting/                # builder, exports, instruments, sharing
     ├── membership/
     │   └── sync_service.py       # MembershipSyncService (Oracle/legacy sync)
     ├── services/
-    │   └── permissions.py        # unified permission resolver (UI + API)
+    │   ├── permissions.py        # unified permission resolver (UI + API)
+    │   └── attachments.py        # SharePoint attachment service
     ├── management/commands/      # sync, jobs, diagrams (see Management Commands)
     ├── utils/                    # audit_helpers.py, sharepoint.py
     ├── migrations/
-    ├── tests.py / tests_api.py / tests_ninja.py
+    ├── tests*.py                 # tests, tests_api, tests_ninja, tests_notifications, …
     └── docs/                     # this documentation
 ```
 
@@ -104,10 +114,18 @@ pwms_project/                     # repo root (git) — run manage.py from here
 | --- | --- | --- |
 | `/admin/` | Django admin | admin |
 | `/` | redirect → `/pwms/` | – |
-| `/pwms/` , `/pwms/about/` | web pages | – |
+| `/pwms/` , `/pwms/about/` , `/pwms/contact/` | public pages | public |
+| `/pwms/dashboard/` | dashboard (figures scoped to the user) | session |
 | `/pwms/login/` , `/pwms/logout/` | session login/logout (web) | – |
+| `/pwms/workflows/…` | list / detail / create / update / delete per instrument (incl. bill versions) | session + RBAC |
+| `/pwms/instruments/{public_id}/document/` | one instrument as a formal PDF/HTML document | session + RBAC |
+| `/pwms/attachments/…` | SharePoint picker + link / upload / detach / version history | session + RBAC |
+| `/pwms/alerts/` , `/pwms/alerts/{public_id}/` | alerts page and open/read state | session |
+| `/pwms/reports/…` | report builder, HTMX preview, export, share | session + RBAC |
+| `/pwms/reports/shared/{token}/` | read-only shared report (token-addressed) | token |
+| `/pwms/*-search/` | HTMX search fragments (users, groups, reports, countries, cities) | session |
 | `/api/` | DRF API root | session/basic |
-| `/api/resolutions/{public_id}/audit/` | auditlog CRUD history for a resolution | session/basic |
+| `/api/{resolutions,agreements,bills}/{public_id}/audit/` | auditlog CRUD history for one instrument | session/basic |
 | `/api/auth/login/` , `/api/auth/logout/` | DRF browsable-API auth | – |
 | `/api/schema/` , `/api/docs/` , `/api/redoc/` | OpenAPI schema + Swagger/ReDoc | public (docs) |
 | `/ninja/…` | django-ninja spike endpoints + auto docs | session (spike) |
@@ -161,7 +179,12 @@ that is:
 
 - **`DelegationReport`** — BRS report fields (engagement, location, ATC links).
 - **`InternationalResolution`** — `resolution_number`, `adoption_date`,
-  `responsible_group`, `implementation_progress`.
+  `responsible_group`, `implementation_progress`; may nest inside a report.
+- **`InternationalAgreement`** — `reference_number`, `agreement_type`,
+  `submitting_department`, `responsible_minister`, ATC tabling fields.
+- **`Bill`** — `bill_number`, `short_title`, `bill_type`, `house_of_origin`,
+  sponsor and responsible committee, with `public_status` derived from the state
+  and a preserved `BillVersion` history.
 
 Helpers on the base provide lifecycle navigation:
 
@@ -248,10 +271,11 @@ Two complementary mechanisms record history:
 | `pwms.TransitionLog` | every **semantic state transition** | `from_state → to_state`, actor, comment, IP, action label |
 | `pwms.WorkflowEvent` | every **domain event** (document attached, ATC published, referral created/responded/...) | append-only, typed registry (`EventType`), JSON payload, actor, origin |
 
-- Registration happens in `PwmsConfig.ready()`:
-  `auditlog.register(InternationalResolution, exclude_fields=["updated_at"])`.
-  Add each new concrete subclass there. Referral changes are no longer M2M audit
-  entries — they are typed rows whose lifecycle emits `WorkflowEvent` rows.
+- Registration happens in `PwmsConfig.ready()`: all four concrete subclasses
+  (`InternationalResolution`, `DelegationReport`, `InternationalAgreement`,
+  `Bill`) are registered with `exclude_fields=["updated_at"]`. Add each new
+  concrete subclass there. Referral changes are no longer M2M audit entries —
+  they are typed rows whose lifecycle emits `WorkflowEvent` rows.
 - `perform_transition()` writes a `TransitionLog` row **and** the resulting
   `current_state` change is captured by auditlog as an UPDATE entry.
 - `utils/audit_helpers.py` exposes `get_audit_trail_for_instance(instance)` and
@@ -295,11 +319,14 @@ See [API Reference](./API%20Reference.md).
 
 ## 7. Background jobs & commands
 
-Django management commands cover data synchronisation (legacy Oracle), committee
-scraping, notification/deadline checks, and diagram generation. Several commands
-**still import the legacy `workflows.models`** (the old app this codebase was
-migrated from) and will only work after being repointed to `pwms.models`.
-See [Management Commands](./Management%20Commands.md) for the per-command status.
+`pwms/tasks.py` registers the queued jobs `django-background-tasks` runs (alert
+email delivery and the scheduled-report drain), served by
+`manage.py process_tasks`. Separately, Django management commands cover data
+synchronisation (legacy Oracle), SharePoint/GeoNames import, committee scraping,
+referral-deadline checks and diagram generation. Several commands **still import
+the legacy `workflows.models`** (the old app this codebase was migrated from) and
+will only work after being repointed to `pwms.models`. See
+[Management Commands](./Management%20Commands.md) for the per-command status.
 
 ---
 
@@ -310,8 +337,9 @@ See [Management Commands](./Management%20Commands.md) for the per-command status
 - **Stale imports:** many `management/commands/*` reference the legacy
   `workflows.models` app that no longer exists. They fail only when invoked.
 - **Concrete-only audits:** because auditing/RBAC hang off the abstract base,
-  new workflow types (Bill, Motion, Question) must (a) subclass
+  a new workflow type (Motion, Question, …) must (a) subclass
   `AbstractLegislativeWorkflow`, (b) be registered with `auditlog` in
   `PwmsConfig.ready()`, and (c) get an `*AuditHistoryView` subclass for the API.
+  The four shipped instruments each follow this.
 - **Dev DB reset:** full destructive reset recipe is in
   [Technical Stack → Database reset](./Technical%20Stack.md#database-reset-development).

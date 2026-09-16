@@ -10,22 +10,26 @@ All commands live in `pwms/management/commands/` and run as:
 > Several commands still `import … from workflows.models` — that module no
 > longer exists in this project, so **those commands fail until repointed** to
 > `pwms.models` (e.g. `Group`, `Role`, `WorkflowType`, `State`, `Transition`).
-> They are marked **legacy** below.
+> They are marked **legacy** below. Two of them (`notify_deadlines`,
+> `send_overdue_alerts`) import `workflows.tasks` *inside a function body*, so
+> the command still loads and only fails when that code path runs.
 >
 > The reworked Oracle sync suite (`sync_groups_oracle`, `sync_roles_oracle`,
-> `sync_users_oracle`), `populate_sites`, `check_referral_deadlines`,
-> `send_scheduled_report_shares` and `show_workflow_hierarchy` import
-> `pwms.models` directly and run cleanly; the `legacy` / `pending repoint`
-> statuses below apply to the rest.
+> `sync_users_oracle`), `scrape_parliament_committees`, `generate_diagrams`,
+> `populate_sites`, `load_places`, `import_groups`, `import_bill_versions`,
+> `check_referral_deadlines`, `send_scheduled_report_shares`,
+> `sync_type_group_access` and `show_workflow_hierarchy` import `pwms.models`
+> directly and run cleanly; the `legacy` / `pending repoint` statuses below apply
+> to the rest.
 
 ## Synchronisation (Oracle / legacy source)
 
 | Command | Purpose | Status |
 | --- | --- | --- |
-| `sync_base` | shared base/helpers for the Oracle sync suite | legacy |
-| `sync_groups_oracle` | build the Parliament group hierarchy from Oracle (org tree under `Administration`) | legacy |
-| `sync_roles_oracle` | create/update standard parliamentary roles (deduped, case/acronym normalised) | legacy |
-| `sync_users_oracle` | import users & group memberships from Oracle via `pwms/membership/sync_service.py` | legacy |
+| `sync_base` | shared base for the Oracle suite (`OracleSyncBase`) — a helper module, **not** an invokable command | helper |
+| `sync_groups_oracle` | build the Parliament group hierarchy from Oracle (org tree under `Administration`) | ✅ live |
+| `sync_roles_oracle` | create/update standard parliamentary roles (deduped, case/acronym normalised) | ✅ live |
+| `sync_users_oracle` | import users & group memberships from Oracle via `pwms/membership/sync_service.py` | ✅ live |
 
 > **Identity ownership.** `sync_users_oracle` owns only users whose
 > `identity_source` is `erp`: locally managed users (`identity_source="local"`,
@@ -80,7 +84,7 @@ changes.
 
 | Command | Purpose | Status |
 | --- | --- | --- |
-| `scrape_parliament_committees` | scrape committee chairpersons & members from parliament.gov.za, import members | legacy |
+| `scrape_parliament_committees` | scrape committee chairpersons & members from parliament.gov.za, import members | ✅ live |
 
 ## Workflow definitions & tooling
 
@@ -89,7 +93,7 @@ changes.
 | `export_workflow_type` | export a `WorkflowType` (states + transitions) to JSON | legacy |
 | `import_workflow_type` | upsert a `WorkflowType` from a JSON backup | legacy |
 | `import_states` | import workflow states from CSV for a workflow type | legacy |
-| `generate_diagrams` | render workflow-type diagrams (states/transitions) | legacy |
+| `generate_diagrams` | render workflow-type diagrams (states/transitions) | ✅ live |
 
 ### Diagram generation
 

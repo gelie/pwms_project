@@ -11,7 +11,8 @@ ContentType-linked RBAC layer, and everything that happens to an instrument is
 **fully audited** (CRUD history + state-transition events).
 
 > **Status:** active early development (`0.1.0`). The workflow/RBAC/audit core,
-> in-app alerts and queued email dispatch, SharePoint document attachments, a
+> Active Directory sign-in with a local fallback, in-app alerts and queued email
+> dispatch, SharePoint document attachments (with version history), a
 > permission-scoped report builder (preview, exports, per-instrument documents,
 > sharing, scheduled delivery), the DRF audit API, OpenAPI docs, and a
 > django-ninja evaluation spike are in place.
@@ -33,6 +34,16 @@ ContentType-linked RBAC layer, and everything that happens to an instrument is
 - **Audit everywhere**
   - `auditlog` records every create / update / delete of a workflow instance (with actor + field diffs).
   - `TransitionLog` records each semantic state transition (who, from → to, comment, IP).
+  - `WorkflowEvent` records append-only domain events (documents, referrals, …).
+- **Alerts & email** — a `Notification` table that is both the navbar bell and
+  the delivery log; dispatch is queued through `django-background-tasks`.
+- **Documents** — SharePoint attachments on every workflow record, with on-demand
+  version history and `document-*` events on the audit trail.
+- **Reporting** — a permission-scoped report builder over all four registers with
+  xlsx / pdf / html / csv exports, per-instrument formal documents, token sharing
+  and scheduled delivery.
+- **Authentication** — Active Directory (LDAP) sign-in that falls back to the
+  local database, so the app boots and signs in without a directory.
 - **REST API** (DRF) for audit history + **OpenAPI / Swagger / ReDoc** docs.
 - **Admin, background jobs, management commands** for sync (Oracle/legacy), scraping, notifications and diagram generation.
 
@@ -46,16 +57,19 @@ pwms_project/                     # repo root — run manage.py from here
 ├── manage.py                     # Django entry point
 ├── .env                          # python-decouple config (secrets)
 ├── logs/                         # runtime logs
-├── docs/                         # project-level docs
 └── src/pwms/                     # single top-level package `pwms` (project + app)
     ├── settings.py               # Django settings (pwms.settings)
     ├── root_urls.py              # root URLconf (pwms.root_urls, includes /pwms/)
     ├── asgi.py  wsgi.py
+    ├── tasks.py                  # background-task entry points (django-background-tasks)
     ├── templates/                # server-rendered UI (Bootstrap 5 + HTMX) — auto-discovered
     ├── static/                   # CSS / JS / images — auto-discovered
-    ├── models/                   # User, Group, Role, workflows, RBAC, SharePoint
+    ├── models/                   # User, Group, Role, workflows, RBAC, SharePoint, notifications, reports
     ├── api/                      # DRF + django-ninja endpoints
+    ├── notifications/            # alerts, audience rules, email dispatch
+    ├── reporting/                # report builder, exports, instrument documents, sharing
     ├── membership/               # sync services (e.g. MembershipSyncService)
+    ├── services/                 # permission resolver, attachment service
     ├── management/commands/      # sync, notifications, diagrams, ...
     ├── utils/                    # audit helpers, sharepoint client, etc.
     ├── tests*.py                 # unit/integration tests
@@ -79,8 +93,10 @@ The self-documentation lives in [`pwms/docs/`](src/pwms/docs/):
 | [Functional Design](src/pwms/docs/Functional%20Design.md) | What the system does, feature-by-feature |
 | [Technical Stack](src/pwms/docs/Technical%20Stack.md) | Frameworks, libraries, config, environment |
 | [API Reference](src/pwms/docs/API%20Reference.md) | Endpoints, auth, schema/docs URLs |
+| [Search Lookups](src/pwms/docs/Search%20Lookups.md) | HTMX search pickers and the country → city cascade |
 | [Management Commands](src/pwms/docs/Management%20Commands.md) | Every `manage.py` command and its purpose |
-| [Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md) | Email, notifications, SharePoint, exports |
+| [SharePoint Sync](src/pwms/docs/SharePoint%20Sync.md) | `populate_sites`, the local `Sharepoint*` tables and document attachments |
+| [Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md) | Email, notifications, SharePoint, exports and what remains |
 
 ---
 
@@ -139,7 +155,9 @@ Then open:
 ## Running tests
 
 ```bash
-.venv/bin/python manage.py test pwms.tests pwms.tests_api pwms.tests_ninja pwms.tests_executive
+.venv/bin/python manage.py test pwms.tests pwms.tests_api pwms.tests_attachments \
+  pwms.tests_authentication pwms.tests_executive pwms.tests_ninja \
+  pwms.tests_notifications pwms.tests_reports
 ```
 
 Run from the repo root; `pwms.*` test modules are importable via the editable

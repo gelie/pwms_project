@@ -52,6 +52,11 @@ erDiagram
     InternationalResolution ||--o{ auditlog.LogEntry : "GFK content (registered)"
 
     ReportShare }o--|| User : "created_by (SET_NULL)"
+
+    Notification }o--|| User : recipient
+    Notification }o--|| AbstractLegislativeWorkflow : "GFK content"
+    Attachment }o--|| AbstractLegislativeWorkflow : "GFK content"
+    Attachment ||--o{ AttachmentVersion : versions
 ```
 
 > The abstract `AbstractLegislativeWorkflow` is shown for clarity; it has no
@@ -570,10 +575,12 @@ requires an `atc-update-published` event (BR03.5.3).
 
 ### `auditlog.LogEntry` (third-party)
 
-Automatic CRUD history for registered models. For `InternationalResolution` and
-`DelegationReport` it is written on create/update/delete with `actor`,
-`timestamp`, `remote_addr` and a field-level `changes` diff (including M2M
-changes for `referred_to_groups`). Reached via `auditlog.models.LogEntry`
+Automatic CRUD history for registered models. For all four concrete workflows
+(`InternationalResolution`, `DelegationReport`, `InternationalAgreement` and
+`Bill`) it is written on create/update/delete with `actor`, `timestamp`,
+`remote_addr` and a field-level `changes` diff. Referral history is *not* an M2M
+audit entry — the old `referred_to_groups` M2M was dropped and referrals are now
+typed rows. Reached via `auditlog.models.LogEntry`
 (see `pwms/utils/audit_helpers.py`).
 
 ### `Notification(BaseModel)` — `pwms/models/notifications.py`

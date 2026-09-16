@@ -9,7 +9,9 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
 
 ## What ships today (✅)
 
-- Workflow engine (`WorkflowType`/`State`/`Transition`) + `InternationalResolution`
+- Workflow engine (`WorkflowType`/`State`/`Transition`) driving four instruments
+  (`DelegationReport`, `InternationalResolution`, `InternationalAgreement`,
+  `Bill`)
 - ContentType RBAC (`WorkflowGroupAccess`, `WorkflowRolePermission`,
   `WorkflowStatePermission`) with `instance.can(user, action)`
 - Full auditing (`auditlog` CRUD + `TransitionLog`) with API access
@@ -17,9 +19,13 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
   declarative transition guards (`Transition.required_event_types`)
 - In-app alerts + logged email dispatch (`Notification`, `pwms/notifications/`),
   raised from the workflow domain methods and the create views
+- SharePoint document attachments with on-demand version history and a document
+  audit trail (`pwms.Attachment` / `AttachmentVersion`)
 - Permission-scoped reporting: report builder with an HTMX preview, xlsx / pdf /
   html / csv exports, per-instrument formal documents, token link/email sharing
   and scheduled delivery (`pwms.reporting`, `ReportShare`)
+- Active Directory sign-in with a local-database fallback, and SharePoint tenant
+  sync (`populate_sites`) into local mirror tables
 - DRF API + OpenAPI (Swagger/ReDoc), admin, migrations, tests
 - django-ninja evaluation spike (`/ninja/`)
 
@@ -85,7 +91,9 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
 
 **Remaining (🔜)**
 
-- HTML email templates — only the plain-text `notification.txt` exists.
+- HTML alert templates — the *alert* email is still plain-text
+  (`emails/notification.txt`); report-share mail already sends HTML + text
+  (`emails/report_share.html` / `.txt`).
 
 **Acceptance:** role members receive email when a transition they are subscribed
 to (`notify_roles`) fires; referral-deadline reminders are sent; all sends are
@@ -126,12 +134,12 @@ with a parliamentary document library.
 
 **Groundwork / considerations**
 
-- File upload scaffolding exists (`python-multipart`, `media/` uploads for
-  avatars; models can add document attachments).
-- Document generation libs declared: `weasyprint`, `reportlab`, `openpyxl`,
-  `markdown` (exports/PDFs before upload).
+- File upload scaffolding (`python-multipart`, `media/` for avatars) is in place;
+  attachment uploads go straight to SharePoint instead.
+- Document generation libs (`weasyprint`, `openpyxl`, `reportlab`) now power the
+  reporting exports and per-instrument documents; `markdown` is still declared.
 - Access model maps well to SharePoint permission scopes (committee/house →
-  SharePoint site/librarb).
+  SharePoint site/library).
 
 **Options to evaluate**
 
@@ -153,9 +161,11 @@ a version to a record, so “the version tabled” survives later revisions.
 
 ## Notifications channel & email templating (🔜)
 
-- HTML email templates alongside the plain-text
+- HTML alert templates alongside the plain-text
   `src/pwms/templates/emails/notification.txt`; rendering is already
   request-free (`render_to_string`), so this is the outstanding piece.
+  (Report-share mail already sends HTML + text — `emails/report_share.html` /
+  `.txt` — but the alert path itself is text-only.)
 
 The rest originally sketched here has shipped: composition is RBAC-aware (a
 recipient who cannot VIEW the instance is dropped before the alert is written),
@@ -274,7 +284,9 @@ append-only `WorkflowEvent`, with transition guards
 (`Transition.required_event_types`); see [Data Model §5](./Data%20Model.md).
 Seeded types: report-document-attached, atc-update-published,
 implementation-reported, referral-created, referral-responded,
-referral-recalled, referral-expired. Seeded guard:
+referral-recalled, referral-expired (migrations `0007` / `0009`), plus the
+document types `document-attached`, `document-detached` and
+`document-version-added` (migration `0031`). Seeded guard:
 *Delegation Report → Close – House approved* requires the ATC update event.
 
 ✅ **Condition rules shipped** — `TransitionCondition` (`no_open_referrals`,

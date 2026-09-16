@@ -20,7 +20,8 @@
 | `django-auditlog` | automatic CRUD audit trail (`LogEntry`); middleware captures the acting user |
 | `django-background-tasks` | async background task queue; `pwms/tasks.py` registers alert-email delivery and the scheduled-report drain, served by `manage.py process_tasks` |
 | `django-mptt` | hierarchical `Group` trees (Houses → Committees → …) |
-| `django-bootstrap5`, `lucide` | server-rendered UI components |
+| `lucide` | server-rendered UI icons; Bootstrap 5 itself is **vendored** under `static/` (`bootstrap.min.css` + `bootstrap.bundle.min.js`), not loaded via the `django-bootstrap5` template tags |
+| `django-chartjs` | (declared/installed; not yet used on a page) charting for dashboards |
 | `django-htmx` | progressive enhancement / partial-page updates |
 | `django-flatpickr` | date-time pickers in templates/forms |
 | `djangorestframework` (DRF) | REST API layer |
@@ -29,22 +30,26 @@
 | `django-filter` | (declared) query filtering for DRF-style views |
 | `django-extensions` | (declared; not currently enabled) dev tooling |
 
-## Documents, data & integrations (declared / emerging)
+## Documents, data & integrations
 
 | Package | Purpose |
 | --- | --- |
-| `reportlab`, `weasyprint`, `openpyxl`, `markdown` | document / export generation (planned features) |
-| `python-multipart` | form/file uploads |
+| `weasyprint`, `openpyxl`, `reportlab` | reporting exports and per-instrument documents (pdf / xlsx; reportlab declared) |
+| `markdown` | (declared) rendering note fields as HTML |
+| `python-multipart` | multipart form/file uploads (SharePoint attachment upload) |
+| `httpx` + `asyncio` | async calls to the Microsoft Graph API (`pwms/utils/sharepoint.py`) |
+| `graphviz` | `generate_diagrams` renders workflow-type state machines |
 | `cryptography` | field-level encryption (ID numbers stored as encrypted + HMAC) |
 | `oracledb` | legacy Oracle source for data synchronisation commands |
 | `pillow` | image handling (user avatars) |
+| `bs4`, `selenium` | committee scraping (`scrape_parliament_committees`) |
 | `djlint` | template linting / formatting |
 
 ## Configuration highlights (`src/pwms/settings.py`)
 
-- `INSTALLED_APPS`: core Django + `auditlog`, `background_task`, `rest_framework`,
-  `drf_spectacular`, `django_flatpickr`, `lucide`, `mptt`, `django_htmx`,
-  `django_bootstrap5`, `pwms`.
+- `INSTALLED_APPS`: core Django + `auditlog`, `background_task`,
+  `rest_framework`, `drf_spectacular`, `chartjs`, `django_flatpickr`, `lucide`,
+  `mptt`, `django_htmx`, `pwms`.
 - `AUTH_USER_MODEL = "pwms.User"`.
 - `AUTHENTICATION_BACKENDS`: `pwms.backends.GracefulLDAPBackend` (Active
   Directory) then `pwms.backends.FallbackModelBackend` (local database). The
@@ -57,6 +62,14 @@
   `Role`/`GroupMembership` (see `pwms.models.permissions`).
 - `ROOT_URLCONF = "pwms.root_urls"` — see [System Design → URL map](#) and
   [API Reference](./API%20Reference.md).
+- `MIDDLEWARE`: `pwms.middleware.SiteLoginRequiredMiddleware` makes every site
+  route login-required by default; public pages opt out with the
+  `login_not_required` decorator (home, about, contact). The API, admin and docs
+  namespaces manage their own authentication.
+- SharePoint Graph: `SHAREPOINT_CLIENT_ID` / `SHAREPOINT_CLIENT_SECRET` /
+  `SHAREPOINT_TENANT_ID` (from `CLIENT_ID` / `CLIENT_SECRET` / `TENANT_ID`), with
+  the token URL and `.default` scope derived — see
+  [SharePoint Sync](./SharePoint%20Sync.md).
 - `REST_FRAMEWORK`: Session + Basic authentication, `IsAuthenticated` default,
   `drf_spectacular.openapi.AutoSchema`.
 - `SPECTACULAR_SETTINGS`: OpenAPI title/version for the generated schema.
@@ -95,13 +108,20 @@
 
 ## Testing
 
-- Test modules: `pwms/tests.py` (auditing), `pwms/tests_api.py` (DRF API),
-  `pwms/tests_ninja.py` (ninja spike).
+- Test modules: `pwms/tests.py` (auditing, workflow CRUD, lookups),
+  `pwms/tests_api.py` (DRF API), `pwms/tests_ninja.py` (ninja spike),
+  `pwms/tests_notifications.py` (alerts + email dispatch),
+  `pwms/tests_attachments.py` (SharePoint attachments & versioning),
+  `pwms/tests_reports.py` (report builder, exports, sharing, scheduling),
+  `pwms/tests_authentication.py` (AD/LDAP sign-in + fallback) and
+  `pwms/tests_executive.py` (executive-branch identity rules).
 - Run from the repo root; `pwms.*` test modules resolve through the editable
   install (single import identity):
 
 ```bash
-.venv/bin/python manage.py test pwms.tests pwms.tests_api pwms.tests_ninja
+.venv/bin/python manage.py test pwms.tests pwms.tests_api pwms.tests_attachments \
+  pwms.tests_authentication pwms.tests_executive pwms.tests_ninja \
+  pwms.tests_notifications pwms.tests_reports
 ```
 
 - Tests run on a throwaway test database (PostgreSQL test DB).

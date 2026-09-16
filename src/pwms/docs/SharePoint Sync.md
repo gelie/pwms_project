@@ -224,7 +224,7 @@ page. It is a lazy HTMX picker that browses SharePoint and attaches documents to
 the record through `pwms.Attachment` — a generic FK (`content_type` +
 `object_id`), so one table serves every concrete subclass.
 
-The three flows the picker supports:
+The flows the picker supports:
 
 1. **Browse** — the tree lists the sites the user is an active
    `SharepointSiteMember` of (superusers see every enabled, non-personal
@@ -337,4 +337,5 @@ a document can still be filed.
 - `pwms/models/sharepoint.py` — `SharepointSite`, `SharepointDrive`,
   `SharepointSiteMember`, `SharepointToken`, `SharepointFolder`.
 - [Roadmap & Planned Integrations](./Roadmap%20&%20Planned%20Integrations.md) —
-  planned document-library / file workflows on top of this sync.
+  what remains on top of this sync (restoring a superseded version, pinning a
+  version to a record).

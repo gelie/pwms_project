@@ -12,7 +12,7 @@ order, or used as reference while developing.
 5. [API Reference](./API%20Reference.md) — the endpoints and OpenAPI docs.
 6. [Search Lookups](./Search%20Lookups.md) — the HTMX search pickers (users, groups, countries, cities) and the country → city cascade.
 7. [Management Commands](./Management%20Commands.md) — the `manage.py` commands (sync, jobs, diagrams).
-8. [SharePoint Sync](./SharePoint%20Sync.md) — the `populate_sites` command and the local `Sharepoint*` tables.
+8. [SharePoint Sync](./SharePoint%20Sync.md) — the `populate_sites` command, the local `Sharepoint*` tables, and document attachments/versioning.
 9. [Roadmap & Planned Integrations](./Roadmap%20&%20Planned%20Integrations.md) — email, notifications, SharePoint and other plans.
 
 ## Conventions used in these documents
@@ -20,8 +20,9 @@ order, or used as reference while developing.
 - Diagrams use Mermaid and render on GitHub, VS Code and most Markdown viewers.
 - `pwms.` prefixes a Django model (e.g. `pwms.User`); un-prefixed names are
   Django or third-party (e.g. `auditlog.LogEntry`).
-- "Workflow instance" = a row of a concrete workflow model
-  (currently `InternationalResolution`).
+- "Workflow instance" = a row of a concrete workflow model (today
+  `DelegationReport`, `InternationalResolution`, `InternationalAgreement` or
+  `Bill`).
 - "Workflow type" / "machine" = a `WorkflowType` (the reusable state/transition definition).
 
 ## Keeping docs in sync

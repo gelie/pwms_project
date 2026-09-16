@@ -67,6 +67,12 @@ responses, so they are deliberately absent from the schema above:
 They are session-authenticated like every other site route. See
 [Search Lookups](./Search%20Lookups.md) for the contract they follow.
 
+The app's other dynamic pages — the dashboard, the SharePoint attachment picker,
+the alerts page, the report builder / exports and the per-instrument documents —
+are likewise server-rendered HTML under `/pwms/`, not JSON API endpoints (see
+[Functional Design](./Functional%20Design.md) and
+[System Design → URL map](./System%20Design.md#2-url-map)).
+
 ---
 
 ## 3. Response shape — audit history
@@ -134,16 +140,17 @@ curl -b cookies.txt http://127.0.0.1:8000/api/resolutions/<public_id>/audit/
 
 ## 5. Extending
 
-To expose a new concrete workflow model (e.g. `Bill`):
+To expose a new concrete workflow model (the four shipped instruments all have
+one; this is the pattern for a future `Motion`):
 
 ```python
 # pwms/api/views.py
-class BillAuditHistoryView(WorkflowAuditHistoryView):
-    model_class = Bill
+class MotionAuditHistoryView(WorkflowAuditHistoryView):
+    model_class = Motion
 
 
 # pwms/api/urls.py — add a route, e.g.
-# path("bills/<uuid:public_id>/audit/", views.BillAuditHistoryView.as_view(), name="bill-audit-history"),
+# path("motions/<uuid:public_id>/audit/", views.MotionAuditHistoryView.as_view(), name="motion-audit-history"),
 ```
 
 Remember to register the model with `auditlog` in `PwmsConfig.ready()` and add it

@@ -6,8 +6,9 @@ rendered as **search pickers**: a text box that fetches matching options from th
 server with HTMX, plus the real form field kept hidden so an ordinary POST still
 works.
 
-Four lookups back them. All four return an **HTML fragment, not JSON** — they are
-UI endpoints, so they are not part of the [API Reference](./API%20Reference.md).
+Five lookups back them. All five return an **HTML fragment, not JSON** — they
+are UI endpoints, so they are not part of the
+[API Reference](./API%20Reference.md).
 
 ```mermaid
 sequenceDiagram
@@ -23,17 +24,22 @@ sequenceDiagram
     U->>H: submits the form<br/>(name="location_city" = pk)
 ```
 
-## 1. The four lookups
+## 1. The five lookups
 
 | Field(s) | Endpoint | Request parameters | Matching | Order | Fragment |
 | --- | --- | --- | --- | --- | --- |
-| `owner`, `assigned_to` | `pwms:user_search` — `/pwms/user-search/` | `search` | active users by `username`, `first_name`, `last_name` (`icontains`) | first name, last name, username | `pwms/partials/user_search_results.html` |
-| `responsible_group` | `pwms:group_search` — `/pwms/group-search/` | `search` | `name` (`icontains`) | name | `pwms/partials/group_search_results.html` |
+| `assigned_to`, `sponsor`, `responsible_minister` | `pwms:user_search` — `/pwms/user-search/` | `search` | active users by `username`, `first_name`, `last_name` (`icontains`) | first name, last name, username | `pwms/partials/user_search_results.html` |
+| `responsible_group`, `responsible_committee` | `pwms:group_search` — `/pwms/group-search/` | `search` | `name` (`icontains`) | name | `pwms/partials/group_search_results.html` |
+| `parent_report` (resolutions only) | `pwms:report_search` — `/pwms/report-search/` | `search` | delegation reports the user may **edit**, by `reference_number` or `title` | newest first | `pwms/partials/report_search_results.html` |
 | `location_country` | `pwms:country_search` — `/pwms/country-search/` | `search` | `name` (`icontains`) or ISO code (`iexact`) | names starting with the query first, then name | `pwms/partials/country_search_results.html` |
 | `location_city` | `pwms:city_search` — `/pwms/city-search/` | `search`, `country` | `name` or `ascii_name` (`istartswith`), limited to `country` when it is a number | population desc, then name | `pwms/partials/city_search_results.html` |
 
 Every view caps its result set at 20 rows and lives in `pwms/views.py` next to
-the workflow views. Two behaviours are deliberate:
+the workflow views. `owner` is deliberately **not** a picker: it is disabled and
+taken from the acting user on create (`WorkflowInstanceFormMixin.__init__`).
+`report_search` filters through `resolve(user, report, EDIT)` rather than taking
+the whole register, because nesting a resolution under a report edits that
+report's hierarchy too. Two behaviours are deliberate:
 
 - `city_search` **ranks by population**, which keeps village namesakes out of the
   way (`cities.csv.gz` also carries 13,529 South African township sections, see
@@ -127,7 +133,7 @@ Form templates include **`_picker_field.html`** for every searchable field:
 ## 4. Client script
 
 `static/js/htmx-lookup.js` (loaded with `defer` from `base.html`) is generic: it
-knows nothing about users, groups, countries or cities. htmx itself comes from
+knows nothing about users, groups, reports, countries or cities. htmx itself comes from
 `{% htmx_script %}` in the same template (django-htmx ships htmx 2 in its own
 static files, so nothing is fetched from a CDN).
 
@@ -180,7 +186,7 @@ declared in the template, not in the script:
 ## 6. Adding another lookup
 
 1. Put the choice list behind a queryset (a `ForeignKey` is the natural shape).
-2. Add a view that returns a fragment, mirroring the four above — filter on
+2. Add a view that returns a fragment, mirroring the five above — filter on
    `request.GET["search"]`, rank results sensibly, cap at 20.
 3. Add the route in `pwms/urls.py` (`<thing>-search/`, e.g. `thing_search`).
 4. Add `pwms/partials/<thing>_search_results.html`; every row is a button
@@ -200,6 +206,7 @@ declared in the template, not in the script:
 | --- | --- |
 | Loader, fragment contents, city scoping, country ranking, loader idempotency | `PlaceDataTests` in `pwms/tests.py` |
 | Picker vs select threshold, linked country/city attributes, POST round trip | `WorkflowCrudViewTests` in `pwms/tests.py` |
+| Report (`parent_report`) picker RBAC filtering and POST round trip | `WorkflowCrudViewTests` in `pwms/tests.py` |
 | End-to-end typing, swapping, cascading | served the real page over HTTP and stubbed the endpoints (Playwright `page.route`), which is how the requests, the swap and the cascade reset were confirmed |
 
 ## 8. Limits worth knowing
