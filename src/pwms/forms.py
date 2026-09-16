@@ -36,9 +36,11 @@ from .models import (
     BillVersion,
     DelegationParticipant,
     DelegationReport,
+    Group,
     InternationalAgreement,
     InternationalResolution,
     State,
+    WorkflowNote,
     WorkflowType,
 )
 from .models.reports import SCHEDULE_CHOICES
@@ -346,8 +348,58 @@ class DelegationParticipantForm(forms.ModelForm):
         return participant
 
 
+class DelegationParticipantAdderForm(DelegationParticipantForm):
+    """The delegation report page's one-row "add a participant" form.
+
+    Same fields and name-filling as the inline row on the report form, plus the
+    check the formset makes for the whole list: a person may only appear on the
+    report once. The report is passed in rather than chosen, because the page the
+    form is rendered on already is that report.
+    """
+
+    def __init__(self, *args, report=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.report = report
+
+    def clean(self):
+        # The parent insists on a person only for a row that changed; this form
+        # always does, so that requirement lives in ``clean_user`` instead.
+        return forms.ModelForm.clean(self)
+
+    def clean_user(self):
+        user = self.cleaned_data.get("user")
+        if user is None:
+            raise forms.ValidationError("Choose the delegate.")
+        if (
+            self.report is not None
+            and self.report.participants.filter(
+                user=user, removed_at__isnull=True
+            ).exists()
+        ):
+            raise forms.ValidationError(
+                f"{user.display_name} is already on this delegation."
+            )
+        return user
+
+
 class DelegationParticipantInlineFormSet(BaseInlineFormSet):
-    """Rejects the same person being listed twice on one report."""
+    """Rejects the same person twice, and removes delegates without deleting them."""
+
+    def __init__(self, *args, removed_by=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Who is taking the person off, recorded on the row that is kept.
+        self.removed_by = removed_by
+
+    def delete_existing(self, obj, commit=True):
+        """
+        Take the delegate off the delegation instead of deleting the row.
+
+        The report keeps the record of who was on it and who removed them, so
+        removing someone is a soft delete here too (see
+        ``DelegationParticipant.remove``).
+        """
+        if commit:
+            obj.remove(by=self.removed_by)
 
     def clean(self):
         super().clean()
@@ -874,3 +926,92 @@ class ReportShareForm(forms.Form):
                 "Add at least one address to email the report to.",
             )
         return data
+
+
+class ReferralForm(forms.Form):
+    """Refer a workflow instance to a committee or other group.
+
+    Mirrors the instance forms' search-picker treatment: a group register longer
+    than ``search_picker_threshold`` renders the field as an HTMX search box
+    (``pwms/_picker_field.html``) rather than a <select> of every group, while a
+    short register stays an ordinary <select>.
+    """
+
+    search_picker_threshold = 10
+
+    referred_to = forms.ModelChoiceField(
+        queryset=Group.objects.order_by("name"),
+        label="Refer to",
+        widget=forms.Select(attrs={"class": "form-select"}),
+    )
+    due_date = forms.DateTimeField(
+        required=False,
+        label="Response due",
+        widget=DateTimePickerInput(attrs={"class": "form-control"}),
+        input_formats=DATETIME_INPUT_FORMATS,
+    )
+    notes = forms.CharField(
+        required=False,
+        label="Notes",
+        widget=forms.Textarea(
+            attrs={
+                "class": "form-control",
+                "rows": 3,
+                "placeholder": "What should the committee consider?",
+            }
+        ),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Long option lists become search pickers, exactly as the instance forms
+        # do: the widget then posts only the chosen pk and the queryset is left
+        # to validate it.
+        self.search_pickers = set()
+        field = self.fields["referred_to"]
+        if field.queryset.count() > self.search_picker_threshold:
+            field.widget = forms.HiddenInput()
+            self.search_pickers.add("referred_to")
+
+    @property
+    def picker_labels(self):
+        """Label of the selected group, for the picker's visible search box.
+
+        The picker posts only a pk, so the box is prefilled from here; a form
+        that has not been submitted has nothing selected and maps to nothing.
+        """
+        labels = {}
+        value = self.initial.get("referred_to")
+        if value is None and self.is_bound:
+            value = self.data.get(self.add_prefix("referred_to"))
+        if value in (None, ""):
+            return labels
+        try:
+            group = self.fields["referred_to"].queryset.filter(pk=value).first()
+        except TypeError, ValueError:
+            return labels
+        if group is not None:
+            labels["referred_to"] = group.name
+        return labels
+
+
+class WorkflowNoteForm(forms.ModelForm):
+    """One note to record against a workflow instance.
+
+    The note's author and the record it belongs to are supplied by the view, so
+    the form carries only the text.
+    """
+
+    class Meta:
+        model = WorkflowNote
+        fields = ["body"]
+        labels = {"body": "New note"}
+        widgets = {
+            "body": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "rows": 3,
+                    "placeholder": "Decision, follow-up or conversation to record",
+                }
+            )
+        }

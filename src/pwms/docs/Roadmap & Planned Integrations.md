@@ -21,6 +21,9 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
   raised from the workflow domain methods and the create views
 - SharePoint document attachments with on-demand version history and a document
   audit trail (`pwms.Attachment` / `AttachmentVersion`)
+- Per-instrument **notes** (`WorkflowNote`), **referrals** (raise / respond /
+  withdraw) and delegation **participants** (add inline, remove softly), all
+  managed from the workflow detail pages
 - Permission-scoped reporting: report builder with an HTMX preview, xlsx / pdf /
   html / csv exports, per-instrument formal documents, token link/email sharing
   and scheduled delivery (`pwms.reporting`, `ReportShare`)
@@ -214,12 +217,26 @@ state machine (`pwms/utils/diagrams.py`, `pwms:workflow_diagram`), and the
 (`pwms/services/progress.py`). The dashboard's work lists repeat that percentage
 as a thin bar on each row.
 
+✅ **Referral lifecycle, notes and participants from the UI shipped (2026-09-16)**
+— the detail pages now raise and answer referrals
+(`partials/referral_section.html`, `pwms:referral_create` / `referral_respond` /
+`referral_recall`), carry a per-instrument **note log** backed by the new
+`WorkflowNote` model (GFK to any instrument, editable inline by its author:
+migration `0035_workflownote`, routes `pwms:workflow_notes_add` and
+`pwms:workflow_note_edit` / `workflow_note_delete`), and add or remove delegation
+participants inline (`DelegationParticipantAdderForm`). Removal is now a **soft
+delete** — migration `0036_delegation_participant_soft_delete` stamps
+`removed_at` / `removed_by` and narrows the unique constraint to active rows — so
+a former delegate stays on the report as history. The Attachments, Notes and
+Referrals panels were restyled to one header pattern, and the Notes panel is now
+part of the shared shell, so every instrument has it.
+
 Remaining (🔜):
 
 - Extend the group-scoped RBAC (`WorkflowType.group` + `create_roles`) to
   view/edit/delete/transition in the web UI — it currently gates creation only.
 - Available actions gated by `instance.can(...)`; performing transitions from the
-  web UI; referral actions (raising/answering a referral without the admin).
+  web UI.
 - Create/edit forms with date pickers (`django-flatpickr`), HTMX partials.
 - Committee/House dashboards and a search/filter layer (`django-filter` declared).
 - Admin improvements for managing workflow definitions and RBAC.
@@ -325,6 +342,13 @@ GFK to the instance, `referred_to` (FK `Group`), `referred_by`, `referred_at`,
 `responded_at/by`, `response_document_url`, recall fields. Creation via
 `instance.refer(group, ...)` is gated by `State.allows_referrals`; creation and
 lifecycle actions emit `referral-*` events automatically.
+
+✅ **Referral lifecycle UI shipped (2026-09-16)** — every detail page's Referrals
+tab raises a referral with a searchable committee picker, a response deadline and
+notes, and answers or withdraws each open row (`partials/referral_section.html`,
+`pwms:referral_create` / `referral_respond` / `referral_recall`). Raising and
+withdrawing need the record's `edit` right; responding is also open to an active
+member of the referred-to committee.
 
 Migrations: `0008` (model) → `0009` (backfill one open referral per existing M2M
 row + events) → `0010` (drop the M2M and legacy `atc_*` fields); auditlog no

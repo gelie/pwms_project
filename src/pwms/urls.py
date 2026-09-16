@@ -48,6 +48,18 @@ urlpatterns = [
         views.delegation_report_delete,
         name="delegation_report_delete",
     ),
+    # Delegates are rows of the report; the detail page adds one at a time.
+    path(
+        "workflows/delegation-reports/<uuid:public_id>/participants/add/",
+        views.delegation_report_participant_add,
+        name="delegation_report_participant_add",
+    ),
+    # A participant is removed from that same table, by its own id.
+    path(
+        "delegation-participants/<uuid:public_id>/delete/",
+        views.delegation_report_participant_delete,
+        name="delegation_report_participant_delete",
+    ),
     # International resolutions
     path(
         "workflows/international-resolutions/",
@@ -130,6 +142,32 @@ urlpatterns = [
     ),
     # User search
     path("user-search/", views.user_search, name="user_search"),
+    # Referrals: raise one on a workflow instance, then answer or withdraw it.
+    # The add route names its target with content_type/object_id (see
+    # pwms.views._workflow_target); the other two act on a single referral row.
+    path("referrals/add/", views.referral_create, name="referral_create"),
+    path(
+        "referrals/<uuid:public_id>/respond/",
+        views.referral_respond,
+        name="referral_respond",
+    ),
+    path(
+        "referrals/<uuid:public_id>/recall/",
+        views.referral_recall,
+        name="referral_recall",
+    ),
+    # Notes: one cross-type route each, since any instrument can carry them.
+    path("notes/add/", views.workflow_notes_add, name="workflow_notes_add"),
+    path(
+        "notes/<uuid:public_id>/edit/",
+        views.workflow_note_edit,
+        name="workflow_note_edit",
+    ),
+    path(
+        "notes/<uuid:public_id>/delete/",
+        views.workflow_note_delete,
+        name="workflow_note_delete",
+    ),
     # Group search for dynamic lookup
     path("group-search/", views.group_search, name="group_search"),
     # Delegation report lookup (the resolution form's parent picker)

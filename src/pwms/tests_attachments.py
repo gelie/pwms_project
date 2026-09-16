@@ -784,7 +784,7 @@ class AttachmentViewTests(AttachmentTestCase):
         response = self.client.get(
             reverse("pwms:delegation_report_detail", args=[self.report.public_id])
         )
-        self.assertContains(response, "Attachments (0)")
+        self.assertContains(response, "Attachments")
         self.assertContains(response, "Add attachment")
         self.assertContains(response, "attachment-browser")
 
@@ -989,7 +989,7 @@ class AttachmentDetailPageTests(AttachmentTestCase):
                     reverse(f"pwms:{view_name}", args=[instance.public_id])
                 )
                 self.assertEqual(response.status_code, 200)
-                self.assertContains(response, "Attachments (0)")
+                self.assertContains(response, "Attachments")
                 self.assertContains(response, "Add attachment")
 
 

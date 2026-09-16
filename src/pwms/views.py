@@ -11,7 +11,7 @@ from django.contrib.auth.forms import AuthenticationForm, UsernameField
 from django.contrib.auth.views import LoginView as BaseLoginView
 from django.contrib.auth.views import LogoutView as BaseLogoutView
 from django.contrib.contenttypes.models import ContentType
-from django.core.exceptions import PermissionDenied
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import transaction
 from django.db.models import Case, CharField, IntegerField, Q, Value, When
 from django.http import (
@@ -32,12 +32,15 @@ from .forms import (
     BillVersionForm,
     ChildResolutionFormSet,
     DelegateAdderForm,
+    DelegationParticipantAdderForm,
     DelegationParticipantFormSet,
     DelegationReportForm,
     InternationalAgreementForm,
     InternationalResolutionForm,
+    ReferralForm,
     ReportShareForm,
     ResolutionAdderForm,
+    WorkflowNoteForm,
 )
 from .models import (
     AbstractLegislativeWorkflow,
@@ -47,6 +50,7 @@ from .models import (
     BillVersion,
     City,
     Country,
+    DelegationParticipant,
     DelegationReport,
     Group,
     InternationalAgreement,
@@ -54,6 +58,7 @@ from .models import (
     Notification,
     TransitionLog,
     User,
+    WorkflowNote,
     WorkflowReferral,
     WorkflowType,
 )
@@ -374,9 +379,41 @@ def workflows(request):
 
 
 def all_groups(request):
-    """List every group in the organisational hierarchy (sign-in required)."""
-    groups = Group.objects.select_related("parent").order_by("name")
-    return render(request, "pwms/all-groups.html", {"groups": groups})
+    """List every group in the organisational hierarchy (sign-in required).
+
+    The list is narrowed by a free-text name filter (matched against the name
+    and short name, as in the admin) and a group-type filter. The type options
+    are derived from the groups on the page rather than the full choice list,
+    so the filter cannot advertise a type no group uses.
+    """
+    groups = list(Group.objects.select_related("parent").order_by("name"))
+
+    query = request.GET.get("q", "").strip()
+    type_filter = request.GET.get("type", "")
+
+    needle = query.lower()
+    filtered = [
+        group
+        for group in groups
+        if (
+            not needle
+            or needle in group.name.lower()
+            or needle in group.short_name.lower()
+        )
+        and (not type_filter or group.group_type == type_filter)
+    ]
+
+    context = {
+        "groups": filtered,
+        "query": query,
+        "type_choices": [
+            (value, label)
+            for value, label in Group.GROUP_TYPE_CHOICES
+            if any(group.group_type == value for group in groups)
+        ],
+        "has_filters": bool(query or type_filter),
+    }
+    return render(request, "pwms/all-groups.html", context)
 
 
 def my_groups(request):
@@ -443,6 +480,155 @@ def _workflow_detail_url(instance):
     return None
 
 
+def _target_identifiers(instance):
+    """
+    The ``content_type`` / ``object_id`` pair a fragment's form posts back.
+
+    A fragment is rendered both inside the page and standalone as the HTMX
+    response, so both context builders add these or the form would lose the
+    record it is acting on.
+    """
+    meta = instance._meta
+    return {
+        "target_content_type": f"{meta.app_label}.{meta.model_name}",
+        "target_object_id": str(instance.pk),
+    }
+
+
+def _can_change_note(user, note, record):
+    """
+    Whether ``user`` may edit or delete ``note``.
+
+    A note is its author's to change, and only while they may still edit the
+    record it is on. A note whose author's account has since been deleted (the
+    FK is nulled with the account) is left to the record's editors, or nothing
+    could ever correct or remove it.
+    """
+    if note.author_id is not None and note.author_id != user.pk:
+        return False
+    return resolve(user, record, EDIT)
+
+
+def _notes_context(request, instance):
+    """
+    Template context for a record's note log and the form that adds to it.
+
+    Notes are rows (:class:`WorkflowNote`), so every instrument can carry them
+    and each one keeps its own author. ``note_rows`` pairs each note with whether
+    this reader may change it — its author, while they may still edit the record
+    (see :func:`_can_change_note`). ``record_notes`` carries the record's own
+    ``notes`` column where a type has one — the BRS attribute (BR02.3.13) edited
+    with the record — so the panel can show it above the log.
+    """
+    can_edit = resolve(request.user, instance, EDIT)
+    notes = list(instance.note_log().select_related("author"))
+    context = {
+        **_target_identifiers(instance),
+        "note_rows": [
+            {
+                "note": note,
+                "can_change": _can_change_note(request.user, note, instance),
+            }
+            for note in notes
+        ],
+        "record_notes": getattr(instance, "notes", ""),
+        "can_edit_notes": can_edit,
+    }
+    if can_edit:
+        context["notes_form"] = WorkflowNoteForm()
+    return context
+
+
+def _participants_context(request, report):
+    """
+    Template context for a delegation report's participant list and its adder.
+
+    ``participants`` is who is on the delegation now; ``removed_participants``
+    is who was taken off it, kept (and shown, muted) as the record of the
+    change rather than deleted.
+    """
+    can_edit = resolve(request.user, report, EDIT)
+    context = {
+        "report": report,
+        "participants": report.participants.filter(
+            removed_at__isnull=True
+        ).select_related("user"),
+        "removed_participants": report.participants.filter(removed_at__isnull=False)
+        .select_related("user", "removed_by")
+        .order_by("-removed_at"),
+        "can_edit_participants": can_edit,
+    }
+    if can_edit:
+        context["participant_form"] = DelegationParticipantAdderForm(report=report)
+    return context
+
+
+def _can_answer_referral(user, referral, instance):
+    """
+    Whether ``user`` may record the answer to ``referral``.
+
+    The committee a matter was referred to owns the answer, so an active member
+    of that group may respond; anyone who may edit the instance may record the
+    response on its behalf instead.
+    """
+    if not getattr(user, "is_authenticated", False) or not referral.is_open:
+        return False
+    if resolve(user, instance, EDIT):
+        return True
+    return user.memberships.filter(
+        is_active=True, group_id=referral.referred_to_id
+    ).exists()
+
+
+def _can_recall_referral(user, referral, instance):
+    """Whether ``user`` may withdraw ``referral`` (whoever raised it, or an editor)."""
+    if not getattr(user, "is_authenticated", False) or not referral.is_open:
+        return False
+    if user.pk == referral.referred_by_id:
+        return True
+    return resolve(user, instance, EDIT)
+
+
+def _referral_context(request, instance):
+    """
+    Template context for one instance's referral panel.
+
+    ``referral_rows`` pairs each :class:`WorkflowReferral` with the two actions
+    the reader may take on it, because a template cannot resolve a permission
+    that takes arguments. ``can_refer`` folds the edit right together with the
+    state's own ``allows_referrals`` gate — the same gate ``refer()`` enforces —
+    so the button never offers a referral the model would refuse.
+    """
+    referrals = list(
+        instance.referrals().select_related(
+            "referred_to", "referred_by", "responded_by", "recalled_by"
+        )
+    )
+    state = instance.current_state
+    can_refer = bool(
+        resolve(request.user, instance, EDIT)
+        and state is not None
+        and state.allows_referrals
+    )
+    context = {
+        **_target_identifiers(instance),
+        "referral_rows": [
+            {
+                "referral": referral,
+                "can_respond": _can_answer_referral(request.user, referral, instance),
+                "can_recall": _can_recall_referral(request.user, referral, instance),
+            }
+            for referral in referrals
+        ],
+        "can_refer": can_refer,
+    }
+    if can_refer:
+        # Only built for someone who may actually raise one, so a reader who
+        # cannot refer pays nothing for the group register.
+        context["referral_form"] = ReferralForm()
+    return context
+
+
 def _workflow_detail_context(request, instance):
     """
     Context every workflow detail page shares.
@@ -463,7 +649,7 @@ def _workflow_detail_context(request, instance):
     ]
     timeline = instance_timeline(instance)
     diagram_path = workflow_type_diagram_path(instance.workflow_type)
-    return {
+    context = {
         # A generic alias the shared detail template renders from.
         "object": instance,
         "perms": permissions_for(request.user, instance),
@@ -480,6 +666,9 @@ def _workflow_detail_context(request, instance):
             "pwms:workflow_diagram", kwargs={"public_id": instance.public_id}
         ),
     }
+    context.update(_referral_context(request, instance))
+    context.update(_notes_context(request, instance))
+    return context
 
 
 def _deny_uncreatable_workflow_type(request):
@@ -633,11 +822,10 @@ def delegation_report_detail(request, public_id):
     require(request.user, report, VIEW)
     context = {
         "report": report,
-        "participants": report.participants.select_related("user"),
         "updates": report.updates.select_related("resulting_state", "recorded_by"),
-        "referrals": report.referrals().select_related("referred_to", "referred_by"),
         "transitions": report.get_available_transitions(),
     }
+    context.update(_participants_context(request, report))
     context.update(_workflow_detail_context(request, report))
     context.update(_attachment_context(request, report))
     return render(request, "pwms/delegation-report-detail.html", context)
@@ -685,7 +873,12 @@ def delegation_report_update(request, public_id):
     if request.method == "POST":
         form = DelegationReportForm(request.POST, instance=report, user=request.user)
         participants = DelegationParticipantFormSet(
-            request.POST, instance=report, prefix="participants"
+            request.POST,
+            instance=report,
+            prefix="participants",
+            # Only who is on the delegation now; a removed row is history.
+            queryset=report.participants.filter(removed_at__isnull=True),
+            removed_by=request.user,
         )
         resolutions = _child_resolution_formset(request)
         if form.is_valid() and participants.is_valid() and resolutions.is_valid():
@@ -700,7 +893,10 @@ def delegation_report_update(request, public_id):
     else:
         form = DelegationReportForm(instance=report, user=request.user)
         participants = DelegationParticipantFormSet(
-            instance=report, prefix="participants"
+            instance=report,
+            prefix="participants",
+            queryset=report.participants.filter(removed_at__isnull=True),
+            removed_by=request.user,
         )
         resolutions = _child_resolution_formset(request)
     return render(
@@ -778,9 +974,6 @@ def international_resolution_detail(request, public_id):
     require(request.user, resolution, VIEW)
     context = {
         "resolution": resolution,
-        "referrals": resolution.referrals().select_related(
-            "referred_to", "referred_by"
-        ),
         "transitions": resolution.get_available_transitions(),
     }
     context.update(_workflow_detail_context(request, resolution))
@@ -920,7 +1113,6 @@ def international_agreement_detail(request, public_id):
     require(request.user, agreement, VIEW)
     context = {
         "agreement": agreement,
-        "referrals": agreement.referrals().select_related("referred_to", "referred_by"),
         "transitions": agreement.get_available_transitions(),
     }
     context.update(_workflow_detail_context(request, agreement))
@@ -1057,7 +1249,6 @@ def bill_detail(request, public_id):
     require(request.user, bill, VIEW)
     context = {
         "bill": bill,
-        "referrals": bill.referrals().select_related("referred_to", "referred_by"),
         "versions": bill.versions.select_related("recorded_by"),
         "transitions": bill.get_available_transitions(),
     }
@@ -1873,3 +2064,238 @@ def _attachment_response(request, target, *, success="", error=""):
     elif success:
         context["attachment_status"] = {"level": "success", "message": success}
     return render(request, "pwms/partials/attachment_list.html", context)
+
+
+# --- Referrals (who a matter was sent to, and their answer) -------------------
+# A referral is a typed row (WorkflowReferral) rather than a state change, so it
+# is raised, answered and withdrawn from the record's Referrals tab. Every
+# endpoint names its target with a ``content_type`` ("app.model") plus an
+# ``object_id``, so one set of views serves every concrete workflow subclass.
+
+
+def _workflow_target(request, action):
+    """Resolve a request's ``content_type``/``object_id`` to an allowed record.
+
+    Shared by the fragments that name their target rather than sitting on a
+    type's own route, so one endpoint serves every concrete subclass.
+    """
+    raw_type = request.GET.get("content_type") or request.POST.get("content_type")
+    object_id = request.GET.get("object_id") or request.POST.get("object_id")
+    app_label, separator, model_name = (raw_type or "").partition(".")
+    content_type = (
+        ContentType.objects.filter(app_label=app_label, model=model_name).first()
+        if separator
+        else None
+    )
+    model = content_type.model_class() if content_type is not None else None
+    if (
+        model is None
+        or not object_id
+        or not issubclass(model, AbstractLegislativeWorkflow)
+    ):
+        raise Http404("Unknown referral target.")
+    target = get_object_or_404(model, pk=object_id)
+    require(request.user, target, action)
+    return target
+
+
+def _referral_response(request, target, *, success="", error="", form=None):
+    """Re-render the referral panel, announcing a change when there is one."""
+    context = _referral_context(request, target)
+    if form is not None:
+        # Hand the rejected form back bound, so its errors and the values already
+        # typed are shown again rather than silently dropped.
+        context["referral_form"] = form
+    if error:
+        context["referral_status"] = {"level": "danger", "message": error}
+    elif success:
+        context["referral_status"] = {"level": "success", "message": success}
+    return render(request, "pwms/partials/referral_section.html", context)
+
+
+@require_POST
+def referral_create(request):
+    """Refer a workflow instance to a group (HTMX fragment)."""
+    target = _workflow_target(request, EDIT)
+    state = target.current_state
+    if state is not None and not state.allows_referrals:
+        return _referral_response(
+            request, target, error=f"Referrals are not allowed in state {state.name}."
+        )
+    form = ReferralForm(request.POST)
+    if not form.is_valid():
+        return _referral_response(request, target, form=form)
+    referral = target.refer(
+        form.cleaned_data["referred_to"],
+        referred_by=request.user,
+        due_date=form.cleaned_data["due_date"],
+        notes=form.cleaned_data["notes"],
+    )
+    return _referral_response(
+        request, target, success=f"Referred to {referral.referred_to.name}."
+    )
+
+
+def _referral_for_action(request, public_id, allowed):
+    """Load a referral and its record, refusing unless ``allowed`` permits."""
+    referral = get_object_or_404(
+        WorkflowReferral.objects.select_related("referred_to"), public_id=public_id
+    )
+    target = referral.content_object
+    if target is None:
+        raise Http404("Referral is not linked to a record.")
+    if not allowed(request.user, referral, target):
+        raise PermissionDenied(_("You may not change this referral."))
+    return referral, target
+
+
+@require_POST
+def referral_respond(request, public_id):
+    """Record the referred group's answer (HTMX fragment)."""
+    referral, target = _referral_for_action(request, public_id, _can_answer_referral)
+    try:
+        referral.respond(
+            responded_by=request.user,
+            document_url=request.POST.get("document_url", "").strip(),
+            notes=request.POST.get("notes", "").strip(),
+        )
+    except ValidationError as exc:
+        return _referral_response(request, target, error=exc.messages[0])
+    return _referral_response(
+        request, target, success="The referral has been answered."
+    )
+
+
+@require_POST
+def referral_recall(request, public_id):
+    """Withdraw a referral (HTMX fragment)."""
+    referral, target = _referral_for_action(request, public_id, _can_recall_referral)
+    try:
+        referral.recall(
+            recalled_by=request.user,
+            reason=request.POST.get("reason", "").strip(),
+        )
+    except ValidationError as exc:
+        return _referral_response(request, target, error=exc.messages[0])
+    return _referral_response(
+        request, target, success="The referral has been withdrawn."
+    )
+
+
+# --- Notes (what people recorded against a record) ---------------------------
+# A note is a typed row (WorkflowNote) rather than a state change or a column on
+# the record, so each one keeps its own author and timestamp and any instrument
+# can carry them. There is no lifecycle: a note is written, read, and deleted if
+# it was recorded in error.
+
+
+def _notes_response(request, target, *, success="", error="", form=None):
+    """Re-render the notes panel, announcing a change when there is one."""
+    context = _notes_context(request, target)
+    if form is not None:
+        context["notes_form"] = form
+    if error:
+        context["notes_status"] = {"level": "danger", "message": error}
+    elif success:
+        context["notes_status"] = {"level": "success", "message": success}
+    return render(request, "pwms/partials/notes_section.html", context)
+
+
+@require_POST
+@require_POST
+def workflow_notes_add(request):
+    """Record a note against a record (HTMX fragment)."""
+    target = _workflow_target(request, EDIT)
+    form = WorkflowNoteForm(request.POST)
+    if not form.is_valid():
+        return _notes_response(request, target, form=form)
+    note = form.save(commit=False)
+    note.content_object = target
+    note.author = request.user
+    note.save()
+    return _notes_response(request, target, success="Note added.")
+
+
+def _note_for_change(request, public_id):
+    """Load a note and its record, refusing unless the reader may change it."""
+    note = get_object_or_404(
+        WorkflowNote.objects.select_related("author"), public_id=public_id
+    )
+    target = note.content_object
+    if target is None:
+        raise Http404("Note is not linked to a record.")
+    if not _can_change_note(request.user, note, target):
+        raise PermissionDenied(_("You may not change this note."))
+    return note, target
+
+
+@require_POST
+def workflow_note_edit(request, public_id):
+    """Rewrite one note (HTMX fragment).
+
+    An empty body is the only way this can fail, and the note itself is left
+    untouched, so the refusal is reported as a status message rather than by
+    re-rendering the row's own form.
+    """
+    note, target = _note_for_change(request, public_id)
+    form = WorkflowNoteForm(request.POST, instance=note)
+    if not form.is_valid():
+        return _notes_response(request, target, error="A note cannot be empty.")
+    form.save()
+    return _notes_response(request, target, success="Note updated.")
+
+
+@require_POST
+def workflow_note_delete(request, public_id):
+    """Delete one note (HTMX fragment)."""
+    note, target = _note_for_change(request, public_id)
+    note.delete()
+    return _notes_response(request, target, success="Note deleted.")
+
+
+# --- Delegation participants (BR02.3.7/8) ------------------------------------
+
+
+def _participants_response(request, report, *, success="", error="", form=None):
+    """Re-render the participant table, announcing a change when there is one."""
+    context = _participants_context(request, report)
+    if form is not None:
+        context["participant_form"] = form
+    if error:
+        context["participants_status"] = {"level": "danger", "message": error}
+    elif success:
+        context["participants_status"] = {"level": "success", "message": success}
+    return render(request, "pwms/partials/report_participants.html", context)
+
+
+@require_POST
+def delegation_report_participant_add(request, public_id):
+    """Add one participant to a delegation report (HTMX fragment)."""
+    report = get_object_or_404(DelegationReport, public_id=public_id)
+    require(request.user, report, EDIT)
+    form = DelegationParticipantAdderForm(
+        request.POST,
+        instance=DelegationParticipant(delegation_report=report),
+        report=report,
+    )
+    if not form.is_valid():
+        return _participants_response(request, report, form=form)
+    participant = form.save()
+    return _participants_response(
+        request, report, success=f"{participant.full_name} added to the delegation."
+    )
+
+
+@require_POST
+def delegation_report_participant_delete(request, public_id):
+    """Take one participant off a delegation report (HTMX fragment).
+
+    The row is kept, marked removed with who did it and when, so the report
+    still shows who was on the delegation.
+    """
+    participant = get_object_or_404(DelegationParticipant, public_id=public_id)
+    report = participant.delegation_report
+    require(request.user, report, EDIT)
+    name = participant.full_name
+    participant.remove(by=request.user)
+    return _participants_response(request, report, success=f"{name} removed.")

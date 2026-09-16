@@ -37,6 +37,7 @@ from .models import (
     User,
     WorkflowEvent,
     WorkflowGroupAccess,
+    WorkflowNote,
     WorkflowReferral,
     WorkflowRelationship,
     WorkflowRolePermission,
@@ -825,6 +826,8 @@ class DelegationParticipantAdmin(admin.ModelAdmin):
         "full_name",
         "delegation_role",
         "user",
+        "removed_at",
+        "removed_by",
     )
     list_filter = ("participant_type",)
     search_fields = (
@@ -955,6 +958,26 @@ class WorkflowEventAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         return False
+
+
+# --- Notes -------------------------------------------------------------------
+
+
+@admin.register(WorkflowNote)
+class WorkflowNoteAdmin(admin.ModelAdmin):
+    """Admin for the notes recorded against workflow instances."""
+
+    list_display = ("id", "workflow_target", "author", "created_at")
+    list_filter = ("content_type", "author")
+    search_fields = ("body", "author__username")
+    autocomplete_fields = ("author",)
+    ordering = ("-created_at",)
+
+    @admin.display(description="Workflow instance")
+    def workflow_target(self, obj):
+        if obj.content_object is not None:
+            return str(obj.content_object)
+        return f"#{obj.object_id}"
 
 
 # --- Referrals & BR03 report updates ----------------------------------------

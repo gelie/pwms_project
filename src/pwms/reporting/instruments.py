@@ -273,7 +273,11 @@ _TYPE_NOTES = {
 
 # -- tables -----------------------------------------------------------------
 def _delegation_tables(instance):
-    participants = instance.participants.select_related("user")
+    # Only who is on the delegation now: a removed participant is kept on the
+    # report as history, but is no longer part of the delegation.
+    participants = instance.participants.filter(removed_at__isnull=True).select_related(
+        "user"
+    )
     updates = instance.updates.select_related("resulting_state", "recorded_by")
     return [
         {

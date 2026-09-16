@@ -1,0 +1,126 @@
+{% comment %}
+The participants table on a delegation report: who is on the delegation, the
+form that adds someone, a per-row removal, and — below — the people who have
+been taken off it.
+
+Removing a participant is a soft delete: the row is kept with who removed them
+and when (see ``pwms.models.DelegationParticipant.remove``), and is listed here
+muted so the report still shows who was on the delegation. The count in the
+header is the delegation as it stands now.
+
+Rendered standalone as the HTMX response to an add or a remove, and included by
+``pwms/delegation-report-detail.html``. The response root and the include target
+are both ``#participants-section``; callers swap it with ``outerHTML``.
+
+Context (from ``pwms.views._participants_context``): report, participants,
+removed_participants, can_edit_participants, participant_form; plus
+participants_status ({level, message}) when a participant was just added or
+removed.
+{% endcomment %}
+<section class="workflow-card" id="participants-section">
+  <div class="workflow-card-head">
+    <span class="d-flex align-items-center gap-2">{% lucide "users" size=16 %} Participants
+    <span class="badge badge-muted">{{ participants|length }}</span></span>
+    {% if can_edit_participants %}
+      <button class="btn btn-outline-primary btn-sm"
+              type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#participant-form"
+              aria-expanded="false"
+              aria-controls="participant-form">Add Participant</button>
+    {% endif %}
+  </div>
+  {% if can_edit_participants %}
+    <div id="participant-form"
+         class="collapse{% if participant_form.errors %} show{% endif %} border-bottom p-3">
+      <form method="post"
+            hx-post="{% url "pwms:delegation_report_participant_add" report.public_id %}"
+            hx-target="#participants-section"
+            hx-swap="outerHTML">
+        {% csrf_token %}
+        <div class="row g-3">
+          {% include "pwms/_lookup_field.html" with field=participant_form.user search_url="pwms:user_search" placeholder="Type to search people..." selected_name=participant_form.selected_user_label wrapper_class="col-12 col-md-5" %}
+          {% include "pwms/_form_field.html" with field=participant_form.participant_type wrapper_class="col-12 col-md-3" %}
+          {% include "pwms/_form_field.html" with field=participant_form.delegation_role wrapper_class="col-12 col-md-4" %}
+        </div>
+        <div class="d-flex gap-2 mt-3">
+          <button class="btn btn-primary btn-sm" type="submit">Add participant</button>
+          <button class="btn btn-link btn-sm"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#participant-form">Cancel</button>
+        </div>
+      </form>
+    </div>
+  {% endif %}
+  <div class="table-responsive">
+    <table class="table table-striped table-hover align-middle mb-0">
+      <caption class="visually-hidden">Delegation members and support officials</caption>
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Type</th>
+          <th scope="col">Delegation role</th>
+          <th scope="col">System account</th>
+          {% if can_edit_participants %}
+            <th scope="col"><span class="visually-hidden">Actions</span></th>
+          {% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for participant in participants %}
+          <tr>
+            <td>{{ participant.full_name }}</td>
+            <td>
+              <span class="badge badge-muted">{{ participant.get_participant_type_display }}</span>
+            </td>
+            <td>{{ participant.delegation_role|default:"—" }}</td>
+            <td>{{ participant.user.display_name|default:"—" }}</td>
+            {% if can_edit_participants %}
+              <td class="text-end">
+                <form method="post"
+                      hx-post="{% url "pwms:delegation_report_participant_delete" participant.public_id %}"
+                      hx-target="#participants-section"
+                      hx-swap="outerHTML"
+                      hx-confirm="Take this person off the delegation? They stay on the report's record.">
+                  {% csrf_token %}
+                  <button class="btn btn-sm btn-outline-danger"
+                          type="submit"
+                          aria-label="Remove {{ participant.full_name }}">{% lucide "trash-2" size=14 %}</button>
+                </form>
+              </td>
+            {% endif %}
+          </tr>
+        {% empty %}
+          {% if not removed_participants %}
+            <tr>
+              <td colspan="{% if can_edit_participants %}5{% else %}4{% endif %}"
+                  class="text-center workflow-muted py-4">No participants recorded.</td>
+            </tr>
+          {% endif %}
+        {% endfor %}
+        {% for participant in removed_participants %}
+          <tr>
+            <td>
+              <span class="workflow-muted text-decoration-line-through">{{ participant.full_name }}</span>
+              <span class="badge badge-muted">Removed</span>
+              <span class="d-block small workflow-muted">
+                Taken off by {{ participant.removed_by.display_name|default:"—" }}
+                on {{ participant.removed_at|date:"d M Y H:i" }}
+              </span>
+            </td>
+            <td class="workflow-muted">{{ participant.get_participant_type_display }}</td>
+            <td class="workflow-muted">{{ participant.delegation_role|default:"—" }}</td>
+            <td class="workflow-muted">{{ participant.user.display_name|default:"—" }}</td>
+            {% if can_edit_participants %}<td></td>{% endif %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% if participants_status %}
+  <div id="participants-status" hx-swap-oob="true">
+    <div class="alert alert-{{ participants_status.level }} py-2 mb-3" role="alert">{{ participants_status.message }}</div>
+  </div>
+{% endif %}

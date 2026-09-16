@@ -48,6 +48,10 @@
 {% endblock overview_extra %}
 
 {% block notes %}
+  {% comment %}
+    This tab carries the resolution's own two text fields; the shared note panel
+    is the block's default, so it is pulled in below (see pwms/workflow-detail.html).
+  {% endcomment %}
   <section class="workflow-card workflow-card--pad">
     <h2 class="workflow-card-title">{% lucide "notebook-pen" size=16 %} Resolution text</h2>
     <div class="workflow-prose">
@@ -68,4 +72,5 @@
       {% endif %}
     </div>
   </section>
+  {{ block.super }}
 {% endblock notes %}

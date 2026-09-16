@@ -176,6 +176,8 @@ flowchart LR
 - `current_state` → where it is now (must belong to `workflow_type`)
 - `title`, `description`, `owner`, `assigned_to`, `deadline`, `priority`
 - referrals are typed `WorkflowReferral` rows (GFK) — see §5
+- notes are typed `WorkflowNote` rows (GFK) — usable by every subclass, so no
+  instrument needs a `notes` column to carry a note log
 
 Because the base is abstract, every concrete subclass gets its own table. Today
 that is:
@@ -277,8 +279,12 @@ Two complementary mechanisms record history:
 - Registration happens in `PwmsConfig.ready()`: all four concrete subclasses
   (`InternationalResolution`, `DelegationReport`, `InternationalAgreement`,
   `Bill`) are registered with `exclude_fields=["updated_at"]`. Add each new
-  concrete subclass there. Referral changes are no longer M2M audit entries —
-  they are typed rows whose lifecycle emits `WorkflowEvent` rows.
+  concrete subclass there. Two child-row models are registered as well —
+  `DelegationParticipant` (removal is a soft delete, so the row survives and
+  auditlog keeps the actor) and `WorkflowNote` (a note is its own row, so it
+  needs a trail of its own) — because they change without touching their parent.
+  Extend that list for each new child model. Referral changes are no longer M2M
+  audit entries — they are typed rows whose lifecycle emits `WorkflowEvent` rows.
 - `perform_transition()` writes a `TransitionLog` row **and** the resulting
   `current_state` change is captured by auditlog as an UPDATE entry.
 - `utils/audit_helpers.py` exposes `get_audit_trail_for_instance(instance)` and

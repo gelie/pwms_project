@@ -1,0 +1,126 @@
+{% comment %}
+The note log on a workflow detail page: the notes recorded against the record,
+the form that adds one, and inline editing of a note.
+
+Notes are rows (``pwms.WorkflowNote``), so each one carries its own author and
+timestamp. Where a type also has a ``notes`` column — the BRS attribute
+(BR02.3.13) edited with the record — its text is shown above the log rather than
+being folded into it.
+
+A note is its author's to edit or delete, and only while they may still edit the
+record, so the per-note controls appear only where ``row.can_change`` is set.
+
+Rendered standalone as the HTMX response to an add, an edit or a delete, and
+included by ``pwms/workflow-detail.html`` for the first paint (every workflow
+detail page gets this panel through that block's default). The response root is
+``#notes-section`` and callers swap it with ``outerHTML``; the status alert lives
+outside it (in the tab pane) so it survives that swap.
+
+Context (from ``pwms.views._notes_context``): note_rows, record_notes,
+can_edit_notes, notes_form, target_content_type, target_object_id; plus
+notes_status ({level, message}) when a note was just added, edited or deleted.
+{% endcomment %}
+<section class="workflow-card workflow-card--pad" id="notes-section">
+  <div class="notes-header">
+    <h2 class="workflow-card-title mb-0">
+      {% lucide "notebook-pen" size=16 %} Notes
+      <span class="badge badge-muted">{{ note_rows|length }}</span>
+    </h2>
+    {% if can_edit_notes %}
+      <button class="btn btn-sm btn-outline-primary"
+              type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#notes-form"
+              aria-expanded="false"
+              aria-controls="notes-form">Add Note</button>
+    {% endif %}
+  </div>
+  {% if can_edit_notes %}
+    <div id="notes-form" class="collapse{% if notes_form.errors %} show{% endif %} mb-3">
+      <form method="post"
+            hx-post="{% url "pwms:workflow_notes_add" %}"
+            hx-target="#notes-section"
+            hx-swap="outerHTML">
+        {% csrf_token %}
+        <input type="hidden" name="content_type" value="{{ target_content_type }}">
+        <input type="hidden" name="object_id" value="{{ target_object_id }}">
+        {% include "pwms/_form_field.html" with field=notes_form.body wrapper_class="col-12" %}
+        <div class="d-flex gap-2 mt-2">
+          <button class="btn btn-primary btn-sm" type="submit">Add note</button>
+          <button class="btn btn-link btn-sm"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#notes-form">Cancel</button>
+        </div>
+      </form>
+    </div>
+  {% endif %}
+  {% if record_notes %}
+    <div class="mb-1 pb-3 border-bottom">
+      <p class="small workflow-muted mb-1">Notes on the record</p>
+      <div class="workflow-prose">{{ record_notes|linebreaks }}</div>
+    </div>
+  {% endif %}
+  <ul class="list-unstyled mb-0">
+    {% for row in note_rows %}
+      {% with note=row.note %}
+        <li class="py-3{% if not forloop.last %} border-bottom{% endif %}">
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <span class="fw-medium">{{ note.author.display_name|default:"—" }}</span>
+            <span class="small workflow-muted">{{ note.created_at|date:"d M Y H:i" }}</span>
+            {% if row.can_change %}
+              <div class="ms-auto d-inline-flex gap-1">
+                <button class="btn btn-sm btn-outline-secondary"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#note-edit-{{ note.pk }}"
+                        aria-expanded="false"
+                        aria-controls="note-edit-{{ note.pk }}">Edit</button>
+                <form method="post"
+                      hx-post="{% url "pwms:workflow_note_delete" note.public_id %}"
+                      hx-target="#notes-section"
+                      hx-swap="outerHTML"
+                      hx-confirm="Delete this note?">
+                  {% csrf_token %}
+                  <button class="btn btn-sm btn-outline-danger"
+                          type="submit"
+                          aria-label="Delete this note">{% lucide "trash-2" size=14 %}</button>
+                </form>
+              </div>
+            {% endif %}
+          </div>
+          <div class="workflow-prose mt-1">{{ note.body|linebreaks }}</div>
+          {% if row.can_change %}
+            <div id="note-edit-{{ note.pk }}" class="collapse mt-2">
+              <form method="post"
+                    hx-post="{% url "pwms:workflow_note_edit" note.public_id %}"
+                    hx-target="#notes-section"
+                    hx-swap="outerHTML">
+                {% csrf_token %}
+                <label class="form-label" for="note-body-{{ note.pk }}">Edit note</label>
+                <textarea class="form-control"
+                          id="note-body-{{ note.pk }}"
+                          name="body"
+                          rows="3">{{ note.body }}</textarea>
+                <div class="d-flex gap-2 mt-2">
+                  <button class="btn btn-primary btn-sm" type="submit">Save note</button>
+                  <button class="btn btn-link btn-sm"
+                          type="button"
+                          data-bs-toggle="collapse"
+                          data-bs-target="#note-edit-{{ note.pk }}">Cancel</button>
+                </div>
+              </form>
+            </div>
+          {% endif %}
+        </li>
+      {% endwith %}
+    {% empty %}
+      <li class="workflow-muted py-3">No notes recorded.</li>
+    {% endfor %}
+  </ul>
+</section>
+{% if notes_status %}
+  <div id="notes-status" hx-swap-oob="true">
+    <div class="alert alert-{{ notes_status.level }} py-2 mb-3" role="alert">{{ notes_status.message }}</div>
+  </div>
+{% endif %}

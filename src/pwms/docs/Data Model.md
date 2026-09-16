@@ -33,6 +33,8 @@ erDiagram
 
     WorkflowReferral }o--|| AbstractLegislativeWorkflow : "GFK content"
     WorkflowReferral }o--|| Group : referred_to
+    WorkflowNote }o--|| AbstractLegislativeWorkflow : "GFK content"
+    WorkflowNote }o--|| User : "author (SET_NULL)"
     DelegationReportUpdate }o--|| DelegationReport : updates
     WorkflowEvent }o--|| AbstractLegislativeWorkflow : "GFK content"
     WorkflowEvent }o--|| EventType : event_type
@@ -50,6 +52,8 @@ erDiagram
 
     InternationalResolution ||--o{ TransitionLog : "GFK content"
     InternationalResolution ||--o{ auditlog.LogEntry : "GFK content (registered)"
+    DelegationParticipant ||--o{ auditlog.LogEntry : registered
+    WorkflowNote ||--o{ auditlog.LogEntry : registered
 
     ReportShare }o--|| User : "created_by (SET_NULL)"
 
@@ -238,6 +242,11 @@ carry who referred, when, to whom, by when, and the response (see below). The
 base class exposes `refer(group, ...)`, `referrals()` and `open_referrals()`;
 creation is gated by `State.allows_referrals`.
 
+Notes are rows too, not a column: `WorkflowNote` is a GFK child (see below), so
+every instrument carries a note log — each entry with its own author and
+timestamp — without each subclass growing a `notes` field. The base class
+exposes `note_log()` (newest first).
+
 **Parent / child hierarchy.** Concrete instances of different subtypes can be
 nested (a `DelegationReport` contains many `InternationalResolution` rows).
 Because a self-referential FK is impossible on an abstract model, the link
@@ -375,8 +384,19 @@ Delegation members and support officials (BR02.3.7/8).
 | `title`, `first_name`, `last_name`, `delegation_role` | person details |
 | `user` (FK `User`, optional) | link to a system account |
 | `order` | display order |
+| `removed_at`, `removed_by` (FK `User`, SET_NULL) | who took the person off the delegation, and when |
 
-Property `full_name`. Indexed on `(delegation_report, participant_type)`.
+Property `full_name`; `is_removed` reports whether the person is still on the
+delegation. Indexed on `(delegation_report, participant_type)`.
+
+Removal is a **soft delete**: `remove(*, by=None)` stamps `removed_at` /
+`removed_by` and keeps the row, so the report still shows who was on it and who
+took them off (auditlog records the change too). Every list of the delegation's
+people filters on `removed_at`, and the uniqueness rule is therefore **partial**
+— `(delegation_report, user)` is unique only among *active* rows
+(`Q(user__isnull=False, removed_at__isnull=True)`), so a person can be added
+again later while the earlier stint stays as history. Rows with no linked `user`
+are never compared at all.
 
 ### Seeded workflow definitions
 
@@ -441,7 +461,38 @@ Created through `instance.refer(group, ...)`, gated by `State.allows_referrals`.
 Lifecycle helpers `respond()`, `recall()`, `mark_expired()` and creation emit
 `referral-created` / `referral-responded` / `referral-recalled` /
 `referral-expired` events automatically (`save()` detects create/status
-changes), so referrals always appear on the instance timeline.
+changes), so every referral action lands on the instance's append-only
+`WorkflowEvent` trail. (The *Timeline* tab merges only `TransitionLog` and the
+auditlog CRUD rows for the instance's own content type, so these domain events
+surface with the other `WorkflowEvent` rows rather than in the Timeline — see
+[§5 of the Functional Design](./Functional%20Design.md#5-auditing--history).)
+
+### `WorkflowNote(BaseModel)`
+
+A dated note someone recorded against a workflow instance. Where a type has its
+own `notes` column that stays the BRS attribute it documents (BR02.3.13, edited
+with the record and shown above the log); this is the *log*, available to every
+instrument.
+
+| Field | Notes |
+| --- | --- |
+| `content_type` + `object_id` → `content_object` | GFK to the workflow instance |
+| `author` (FK `User`, SET_NULL, related `workflow_notes`) | who recorded it; `null` if the account was deleted |
+| `body` | the note text |
+
+Ordered newest first (`-created_at, -id`) and indexed on
+`(content_type, object_id, -created_at)`. Because it is a GFK child, one table
+serves every subclass — including `InternationalResolution`, which has no
+`notes` column of its own — so any instrument can carry a note log. Read them
+through `instance.note_log()`.
+
+A note has **no lifecycle**: nothing about it is a state change, so no
+`WorkflowEvent` is emitted and the Timeline is unaffected. Writing one requires
+the record's `edit` right; editing or deleting one is additionally the
+**author's** — except for a note whose author's account has since been deleted
+(the FK is nulled with the account), which falls back to the record's editors so
+it can still be corrected. An empty body is rejected. Notes are audited
+(`WorkflowNote` is registered in `PwmsConfig.ready()`).
 
 ### `WorkflowRelationship(BaseModel)`
 

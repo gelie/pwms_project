@@ -29,9 +29,11 @@ class PwmsConfig(AppConfig):
 
         from .models import (
             Bill,
+            DelegationParticipant,
             DelegationReport,
             InternationalAgreement,
             InternationalResolution,
+            WorkflowNote,
         )
 
         # Referrals are typed WorkflowReferral rows whose lifecycle is recorded
@@ -50,6 +52,19 @@ class PwmsConfig(AppConfig):
         )
         auditlog.register(
             Bill,
+            exclude_fields=["updated_at"],
+        )
+
+        # Child rows are audited too. Taking a delegate off a report only
+        # marks the row (see ``DelegationParticipant.remove``) and a note is
+        # its own row, so each change needs a trail of its own: the row keeps
+        # who and when, and auditlog keeps every before/after diff.
+        auditlog.register(
+            DelegationParticipant,
+            exclude_fields=["updated_at"],
+        )
+        auditlog.register(
+            WorkflowNote,
             exclude_fields=["updated_at"],
         )
 

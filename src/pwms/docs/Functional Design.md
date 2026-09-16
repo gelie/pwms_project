@@ -150,8 +150,21 @@ Instruments can be dynamically **referred to committees/groups** as typed
 referral carries who referred it, when, its response deadline, status
 (`open`/`responded`/`recalled`/`expired`/`cancelled`) and the response document.
 Lifecycle actions (`respond()` / `recall()` / `mark_expired()`) automatically
-emit `referral-*` events, so the referral appears on the instance timeline; an
+emit `referral-*` events, so every referral action lands on the instance's
+append-only `WorkflowEvent` trail (the *Timeline* tab merges only
+`TransitionLog` and auditlog rows for the instance itself, so domain events
+surface with the other `WorkflowEvent` rows rather than in the Timeline). An
 open referral can block a transition via the `no_open_referrals` condition.
+
+The **Referrals tab** on every detail page drives the lifecycle without the
+admin: *Add Referral* opens a searchable committee picker plus a response
+deadline and notes, and each open row carries *Respond* and *Withdraw*
+(`pwms/templates/pwms/partials/referral_section.html`). Raising a referral and
+withdrawing one need the record's `edit` right; **responding** is also open to an
+active member of the referred-to committee (`views._can_answer_referral`). The
+tab also lists the transitions available from the current state (performing them
+from the web UI is still to come), and the deadline reminders / expiry are driven
+by the `check_referral_deadlines` command.
 
 ---
 
@@ -197,6 +210,13 @@ instance or through `WorkflowRolePermission` as needed. This is creation-time
 materialisation only; run `manage.py sync_type_group_access` to backfill
 instances that predate a configuration change.
 
+Materialised rows are **read-only by default**: the owning group's row is
+flagged `is_primary` and granted `can_view` only (its `can_edit` and the other
+capabilities default to `False`), and viewer groups get the same view-only row.
+A brand-new instance therefore has no group that may edit it — only its **owner**
+(or a superuser) can, until an administrator raises a capability per instance or
+through `WorkflowRolePermission`.
+
 All of this is exposed through one **`PermissionResolver` service**
 (`pwms/services/permissions.py`), the single source of truth the web UI and the
 API share: `resolve(user, resource, action)`, `permissions_for(user, resource)`
@@ -211,6 +231,15 @@ The service is wired in: the workflow CRUD views enforce `edit`/`delete` with
 `require()` (both GET and POST) and hide the Edit/Delete buttons when they are
 not permitted, and the DRF audit-history endpoint enforces `view` through
 `WorkflowViewPermission` (`pwms/api/permissions.py`).
+
+Every **write affordance** on a detail page is gated on the record's `edit`
+right, so *Add attachment*, *Add Note*, *Add Referral* and the participant adder
+appear exactly when the toolbar's Edit/Delete buttons do — all of them call
+`resolve(user, record, EDIT)`, the same check `require()` enforces on the POST.
+Notes carry one extra rule on top of that: a note may be changed only by its
+**author** (`views._can_change_note`). Because of the read-only default above,
+these controls are consequently invisible to everyone but a record's owner until
+edit rights are granted.
 
 ---
 
@@ -318,19 +347,28 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
 
 - **Server-rendered pages** (vendored Bootstrap 5 + lucide icons): a
   **dashboard**, home/about/contact, login/logout (with a show/hide password
-  toggle), groups (all/mine/detail), and full CRUD for the concrete workflow
-  instances — Delegation Reports, International Resolutions, International
-  Agreements and Bills — reached from the navbar *Workflows* dropdown. List pages
-  carry a free-text filter.
+  toggle), groups (all/mine/detail — the all-groups list filters by name and
+  type), and full CRUD for the concrete workflow instances — Delegation Reports,
+  International Resolutions, International Agreements and Bills — reached from
+  the navbar *Workflows* dropdown. List pages carry a free-text filter.
 - **Detail pages are tabbed**: one header plus a tab per concern — Overview (key
   information, ownership, description, type-specific facts and system
-  information), **Progress**, Related (the hierarchy plus each type's own tables:
-  participants, BR03 updates, bill versions), Notes, **Timeline**, Attachments,
-  Diagram and Referrals (which also lists the transitions available from the
-  current state). Every instrument fills the same shared shell
-  (`templates/pwms/workflow-detail.html`), and `static/js/workflow-tabs.js`
-  mirrors the open tab into the URL hash so a refresh — or a shared link —
-  returns to it.
+  information), **Progress**, Related, Notes, **Timeline**, Attachments, Diagram
+  and Referrals. Every instrument fills the same shared shell
+  (`templates/pwms/workflow-detail.html`) and inherits the same panels from it,
+  and `static/js/workflow-tabs.js` mirrors the open tab into the URL hash so a
+  refresh — or a shared link — returns to it. The panels are the shell's own, so
+  a change to one lands on every instrument:
+
+  - **Related** — the hierarchy plus each type's own tables: participants (added
+    inline, and removed *softly*, so former delegates stay listed, muted,
+    alongside who removed them and when; BR03 updates; bill versions).
+  - **Notes** — a per-instrument note log (`WorkflowNote`) whose entries can be
+    edited inline, plus the type's own `notes` text and progress fields where it
+    has them.
+  - **Referrals** — raise / respond / withdraw ([§3.4](#34-referrals)) and the
+    transitions available from the current state.
+
 - **Progress**: a completion ring plus the type's state sequence, each state
   marked done / current / upcoming from the record's own transitions, and the
   journey it took (who moved it, when, with what comment). The percentage is

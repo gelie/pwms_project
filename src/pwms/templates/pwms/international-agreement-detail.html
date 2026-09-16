@@ -80,16 +80,3 @@
     </dl>
   </section>
 {% endblock overview_extra %}
-
-{% block notes %}
-  <section class="workflow-card workflow-card--pad">
-    <h2 class="workflow-card-title">{% lucide "notebook-pen" size=16 %} Notes</h2>
-    <div class="workflow-prose">
-      {% if agreement.notes %}
-        {{ agreement.notes|linebreaks }}
-      {% else %}
-        <p class="workflow-muted mb-0">No notes recorded.</p>
-      {% endif %}
-    </div>
-  </section>
-{% endblock notes %}

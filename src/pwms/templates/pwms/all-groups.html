@@ -5,6 +5,33 @@
     <h1 class="mb-0">All Groups</h1>
     <span class="text-muted">{{ groups|length }} group{{ groups|length|pluralize }}</span>
   </div>
+  <form class="row g-2 align-items-end mb-3" method="get" role="search">
+    <div class="col-12 col-lg-4">
+      <label class="form-label" for="group-name-filter">Name</label>
+      <input class="form-control"
+             id="group-name-filter"
+             type="search"
+             name="q"
+             value="{{ query }}"
+             placeholder="Name or short name">
+    </div>
+    <div class="col-6 col-lg-3">
+      <label class="form-label" for="group-type-filter">Type</label>
+      <select class="form-select" id="group-type-filter" name="type">
+        <option value="">All types</option>
+        {% for value, label in type_choices %}
+          <option value="{{ value }}"
+                  {% if value == request.GET.type %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-lg-auto">
+      <button class="btn btn-outline-secondary" type="submit">Filter</button>
+      {% if has_filters %}
+        <a class="btn btn-link" href="{% url "pwms:all_groups" %}">Clear</a>
+      {% endif %}
+    </div>
+  </form>
   <div class="table-responsive">
     <table class="table table-striped table-hover align-middle">
       <caption class="visually-hidden">All groups in the organisational hierarchy</caption>
@@ -39,7 +66,13 @@
           </tr>
         {% empty %}
           <tr>
-            <td colspan="4" class="text-center text-muted py-4">No groups found.</td>
+            <td colspan="4" class="text-center text-muted py-4">
+              {% if has_filters %}
+                No groups match your filters.
+              {% else %}
+                No groups found.
+              {% endif %}
+            </td>
           </tr>
         {% endfor %}
       </tbody>

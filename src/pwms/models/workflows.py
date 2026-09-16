@@ -532,6 +532,13 @@ class AbstractLegislativeWorkflow(BaseModel):
         notify_referral_created(referral, actor=referred_by)
         return referral
 
+    # -- notes (typed rows, see WorkflowNote) -------------------------------
+    def note_log(self):
+        """WorkflowNote rows recorded against this instance, newest first."""
+        return WorkflowNote.objects.filter(
+            content_type=self._instance_ct(), object_id=self.pk
+        )
+
     # -- parent / child hierarchy ------------------------------------------
     # Concrete workflow instances are different tables, so the parent link is
     # stored in :class:`WorkflowRelationship` (a generic link table) rather
@@ -1594,6 +1601,53 @@ class WorkflowReferral(BaseModel):
                 )
 
 
+class WorkflowNote(BaseModel):
+    """
+    A dated note someone recorded against a workflow instance.
+
+    Notes are rows rather than a column on the record, so each one keeps its own
+    author and timestamp, and so any instrument can carry them without every
+    workflow type growing a ``notes`` field. Where a type does have a ``notes``
+    column it stays the BRS attribute it documents (BR02.3.13), edited with the
+    record and shown above the log.
+
+    There is no lifecycle here — unlike a referral, a note is written, read and
+    (if recorded in error) deleted. Nothing about it is a state change, so no
+    :class:`WorkflowEvent` is emitted and the timeline is unaffected.
+    """
+
+    content_type = models.ForeignKey(ContentType, on_delete=models.CASCADE)
+    object_id = models.PositiveBigIntegerField()
+    content_object = GenericForeignKey("content_type", "object_id")
+
+    author = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="workflow_notes",
+        help_text="Who recorded the note.",
+    )
+    body = models.TextField(
+        help_text="What was noted: a decision, a follow-up, a conversation.",
+    )
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        indexes = [
+            models.Index(fields=["content_type", "object_id", "-created_at"]),
+        ]
+
+    def __str__(self):
+        target = self.content_object
+        label = (
+            getattr(target, "title", str(target))
+            if target is not None
+            else f"#{self.object_id}"
+        )
+        return f"Note on {label}"
+
+
 class WorkflowRelationship(BaseModel):
     """
     Generic parent/child link between two concrete workflow *instances*.
@@ -1967,18 +2021,36 @@ class DelegationParticipant(BaseModel):
         default=0, help_text="Display order within the delegation."
     )
 
+    # Taking someone off the delegation keeps the row: the report then still shows
+    # who was on it, who took them off and when. A removed row is history, so the
+    # unique constraint below only covers a person's current stint.
+    removed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        help_text="When the person was taken off the delegation.",
+    )
+    removed_by = models.ForeignKey(
+        "User",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="delegation_participants_removed",
+        help_text="Who took them off the delegation.",
+    )
+
     class Meta:
         ordering = ["participant_type", "order", "last_name", "first_name"]
         indexes = [
             models.Index(fields=["delegation_report", "participant_type"]),
         ]
         constraints = [
-            # One person appears at most once on a delegation. ``user`` is optional
-            # — an official may have no account — so this is a partial unique
-            # index: rows without an account are never compared against each other.
+            # One person appears at most once on a delegation *at a time*: a row
+            # taken off the delegation is kept as history and does not stop them
+            # being added again. ``user`` is optional — an official may have no
+            # account — so rows without one are never compared at all.
             models.UniqueConstraint(
                 fields=["delegation_report", "user"],
-                condition=models.Q(user__isnull=False),
+                condition=models.Q(user__isnull=False, removed_at__isnull=True),
                 name="workflows_participant_report_user_uniq",
             ),
         ]
@@ -1992,6 +2064,26 @@ class DelegationParticipant(BaseModel):
         return " ".join(
             part for part in (self.title, self.first_name, self.last_name) if part
         )
+
+    @property
+    def is_removed(self):
+        """Whether the person has been taken off the delegation."""
+        return self.removed_at is not None
+
+    def remove(self, *, by=None):
+        """
+        Take the person off the delegation, keeping the row for the record.
+
+        Soft delete: every list of the delegation's people filters on
+        ``removed_at``, so the row survives as the record of who was on the
+        delegation, who took them off and when.
+        """
+        if self.is_removed:
+            return self
+        self.removed_at = timezone.now()
+        self.removed_by = by
+        self.save(update_fields=["removed_at", "removed_by", "updated_at"])
+        return self
 
 
 class DelegationReportUpdate(BaseModel):

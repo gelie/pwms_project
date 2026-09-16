@@ -3633,3 +3633,59 @@ class HomePageTests(TestCase):
         self.client.force_login(self.user)
         response = self.client.get(reverse("pwms:about"))
         self.assertContains(response, "<title>About</title>")
+
+
+class GroupListFilterTests(TestCase):
+    """The Name and Type filters above the all-groups list."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = get_user_model().objects.create_user(
+            username="group-filter", password="pw"
+        )
+        cls.committee = Group.objects.create(
+            name="Zzz Filter Portfolio Committee", group_type="portfolio_committee"
+        )
+        cls.ministry = Group.objects.create(
+            name="Zzz Filter Ministry", short_name="ZFM", group_type="ministry"
+        )
+
+    def setUp(self):
+        self.client.force_login(self.user)
+
+    def test_name_filter_narrows_the_table(self):
+        response = self.client.get(
+            reverse("pwms:all_groups"), {"q": "Zzz Filter Ministry"}
+        )
+        self.assertContains(response, self.ministry.name)
+        self.assertNotContains(response, self.committee.name)
+
+    def test_name_filter_matches_the_short_name(self):
+        response = self.client.get(reverse("pwms:all_groups"), {"q": "zfm"})
+        self.assertContains(response, self.ministry.name)
+        self.assertNotContains(response, self.committee.name)
+
+    def test_type_filter_narrows_the_table(self):
+        response = self.client.get(
+            reverse("pwms:all_groups"), {"type": "portfolio_committee"}
+        )
+        self.assertContains(response, self.committee.name)
+        self.assertNotContains(response, self.ministry.name)
+
+    def test_filters_combine(self):
+        response = self.client.get(
+            reverse("pwms:all_groups"), {"q": "Zzz Filter", "type": "ministry"}
+        )
+        self.assertContains(response, self.ministry.name)
+        self.assertNotContains(response, self.committee.name)
+
+    def test_type_options_cover_exactly_the_types_in_use(self):
+        response = self.client.get(reverse("pwms:all_groups"))
+        offered = {value for value, _ in response.context["type_choices"]}
+        in_use = set(Group.objects.values_list("group_type", flat=True))
+        self.assertEqual(offered, in_use)
+
+    def test_no_match_message_names_the_filters(self):
+        response = self.client.get(reverse("pwms:all_groups"), {"q": "nothing matches"})
+        self.assertContains(response, "No groups match your filters.")
+        self.assertNotContains(response, "No groups found.")

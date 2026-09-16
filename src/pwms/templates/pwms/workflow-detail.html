@@ -14,6 +14,8 @@
 
 {% block title %}{{ object.identifier }}{% endblock title %}
 
+{% block extra_head %}{{ referral_form.media }}{% endblock extra_head %}
+
 {% block content %}
   <nav aria-label="breadcrumb">
     <ol class="breadcrumb">
@@ -82,8 +84,8 @@
               type="button"
               role="tab"
               aria-controls="pane-notes"
-              aria-selected="false">{% lucide "notebook-pen" size=16 %}
-                <span>Notes <span class="workflow-tab-count">{{ notes|length }}</span></button>
+              aria-selected="false">{% lucide "notebook-pen" size=16 %}<span>Notes</span>
+        <span class="workflow-tab-count">{{ note_rows|length }}</span></button>
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link"
@@ -108,7 +110,7 @@
               aria-controls="pane-referrals"
               aria-selected="false">
         {% lucide "send" size=16 %}<span>Referrals</span>
-        <span class="workflow-tab-count">{{ referrals|length }}</span>
+        <span class="workflow-tab-count">{{ referral_rows|length }}</span>
       </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -476,7 +478,20 @@
          id="pane-notes"
          role="tabpanel"
          aria-labelledby="tab-notes"
-         tabindex="0">{% block notes %}{% endblock notes %}</div>
+         tabindex="0">
+      {% comment %}
+        Every workflow instance carries notes, so the panel is this block's
+        default: a child template overrides the block only to put its own cards
+        around the panel, and pulls the default in with {{ block.super }}.
+
+        The status alert lives outside the swapped panel so it survives the HTMX
+        swap of #notes-section (see pwms/partials/notes_section.html).
+      {% endcomment %}
+      <div id="notes-status" aria-live="polite"></div>
+      {% block notes %}
+        {% include "pwms/partials/notes_section.html" %}
+      {% endblock notes %}
+    </div>
 
     {# --- Timeline ---------------------------------------------------- #}
     <div class="tab-pane fade"
@@ -619,49 +634,12 @@
          role="tabpanel"
          aria-labelledby="tab-referrals"
          tabindex="0">
-      <section class="workflow-card">
-        <div class="workflow-card-head">
-          <span class="d-flex align-items-center gap-2">{% lucide "send" size=16 %} Referrals
-          <span class="badge badge-muted">{{ referrals|length }}</span></span>
-          <button class="btn btn-outline-primary btn-sm">Add Referral</button>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-striped table-hover align-middle mb-0">
-            <caption class="visually-hidden">Groups this record was referred to</caption>
-            <thead>
-              <tr>
-                <th scope="col">Referred to</th>
-                <th scope="col">Referred by</th>
-                <th scope="col">Due date</th>
-                <th scope="col">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for referral in referrals %}
-                <tr>
-                  <td>
-                    <a href="{% url "pwms:group_detail" referral.referred_to.pk %}">{{ referral.referred_to.name }}</a>
-                  </td>
-                  <td>{{ referral.referred_by.display_name|default:"—" }}</td>
-                  <td>
-                    {{ referral.due_date|date:"d M Y H:i"|default:"—" }}
-                    {% if referral.is_overdue %}<span class="badge badge-danger">Overdue</span>{% endif %}
-                  </td>
-                  <td>
-                    <span class="badge badge-referral badge-referral--{{ referral.status }}">{{ referral.get_status_display }}</span>
-                  </td>
-                </tr>
-              {% empty %}
-                <tr>
-                  <td colspan="4" class="text-center workflow-muted py-4">
-                    This record has not been referred.
-                  </td>
-                </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </section>
+      {% comment %}
+        The status alert lives outside the swapped panel so it survives the HTMX
+        swap of #referral-section (see pwms/partials/referral_section.html).
+      {% endcomment %}
+      <div id="referral-status" aria-live="polite"></div>
+      {% include "pwms/partials/referral_section.html" %}
 
       <section class="workflow-card">
         <div class="workflow-card-head">
