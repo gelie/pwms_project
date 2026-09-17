@@ -202,20 +202,23 @@ view / edit / delete / share / comment / manage / transition on existing rows.
 A type may also declare **viewer groups** (`viewer_groups`): read-only
 stakeholders with an interest in every instance but no active role in producing
 it. When an instance is created it materialises its `WorkflowGroupAccess` rows
-from the type — the type's owning `group` (flagged `is_primary`) and one
-read-only row per viewer group (view on, every other capability off) — so
-members of those groups can see it and each grant appears in the instance's own
-access table with a `granted_at` timestamp. Raise individual capabilities per
-instance or through `WorkflowRolePermission` as needed. This is creation-time
-materialisation only; run `manage.py sync_type_group_access` to backfill
-instances that predate a configuration change.
+from the type — the type's owning `group` (flagged `is_primary`, granted view
+**and** edit) and one read-only row per viewer group (view on, every other
+capability off) — so members of those groups can see it and each grant appears
+in the instance's own access table with a `granted_at` timestamp. Raise
+individual capabilities per instance or through `WorkflowRolePermission` as
+needed. This is creation-time materialisation only; run
+`manage.py sync_type_group_access` to backfill instances that predate a
+configuration change.
 
-Materialised rows are **read-only by default**: the owning group's row is
-flagged `is_primary` and granted `can_view` only (its `can_edit` and the other
-capabilities default to `False`), and viewer groups get the same view-only row.
-A brand-new instance therefore has no group that may edit it — only its **owner**
-(or a superuser) can, until an administrator raises a capability per instance or
-through `WorkflowRolePermission`.
+Materialised rows grant **view by default, and edit to the owning group only**:
+the primary row (`is_primary`) gets `can_view` + `can_edit`, while viewer groups
+get a view-only row (every other capability off). A brand-new instance is
+therefore workable out of the box by its **owning group**, its **owner** and
+superusers — which matches how the office is arranged (IRP owns the three
+international-relations types, LSO the Bill); delete, share, comment,
+manage and transition still need an explicit grant per instance or through
+`WorkflowRolePermission`, and viewer groups never gain them by default.
 
 All of this is exposed through one **`PermissionResolver` service**
 (`pwms/services/permissions.py`), the single source of truth the web UI and the
@@ -237,9 +240,9 @@ right, so *Add attachment*, *Add Note*, *Add Referral* and the participant adder
 appear exactly when the toolbar's Edit/Delete buttons do — all of them call
 `resolve(user, record, EDIT)`, the same check `require()` enforces on the POST.
 Notes carry one extra rule on top of that: a note may be changed only by its
-**author** (`views._can_change_note`). Because of the read-only default above,
-these controls are consequently invisible to everyone but a record's owner until
-edit rights are granted.
+**author** (`views._can_change_note`). Given the defaults above, these controls
+are consequently visible to a record's owning group and its owner from the start,
+and to anyone else once edit rights are granted.
 
 ---
 

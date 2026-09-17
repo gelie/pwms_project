@@ -176,14 +176,15 @@ groups with an interest in every instance of the type but no active role in
 producing it. On creation each instance materialises its `WorkflowGroupAccess`
 rows from the type via `AbstractLegislativeWorkflow.materialize_group_access()`:
 
-* the type's owning `group`, flagged `is_primary`;
-* one row per `viewer_groups` entry.
+* the type's owning `group`, flagged `is_primary` and granted `can_view`
+  **and** `can_edit` — the unit that governs the type works on its records;
+* one row per `viewer_groups` entry, read-only (`can_view` only).
 
-Every materialised row starts read-only (`can_view` on, all other capabilities
-off), so "who can see this instance" stays answerable from the instance's own
-access table with a `granted_at` timestamp per grant. Materialisation runs only
-at creation; run the `sync_type_group_access` command to backfill instances that
-predate a policy change.
+Every other capability starts off, so "who can see this instance" stays
+answerable from the instance's own access table with a `granted_at` timestamp per
+grant. Materialisation runs only at creation; run the `sync_type_group_access`
+command to backfill instances that predate a policy change (migration `0037`
+widened the primary row's `can_edit` for instances that predate this default).
 
 ### `State`
 

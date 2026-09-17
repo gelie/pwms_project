@@ -215,8 +215,10 @@ Configuring a `WorkflowType` — its owning `group` and its `viewer_groups` —
 materialises `WorkflowGroupAccess` rows on **new** instances only
 (`AbstractLegislativeWorkflow.materialize_group_access()`).
 `sync_type_group_access` applies the current configuration to instances that
-predate it: the owning group flagged `is_primary`, each viewer group read-only.
-It is idempotent and never overwrites an existing row, so it is safe to re-run.
+predate it: the owning group flagged `is_primary` with view + edit, each viewer
+group read-only. It is idempotent and never overwrites an existing row, so it is
+safe to re-run — a grant an administrator has narrowed stays narrowed (migration
+`0037` widened the primary rows that predated the edit default).
 
 | Option | Effect |
 | --- | --- |

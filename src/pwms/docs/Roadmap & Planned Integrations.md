@@ -233,8 +233,9 @@ part of the shared shell, so every instrument has it.
 
 Remaining (🔜):
 
-- Extend the group-scoped RBAC (`WorkflowType.group` + `create_roles`) to
-  view/edit/delete/transition in the web UI — it currently gates creation only.
+- Extend the group-scoped RBAC (`WorkflowType.group` + `create_roles`) further in
+  the web UI: the owning group now gets view + edit on its type's records by
+  default, but delete and transition still need an explicit grant.
 - Available actions gated by `instance.can(...)`; performing transitions from the
   web UI.
 - Create/edit forms with date pickers (`django-flatpickr`), HTMX partials.

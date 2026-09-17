@@ -4,7 +4,8 @@ Configuring a ``WorkflowType`` — its owning ``group`` and its ``viewer_groups`
 — materialises ``WorkflowGroupAccess`` rows on **new** instances only (see
 ``AbstractLegislativeWorkflow.materialize_group_access``). This command applies
 the current configuration to instances that predate it, creating any missing
-rows: the owning group flagged ``is_primary`` and each viewer group read-only.
+rows: the owning group flagged ``is_primary`` with view + edit, and each viewer
+group read-only.
 
 It is idempotent and non-destructive — an existing row for a group, including
 one an administrator has since edited, is left untouched — so it is safe to

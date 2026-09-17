@@ -284,12 +284,14 @@ class AbstractLegislativeWorkflow(BaseModel):
         Two kinds are materialised:
 
         * the type's owning ``group``, flagged ``is_primary`` — the unit that
-          governs the type;
+          governs the type, and which may therefore view *and edit* its records;
         * each of the type's ``viewer_groups`` — read-only shared stakeholders
           (an interest in every instance but no active role in producing it).
 
-        Both start read-only (``can_view`` only); raise individual capabilities
-        per instance or through ``WorkflowRolePermission`` as needed. Runs on
+        The owning group gets ``can_edit`` and nothing else, so the unit that
+        owns a type can work on its records out of the box; viewer groups and
+        every other capability still start off. Raise further capabilities per
+        instance or through ``WorkflowRolePermission`` as needed. Runs on
         creation (see :meth:`save`) and is reused by the ``sync_type_group_access``
         backfill command. Idempotent: an existing row for a group is left as
         configured, so an administrator's edits are never overwritten.
@@ -306,7 +308,7 @@ class AbstractLegislativeWorkflow(BaseModel):
                 content_type=content_type,
                 object_id=self.pk,
                 group_id=owner_group_id,
-                defaults={"is_primary": True, "can_view": True},
+                defaults={"is_primary": True, "can_view": True, "can_edit": True},
             )
             if was_created:
                 created.append(access)

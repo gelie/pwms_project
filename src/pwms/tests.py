@@ -1,11 +1,13 @@
 import tempfile
 from datetime import date, timedelta
+from importlib import import_module
 from io import StringIO
 from pathlib import Path
 from unittest import mock
 
 from auditlog.context import set_actor
 from auditlog.models import LogEntry
+from django.apps import apps
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
@@ -2642,8 +2644,10 @@ class ViewerGroupAccessTests(TestCase):
         )
         self.assertTrue(access.is_primary)
         self.assertTrue(access.can_view)
+        # The owning unit works on its own records, so it may edit them; every
+        # other capability still starts off.
+        self.assertTrue(access.can_edit)
         for flag in (
-            "can_edit",
             "can_delete",
             "can_share",
             "can_comment",
@@ -2672,6 +2676,34 @@ class ViewerGroupAccessTests(TestCase):
         )
         self.assertEqual(rows.count(), 1)
         self.assertTrue(rows.first().is_primary)
+
+    def test_owner_group_may_edit_its_records_but_a_viewer_group_may_not(self):
+        owner_group = Group.objects.create(name="Owning Editors", group_type="division")
+        owner_role = Role.objects.create(name="Owning Editor")
+        member = get_user_model().objects.create_user(
+            username="owning-editor", password="pw"
+        )
+        GroupMembership.objects.create(user=member, group=owner_group, role=owner_role)
+        wt = WorkflowType.objects.create(name="Test Owned Edit Type", group=owner_group)
+        wt.viewer_groups.add(self.viewer_group)
+        state = State.objects.create(workflow_type=wt, name="Open", is_initial=True)
+        resolution = InternationalResolution.objects.create(
+            workflow_type=wt,
+            current_state=state,
+            resolution_number="IR-OWN-EDIT-1",
+            title="Owned to edit",
+            owner=self.creator,
+        )
+
+        # The type's owning unit can work on its records; the capability is the
+        # owning group's alone, and does not extend past edit.
+        self.assertTrue(resolve(member, resolution, VIEW))
+        self.assertTrue(resolve(member, resolution, EDIT))
+        self.assertFalse(resolve(member, resolution, DELETE))
+        self.assertFalse(resolve(member, resolution, TRANSITION))
+        # A viewer group stays read-only.
+        self.assertTrue(resolve(self.viewer, resolution, VIEW))
+        self.assertFalse(resolve(self.viewer, resolution, EDIT))
 
 
 class SyncTypeGroupAccessCommandTests(TestCase):
@@ -2751,9 +2783,82 @@ class SyncTypeGroupAccessCommandTests(TestCase):
         )
         self.assertIn("Test Sync Type", out.getvalue())
 
+    def test_command_does_not_overwrite_a_narrowed_owner_grant(self):
+        # The command only creates missing rows, so it never re-widens a grant an
+        # administrator has narrowed; migration 0037 handles the pre-change rows.
+        owner_access = self._rows().get(group=self.owner_group)
+        owner_access.can_edit = False
+        owner_access.save(update_fields=["can_edit"])
+
+        out = StringIO()
+        call_command("sync_type_group_access", stdout=out)
+
+        owner_access.refresh_from_db()
+        self.assertFalse(owner_access.can_edit)
+        self.assertIn("added 0 row(s)", out.getvalue())
+
     def test_unknown_workflow_type_raises(self):
         with self.assertRaises(CommandError):
             call_command("sync_type_group_access", "--workflow-type", "Nope")
+
+
+class OwnerGroupEditGrantMigrationTests(TestCase):
+    """Migration 0037 backfills the edit right onto already-materialised grants."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.owner = User.objects.create_user(username="mig-owner", password="pw")
+        self.owner_group = Group.objects.create(
+            name="Migration Owning Unit", group_type="division"
+        )
+        self.viewer_group = Group.objects.create(
+            name="Migration Viewer Committee", group_type="portfolio_committee"
+        )
+        workflow_type = WorkflowType.objects.create(
+            name="Migration Edit Type", group=self.owner_group
+        )
+        workflow_type.viewer_groups.add(self.viewer_group)
+        state = State.objects.create(
+            workflow_type=workflow_type, name="Open", is_initial=True
+        )
+        self.resolution = InternationalResolution.objects.create(
+            workflow_type=workflow_type,
+            current_state=state,
+            resolution_number="IR-MIG-1",
+            title="Materialised before the change",
+            owner=self.owner,
+        )
+        # Put the rows back in their pre-0037 shape: every materialised row was
+        # view-only, the owning group's included.
+        WorkflowGroupAccess.objects.filter(
+            content_type=ContentType.objects.get_for_model(InternationalResolution),
+            object_id=self.resolution.pk,
+        ).update(can_edit=False)
+
+    def _access(self, group):
+        return WorkflowGroupAccess.objects.get(
+            content_type=ContentType.objects.get_for_model(InternationalResolution),
+            object_id=self.resolution.pk,
+            group=group,
+        )
+
+    def _migration(self):
+        return import_module("pwms.migrations.0037_widen_owner_group_edit_grant")
+
+    def test_forward_widens_the_primary_grant_only(self):
+        self._migration().widen_owner_group_edit(apps, None)
+
+        self.assertTrue(self._access(self.owner_group).can_edit)
+        # Viewer groups stay read-only — only the primary row is widened.
+        self.assertFalse(self._access(self.viewer_group).can_edit)
+
+    def test_reverse_narrows_the_primary_grant_again(self):
+        migration = self._migration()
+        migration.widen_owner_group_edit(apps, None)
+        migration.narrow_owner_group_edit(apps, None)
+
+        self.assertFalse(self._access(self.owner_group).can_edit)
+        self.assertFalse(self._access(self.viewer_group).can_edit)
 
 
 class PlaceDataTests(TestCase):

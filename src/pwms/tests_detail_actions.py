@@ -539,10 +539,12 @@ class AddAffordanceOwnershipTests(TestCase):
     """Reading is not editing: the add-* affordances follow the edit right.
 
     A record's ``assigned_to`` user is granted **view only** (assignment is a work
-    queue, not authority), and the access materialised from a workflow type's
-    owning group starts read-only until an administrator widens it. So on a
-    record you do not own, the Notes / Attachments / Referrals add buttons are
-    absent — as are the toolbar's Edit and Delete, which use the same check.
+    queue, not authority), so on a record you do not own the Notes / Attachments /
+    Referrals add buttons are absent — as are the toolbar's Edit and Delete, which
+    use the same check. Recognised editors do see them: this record's ``owner``,
+    and a member of the type's owning group when the type names one (its
+    materialised primary grant carries ``can_edit`` — see
+    ``ViewerGroupAccessTests``).
     """
 
     #: The add-* buttons a record page can show.
