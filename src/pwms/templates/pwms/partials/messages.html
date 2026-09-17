@@ -1,0 +1,27 @@
+{% comment %}
+  The site's flash messages (``django.contrib.messages``), rendered as a stack of
+  toast-like boxes at the top of the page.
+
+  Included by ``base.html`` at the top of ``#content``, so a redirect — a create,
+  an edit, a delete, a status change — lands with its message visible whatever
+  page it returns to. Nothing is emitted when there is no message, which is the
+  usual case. ``static/js/messages.js`` fades each box out on its own; the close
+  button dismisses one immediately.
+
+  ``message.level_tag`` is Django's own tag (debug / info / success / warning /
+  error), which is not quite Bootstrap's set: ``debug`` and ``error`` have no
+  ``alert-*`` class of the same name, so those two are mapped here.
+{% endcomment %}
+{% if messages %}
+  <div id="site-messages" class="site-messages" role="status" aria-live="polite">
+    {% for message in messages %}
+      <div class="site-message alert {% if message.level_tag == "error" %}alert-danger{% elif message.level_tag == "debug" %}alert-secondary{% else %}alert-{{ message.level_tag }}{% endif %}">
+        <span class="site-message-text">{{ message }}</span>
+        <button type="button"
+                class="btn-close"
+                aria-label="Dismiss"
+                data-message-dismiss></button>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}

@@ -26,6 +26,20 @@ rest of the app can work offline (no live Graph calls per page view):
 | `pwms.SharepointDrive` | `GET /sites/{id}/drives` | `(site, drive_id)` |
 | `pwms.SharepointSiteMember` | `GET /sites/{id}/permissions` (best effort) | `(site, user)` — natural key |
 
+These tables store **Graph identifiers and URLs** — values this app neither
+generates nor bounds — so their columns are sized to hold what Graph returns
+rather than to a tidy guess: the id columns (`site_id`, `drive_id`, `folder_id`)
+allow 512 characters, the name columns 500, and the URL columns 2048. That
+matches `pwms.Attachment`, which holds the same identifiers for the documents it
+points at. (`SharepointFolder` is not synced here; the picker mirrors a folder
+on demand when a document inside it is attached.) Migration `0038` widened these
+after a real Graph folder id overflowed `varchar(200)` — which blocked *every*
+“attach a document inside a folder” action, since the folder row could never be
+written. The same migration widened `WorkflowEvent.document_url`, for the same
+reason: the attachment service copies `Attachment.sharepoint_web_url` into the
+record's `document-attached` event, and a real `webUrl` in this tenant already
+runs to 249 characters.
+
 Run it from the repo root:
 
 ```bash
@@ -309,6 +323,30 @@ and timestamp. Detaching removes only the local link — the file and its versio
 history stay in SharePoint. Recording is best effort: a target with no event log,
 or a registry whose event type has been removed, is warned about and skipped so
 a document can still be filed.
+
+Each row's **open** link goes through the app rather than to SharePoint: the
+attachment's name points at `attachments/<public_id>/open/`, which resolves a
+**fresh** pre-authenticated URL for the document and bounces the browser to it.
+That URL carries its own authorisation, so the reader never signs in to
+SharePoint — the application token did the authenticating. It is also why the link
+cannot simply be stored and rendered: SharePoint issues these for about an hour,
+so the copy in `Attachment.download_url` is usually stale by the time anyone
+clicks it. VIEW on the owning record is required, exactly as for its detail page,
+so the endpoint can only hand out documents the reader could already open.
+
+An activity row for a document that is still attached opens the same way. One for
+a document since **detached** falls back to the snapshot URL its event recorded —
+there is no attachment row left to resolve a fresh link from.
+
+The picker's own file list still links to `webUrl`, because a file being browsed
+has no attachment row yet, and accepting a drive/item id from the browser in order
+to mint a link is not something the app will do.
+
+A row that had to be **reconstructed** carries `payload["backfilled"] = True`
+and `origin="system"` with no actor: migration `0039` restored the
+`document-attached` events lost to the 200-character `document_url` column, and a
+restored event records that the system wrote it long after the fact rather than
+inventing an actor. Its timestamp is the attachment's own, not the migration's.
 
 > **Dependency:** browsing is membership-based, so it needs the
 > `SharepointSiteMember` rows written by `populate_sites`. Until the app token

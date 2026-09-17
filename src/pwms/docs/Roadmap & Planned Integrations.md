@@ -231,13 +231,38 @@ a former delegate stays on the report as history. The Attachments, Notes and
 Referrals panels were restyled to one header pattern, and the Notes panel is now
 part of the shared shell, so every instrument has it.
 
+✅ **Status transitions from the detail page shipped (2026-09-17)** — every
+instrument's toolbar carries a *Status* menu listing the transitions available
+from its current state (`get_available_transitions()`), beside the *Document*
+menu. Each option opens a confirmation page (`pwms/workflow-transition.html`,
+route `pwms:workflow_transition`) that records the transition's comment — required
+when `Transition.requires_comment` — and names any unmet guard before the POST;
+applying one lands the reader on the record's Timeline. The menu needs the
+**`transition`** capability, so it is gated separately from *Edit*/Delete, and the
+Referrals tab's *Available transitions* table offers the same transitions as row
+links for a reader who holds it.
+
+✅ **Flash messages surfaced as toasts (2026-09-17)** — `django.contrib.messages`
+was queued by every create / update / delete / status view but never rendered, so
+those notices were silently dropped. `base.html` now shows them at the top of
+every page as a stack of toast-like boxes (`pwms/partials/messages.html`,
+`static/js/messages.js`, styles in `static/css/style.css`) that fade on their own,
+mapping Django's message levels onto Bootstrap's alert classes.
+
 Remaining (🔜):
 
 - Extend the group-scoped RBAC (`WorkflowType.group` + `create_roles`) further in
   the web UI: the owning group now gets view + edit on its type's records by
   default, but delete and transition still need an explicit grant.
-- Available actions gated by `instance.can(...)`; performing transitions from the
-  web UI.
+- **Configure transition rights.** Nothing is granted at creation, so the *Status*
+  menu and the Referrals tab's transition links are visible to superusers only
+  until an administrator raises `can_transition` on an instance
+  (`WorkflowGroupAccess`), a role (`WorkflowRolePermission`) or a state
+  (`WorkflowStatePermission`). `Transition.allowed_roles` does **not** do this — it
+  is advisory (see [Functional Design §4](Functional%20Design.md#who-may-move-a-record-on)).
+- Share / comment / manage actions in the web UI — Edit, Delete and the Status
+  menu are gated on `instance.can(...)`, but those three are still admin- or
+  API-only.
 - Create/edit forms with date pickers (`django-flatpickr`), HTMX partials.
 - Committee/House dashboards and a search/filter layer (`django-filter` declared).
 - Admin improvements for managing workflow definitions and RBAC.

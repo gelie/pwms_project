@@ -14,6 +14,7 @@
 
 {% block actions %}
   {% include "pwms/partials/document_actions.html" with object=bill %}
+  {% include "pwms/partials/status_transitions.html" with object=bill %}
   {% if perms.edit %}
     <a class="btn btn-sm btn-outline-secondary"
        href="{% url "pwms:bill_version_create" bill.public_id %}">

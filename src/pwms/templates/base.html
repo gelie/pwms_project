@@ -36,6 +36,7 @@
     <script src="{% static "js/formset.js" %}" defer></script>
     <script src="{% static "js/htmx-lookup.js" %}" defer></script>
     <script src="{% static "js/password-toggle.js" %}" defer></script>
+    <script src="{% static "js/messages.js" %}" defer></script>
     <!--Pages override this with their own name; the title block was previously
        inert because <title> was hardcoded, so every tab read "PWMS".-->
     <title>{% block title %}PWMS{% endblock title %}</title>
@@ -49,6 +50,7 @@
       content. Pages contributing their own wrapper would double the gutters.
     {% endcomment %}
     <div id="content" class="container mt-5">
+      {% include "pwms/partials/messages.html" %}
       {% block content %}
       {% endblock content %}
     </div>

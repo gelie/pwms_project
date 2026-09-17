@@ -38,7 +38,10 @@ directory holds credentials only — authorisation stays with
 **Functional rules**
 
 - A user is “in a role in a group” only while an **active** membership exists.
-- Role capability flags gate coarse actions (e.g. `can_manage_permissions`).
+- Of the `Role` capability flags, only `can_manage_permissions` is consulted
+  (it grants `manage`); `can_transition_workflows`, `can_create_workflows` and
+  `can_assign_workflows` are legacy fields with no effect — what a role may do on
+  a record comes from the per-instance RBAC tables ([§4](#4-access-control)).
 
 ---
 
@@ -96,7 +99,10 @@ Definitions are customisable in the admin, including:
 - which states are initial/terminal;
 - which transitions are allowed (from → to);
 - which roles from the type's group may **create** instances (`create_roles`);
-- which roles may perform each transition (`allowed_roles`);
+- which roles are named on each transition (`allowed_roles`) — **advisory**
+  metadata: it labels the diagram and, with `notify_roles`, widens who is alerted
+  when the move happens (`next_actor_roles()`), but it grants nothing
+  (authorisation is the RBAC tables — see [§4](#4-access-control));
 - which roles should be notified when it happens (`notify_roles`);
 - whether a comment is mandatory.
 
@@ -137,6 +143,13 @@ To move an instance forward, a user performs an available transition:
 4. The field change is also captured by auditlog.
 5. Alerts are written for the transition's audience and alert email is queued
    (see [§6](#6-alerts-notifications--email)).
+
+The **web UI performs transitions too**: every detail page's toolbar carries a
+*Status* menu listing `get_available_transitions()` beside *Document*, and each
+option opens a confirmation page that records the transition's comment — required
+when `Transition.requires_comment` — and names any unmet guard before the POST.
+Taking a transition needs the **`transition`** capability rather than `edit` (see
+[§4](#4-access-control)), and the reader lands on the record's Timeline afterwards.
 
 Alongside state changes, the instance keeps an **append-only event timeline**
 (`WorkflowEvent`, e.g. *Report document attached*, *ATC update published*) via
@@ -235,14 +248,47 @@ The service is wired in: the workflow CRUD views enforce `edit`/`delete` with
 not permitted, and the DRF audit-history endpoint enforces `view` through
 `WorkflowViewPermission` (`pwms/api/permissions.py`).
 
-Every **write affordance** on a detail page is gated on the record's `edit`
-right, so *Add attachment*, *Add Note*, *Add Referral* and the participant adder
-appear exactly when the toolbar's Edit/Delete buttons do — all of them call
-`resolve(user, record, EDIT)`, the same check `require()` enforces on the POST.
-Notes carry one extra rule on top of that: a note may be changed only by its
-**author** (`views._can_change_note`). Given the defaults above, these controls
-are consequently visible to a record's owning group and its owner from the start,
-and to anyone else once edit rights are granted.
+Every **write affordance** on a detail page is gated on a capability of its own
+through `resolve(user, record, …)` — the same check `require()` enforces on the
+POST. *Add attachment*, *Add Note*, *Add Referral* and the participant adder need
+the record's `edit` right, so they appear exactly when the toolbar's Edit button
+does; the toolbar's *Status* menu (the transitions available from the current
+state) needs **`transition`** instead, so a group may be able to edit a record
+without being able to move it on. Notes carry one extra rule on top: a note may be
+changed only by its **author** (`views._can_change_note`). Given the defaults
+above, the edit-gated controls are visible to a record's owning group and its
+owner from the start, and to anyone else once those rights are granted.
+
+### Who may move a record on
+
+The **`transition`** capability is the whole authority for changing a record's
+state: the toolbar's *Status* menu, the Referrals tab's transition links and the
+`workflow_transition` view all resolve it, and `perform_transition()` itself
+checks only the state machine, the declared guards and a required comment — never
+the actor's roles.
+
+It is granted by the RBAC tables, in the resolution order above:
+`WorkflowRolePermission.can_transition` for the actor's role in that group
+(optionally narrowed with `allowed_states`), else
+`WorkflowStatePermission.can_transition` for the current state, else the group
+default `WorkflowGroupAccess.can_transition`. Superusers bypass the lot.
+
+Two things are easy to misread, so they are worth stating plainly:
+
+- **`Transition.allowed_roles` is not an authorisation rule.** It is advisory
+  metadata: a diagram label, and — through `next_actor_roles()` — extra
+  recipients of the transition's alert. The seeded machines attach no roles to
+  their transitions.
+- **`Role.can_transition_workflows` is a legacy flag** that `PermissionResolver`
+  never consults (see [§2](#2-identity--organisation-management)).
+
+**Nothing is granted at creation.** Materialisation writes view (plus edit, for
+the owning group) and stops there, so until an administrator raises
+`can_transition` somewhere, **only superusers can perform a transition**: the
+*Status* menu is not rendered for anyone else, and the Referrals tab shows the
+transitions as plain reference. Raise it per instance (`WorkflowGroupAccess`),
+per role (`WorkflowRolePermission`, optionally per state) or per state
+(`WorkflowStatePermission`) in the admin.
 
 ---
 
@@ -363,6 +409,9 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
   refresh — or a shared link — returns to it. The panels are the shell's own, so
   a change to one lands on every instrument:
 
+  - **Toolbar** — *Document* (the instrument as a PDF or standalone web page)
+    and *Status* (the transitions available from the current state, each opening
+    a confirmation page that records the transition's comment).
   - **Related** — the hierarchy plus each type's own tables: participants (added
     inline, and removed *softly*, so former delegates stay listed, muted,
     alongside who removed them and when; BR03 updates; bill versions).
@@ -370,7 +419,8 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
     edited inline, plus the type's own `notes` text and progress fields where it
     has them.
   - **Referrals** — raise / respond / withdraw ([§3.4](#34-referrals)) and the
-    transitions available from the current state.
+    transitions available from the current state, each row linking into the same
+    confirmation page for a reader who may take one.
 
 - **Progress**: a completion ring plus the type's state sequence, each state
   marked done / current / upcoming from the record's own transitions, and the
@@ -387,6 +437,10 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
 - **Diagram**: the Diagram tab embeds the type's generated state machine
   (`GET /pwms/instruments/{public_id}/diagram.svg`), and names the command that
   renders it when the image is absent.
+- **Flash messages**: a redirect that changed something — a create, an edit, a
+  delete, a status change — lands with its message as a stack of toast-like boxes
+  at the top of the page (`pwms/partials/messages.html`, `static/js/messages.js`),
+  which fade on their own and can be dismissed by hand.
 - **Alerts** in the site chrome: the navbar bell, the alerts page and read state
   ([§6](#6-alerts-notifications--email)).
 - **Reports**: the builder, exports, per-instrument documents and the read-only

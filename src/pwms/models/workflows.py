@@ -1366,7 +1366,13 @@ class WorkflowEvent(models.Model):
         help_text="Event-specific structured detail.",
     )
     document_url = models.URLField(
-        blank=True, help_text="Optional SharePoint / document reference."
+        max_length=2048,
+        blank=True,
+        # Sized for what actually lands here: the attachment service records an
+        # event with ``Attachment.sharepoint_web_url``, which Graph's ``webUrl``
+        # pushes past 200 characters routinely. Nothing validates these before the
+        # insert, so a tighter column is a 500 rather than a form error.
+        help_text="Optional SharePoint / document reference.",
     )
     notes = models.TextField(blank=True)
     transition_log = models.ForeignKey(

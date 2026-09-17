@@ -29,11 +29,14 @@ Context: attachments, attachment_events, can_attach, attachment_content_type,
         {% for attachment in attachments %}
           <tr>
             <td>
-              {% if attachment.get_sharepoint_url %}
-                <a href="{{ attachment.get_sharepoint_url }}" target="_blank" rel="noopener">{{ attachment.name }}</a>
-              {% else %}
-                {{ attachment.name }}
-              {% endif %}
+              {% comment %}
+                Opens through the record's own endpoint, which resolves a URL
+                carrying the application's authorisation, so the reader never has
+                to sign in to SharePoint.
+              {% endcomment %}
+              <a href="{% url "pwms:attachment_open" attachment.public_id %}"
+                 target="_blank"
+                 rel="noopener">{{ attachment.name }}</a>
             </td>
             <td>
               <span class="badge text-bg-secondary">{{ attachment.get_type_display }}</span>

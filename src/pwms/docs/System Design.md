@@ -122,7 +122,8 @@ pwms_project/                     # repo root (git) — run manage.py from here
 | `/pwms/workflows/…` | list / detail / create / update / delete per instrument (incl. bill versions) | session + RBAC |
 | `/pwms/instruments/{public_id}/document/` | one instrument as a formal PDF/HTML document | session + RBAC |
 | `/pwms/instruments/{public_id}/diagram.svg` | the workflow type's generated state-machine diagram | session + RBAC |
-| `/pwms/attachments/…` | SharePoint picker + link / upload / detach / version history | session + RBAC |
+| `/pwms/instruments/{public_id}/transition/` | confirm (GET) and apply (POST) one state transition | session + RBAC |
+| `/pwms/attachments/…` | SharePoint picker + open / link / upload / detach / version history | session + RBAC |
 | `/pwms/alerts/` , `/pwms/alerts/{public_id}/` | alerts page and open/read state | session |
 | `/pwms/reports/…` | report builder, HTMX preview, export, share | session + RBAC |
 | `/pwms/reports/shared/{token}/` | read-only shared report (token-addressed) | token |
@@ -164,8 +165,10 @@ flowchart LR
   **shared** by every instance of that type — they are not duplicated per record.
 - **`State`** — name/slug, flags (`is_initial`, `is_terminal`,
   `allows_referrals`), ordering and colour; unique per workflow type.
-- **`Transition`** — an allowed `from_state → to_state`, with role-based
-  `allowed_roles` (for acting) and `notify_roles` (for alerting); may require a
+- **`Transition`** — an allowed `from_state → to_state`, with `notify_roles` (the
+  alert audience) and `allowed_roles` (**advisory** — a diagram label that
+  `next_actor_roles()` adds to that audience, *not* an authorisation rule: who may
+  move a record on is the `transition` RBAC capability, see §4); may require a
   comment; unique per workflow type.
 
 ### Instances

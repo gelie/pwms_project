@@ -15,6 +15,7 @@
 
 {% block actions %}
   {% include "pwms/partials/document_actions.html" with object=report %}
+  {% include "pwms/partials/status_transitions.html" with object=report %}
   {% include "pwms/partials/workflow_actions.html" with object=report edit_url="pwms:delegation_report_update" delete_url="pwms:delegation_report_delete" %}
 {% endblock actions %}
 

@@ -10,6 +10,7 @@
 
 {% block actions %}
   {% include "pwms/partials/document_actions.html" with object=resolution %}
+  {% include "pwms/partials/status_transitions.html" with object=resolution %}
   {% include "pwms/partials/workflow_actions.html" with object=resolution edit_url="pwms:international_resolution_update" delete_url="pwms:international_resolution_delete" %}
 {% endblock actions %}
 

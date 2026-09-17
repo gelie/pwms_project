@@ -22,6 +22,14 @@ urlpatterns = [
         views.workflow_diagram,
         name="workflow_diagram",
     ),
+    # Confirm and apply one state transition on an instrument, reached from the
+    # detail page's Status menu. Keyed by public id like the two routes above, so
+    # every instrument shares one route.
+    path(
+        "instruments/<uuid:public_id>/transition/",
+        views.workflow_transition,
+        name="workflow_transition",
+    ),
     # Delegation reports
     path(
         "workflows/delegation-reports/",
@@ -204,6 +212,13 @@ urlpatterns = [
         "attachments/<uuid:public_id>/versions/",
         views.attachment_versions,
         name="attachment_versions",
+    ),
+    # Opens a document. Resolves a fresh pre-authenticated SharePoint URL with the
+    # application token, so the reader never signs in to SharePoint.
+    path(
+        "attachments/<uuid:public_id>/open/",
+        views.attachment_open,
+        name="attachment_open",
     ),
     path(
         "attachments/versions/<uuid:public_id>/download/",

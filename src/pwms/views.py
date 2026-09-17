@@ -85,6 +85,7 @@ from .services.history import TIMELINE_PREVIEW_LIMIT, instance_timeline
 from .services.permissions import (
     DELETE,
     EDIT,
+    TRANSITION,
     VIEW,
     permissions_for,
     require,
@@ -653,6 +654,10 @@ def _workflow_detail_context(request, instance):
         # A generic alias the shared detail template renders from.
         "object": instance,
         "perms": permissions_for(request.user, instance),
+        # The Status menu offers the transitions available from the current state,
+        # but only to a reader who may take one: `transition` is a capability of
+        # its own, separate from `edit`, so it is not one of `perms`.
+        "can_transition": resolve(request.user, instance, TRANSITION),
         # The Progress tab: where the record sits in its type's state machine.
         "progress": workflow_progress(instance),
         # The tab renders the newest rows and says how many there are in total.
@@ -1549,7 +1554,7 @@ def report_shared(request, token):
     )
 
 
-# --- instrument documents --------------------------------------------------
+# --- instrument routes (document, diagram, transition) ---------------------
 
 
 def _workflow_by_public_id(public_id):
@@ -1613,6 +1618,94 @@ def workflow_diagram(request, public_id):
     # No filename= argument: the browser must render it inline, and an <img>-
     # loaded SVG cannot run any script it may carry.
     return FileResponse(path.open("rb"), content_type="image/svg+xml")
+
+
+def _transition_or_404(instance, raw_id):
+    """
+    The instance's transition named by ``raw_id``, if it is available right now.
+
+    Looked up through ``get_available_transitions()`` rather than the type's whole
+    transition table, so a hand-crafted request cannot name an edge the record has
+    already passed. ``perform_transition()`` re-checks the same thing.
+    """
+    try:
+        pk = int(raw_id or "")
+    except TypeError, ValueError:
+        raise Http404("Unknown transition.") from None
+    transition = instance.get_available_transitions().filter(pk=pk).first()
+    if transition is None:
+        raise Http404("That transition is not available from the current state.")
+    return transition
+
+
+def _transition_page(
+    request, instance, transition, *, unmet=(), errors=(), comment="", status=200
+):
+    """Render the status-change confirmation page for one transition."""
+    return render(
+        request,
+        "pwms/workflow-transition.html",
+        {
+            "object": instance,
+            "transition": transition,
+            "unmet_conditions": list(unmet),
+            "errors": list(errors),
+            # A refused POST hands the comment back so the reader does not retype it.
+            "comment": comment,
+            "cancel_url": _workflow_detail_url(instance),
+        },
+        status=status,
+    )
+
+
+def workflow_transition(request, public_id):
+    """
+    Confirm (GET) then apply (POST) one state transition on an instrument.
+
+    Keyed by public id like the document and diagram routes, so one view serves
+    every instrument. The ``transition`` capability is required rather than
+    ``edit``: moving a record on is authorised separately from editing it (see
+    [System Design §4], the RBAC layers).
+
+    The confirmation step exists because a transition is an audited state change
+    that may need a comment (``Transition.requires_comment``) and may be blocked
+    by guards. The page explains either before the POST, and
+    ``perform_transition()`` validates them again when it is applied.
+    """
+    instance = _workflow_by_public_id(public_id)
+    require(request.user, instance, TRANSITION)
+    transition = _transition_or_404(
+        instance, request.POST.get("transition") or request.GET.get("transition")
+    )
+    unmet = instance.unmet_transition_conditions(transition)
+
+    if request.method == "POST":
+        comment = request.POST.get("comment", "").strip()
+        try:
+            instance.perform_transition(
+                transition,
+                actor=request.user,
+                comment=comment,
+                ip_address=request.META.get("REMOTE_ADDR"),
+            )
+        except ValidationError as exc:
+            return _transition_page(
+                request,
+                instance,
+                transition,
+                unmet=unmet,
+                errors=exc.messages,
+                comment=comment,
+                status=400,
+            )
+        messages.success(
+            request,
+            f"{instance.identifier} moved to “{transition.to_state.name}”.",
+        )
+        # Land on the Timeline, where the state change is recorded.
+        return HttpResponseRedirect(f"{_workflow_detail_url(instance)}#pane-timeline")
+
+    return _transition_page(request, instance, transition, unmet=unmet)
 
 
 def about(request):
@@ -1874,12 +1967,19 @@ def _attachment_target(request, action):
 def _attachment_context(request, target):
     """Template context for the attachment section/partials of one record."""
     meta = target._meta
+    attachments = attachments_service.attachments_for(target)
     return {
         "attachment_target": target,
         "attachment_content_type": f"{meta.app_label}.{meta.model_name}",
         "attachment_object_id": str(target.pk),
-        "attachments": attachments_service.attachments_for(target),
+        "attachments": attachments,
         "attachment_events": attachments_service.attachment_activity(target),
+        # Which documents an activity row names are still attached: those open
+        # through the record's own endpoint, while a detached document keeps only
+        # the snapshot URL its event recorded.
+        "live_attachment_ids": {
+            str(attachment.public_id) for attachment in attachments
+        },
         "can_attach": resolve(request.user, target, EDIT),
     }
 
@@ -2050,6 +2150,29 @@ def attachment_version_download(request, public_id):
     require(request.user, target, VIEW)
     try:
         url = attachments_service.version_download_url(attachment, version)
+    except attachments_service.AttachmentError as exc:
+        messages.error(request, str(exc))
+        return redirect(target.get_absolute_url() or reverse("pwms:dashboard"))
+    return HttpResponseRedirect(url)
+
+
+def attachment_open(request, public_id):
+    """Send the browser to a fresh pre-authenticated URL for the document.
+
+    This is what the attachment's name links to. The document opens under the
+    application's own authorisation — see
+    :func:`pwms.services.attachments.open_url` — so the reader is never asked to
+    sign in to SharePoint. VIEW on the owning record is required, exactly as for
+    its detail page, so the endpoint can only hand out documents the reader could
+    already open.
+    """
+    attachment = get_object_or_404(Attachment, public_id=public_id)
+    target = attachment.content_object
+    if target is None:
+        raise Http404("Attachment is not linked to a record.")
+    require(request.user, target, VIEW)
+    try:
+        url = attachments_service.open_url(attachment)
     except attachments_service.AttachmentError as exc:
         messages.error(request, str(exc))
         return redirect(target.get_absolute_url() or reverse("pwms:dashboard"))

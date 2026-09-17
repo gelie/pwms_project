@@ -660,7 +660,13 @@
             <tbody>
               {% for transition in transitions %}
                 <tr>
-                  <td>{{ transition.name }}</td>
+                  <td>
+                    {% if can_transition %}
+                      <a href="{% url "pwms:workflow_transition" object.public_id %}?transition={{ transition.pk }}">{{ transition.name }}</a>
+                    {% else %}
+                      {{ transition.name }}
+                    {% endif %}
+                  </td>
                   <td>{{ transition.to_state.name }}</td>
                   <td>{{ transition.requires_comment|yesno:"Yes,No" }}</td>
                   <td>

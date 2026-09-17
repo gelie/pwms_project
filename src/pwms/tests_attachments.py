@@ -5,10 +5,12 @@ helpers are replaced with ``AsyncMock``s, and ``get_application_token`` with a
 stub — so the suite runs offline against the cached-token design.
 """
 
+from importlib import import_module
 from io import StringIO
 from unittest.mock import AsyncMock, patch
 from urllib.parse import urlencode
 
+from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
@@ -26,6 +28,7 @@ from .models import (
     SharepointDrive,
     SharepointSite,
     SharepointSiteMember,
+    WorkflowEvent,
     WorkflowType,
 )
 from .services import attachments
@@ -185,6 +188,57 @@ class AttachmentServiceTests(AttachmentTestCase):
     def test_resolve_folder_ignores_the_drive_root(self):
         self.assertIsNone(attachments.resolve_folder(self.drive, "root"))
         self.assertIsNone(attachments.resolve_folder(self.drive, ""))
+
+    def test_resolve_folder_holds_a_graph_sized_folder_id(self):
+        # A folder id *is* a Graph driveItem id, and nothing this app controls
+        # bounds its length: they run well past the 200 characters the column
+        # used to allow, so no folder could be mirrored at all (migration 0038).
+        folder_id = "01" + "A" * 398
+        self.assertGreater(len(folder_id), 200)
+
+        folder = attachments.resolve_folder(self.drive, folder_id, "Long id folder")
+
+        folder.refresh_from_db()
+        self.assertEqual(folder.folder_id, folder_id)
+        # The id is the mirror's natural key, so a repeat selection finds the row.
+        self.assertEqual(
+            attachments.resolve_folder(self.drive, folder_id, "Long id folder").pk,
+            folder.pk,
+        )
+
+    def test_open_url_resolves_a_pre_authenticated_link(self):
+        attachment = self._attachment()
+        with (
+            patch.object(
+                attachments.graph, "get_application_token", return_value=TOKEN
+            ),
+            patch.object(
+                attachments.graph,
+                "get_item",
+                new=AsyncMock(return_value=_graph_file()),
+            ) as get_item,
+        ):
+            url = attachments.open_url(attachment)
+
+        get_item.assert_awaited_once_with(TOKEN, "drive-1", "item-1")
+        # Graph's pre-authenticated link: it authenticates the fetch itself, so the
+        # browser needs no SharePoint session.
+        self.assertEqual(url, "https://contoso.sharepoint.com/dl/draft.pdf")
+
+    def test_open_url_reports_a_document_graph_will_not_link(self):
+        attachment = self._attachment()
+        metadata = _graph_file()
+        metadata.pop("@microsoft.graph.downloadUrl")
+        with (
+            patch.object(
+                attachments.graph, "get_application_token", return_value=TOKEN
+            ),
+            patch.object(
+                attachments.graph, "get_item", new=AsyncMock(return_value=metadata)
+            ),
+            self.assertRaises(attachments.AttachmentError),
+        ):
+            attachments.open_url(attachment)
 
     def test_folder_children_splits_folders_and_files(self):
         response = {
@@ -554,6 +608,10 @@ class AttachmentServiceTests(AttachmentTestCase):
 
 
 class AttachmentViewTests(AttachmentTestCase):
+    def _open_url(self, attachment):
+        """The endpoint a document's name links to."""
+        return reverse("pwms:attachment_open", args=[attachment.public_id])
+
     def test_browser_lists_the_users_sites(self):
         self.client.force_login(self.owner)
         response = self.client.get(self._url("attachment_browser"))
@@ -668,6 +726,123 @@ class AttachmentViewTests(AttachmentTestCase):
         self.assertContains(response, "draft.pdf")
         self.assertContains(response, "attached")
         self.assertEqual(self.report.attachments.count(), 1)
+
+    def test_link_attaches_a_document_inside_a_graph_sized_folder(self):
+        """A real Graph folder id is longer than 200 characters (migration 0038)."""
+        folder_id = "01" + "B" * 398
+        self.client.force_login(self.owner)
+        with (
+            patch.object(
+                attachments.graph, "get_application_token", return_value=TOKEN
+            ),
+            patch.object(
+                attachments.graph, "get_item", new=AsyncMock(return_value=_graph_file())
+            ),
+        ):
+            response = self.client.post(
+                reverse("pwms:attachment_link"),
+                self._post_data(
+                    item_id="item-1", folder_id=folder_id, folder_name="Deep folder"
+                ),
+            )
+        self.assertEqual(response.status_code, 200)
+        attachment = self.report.attachments.get()
+        self.assertEqual(attachment.sharepoint_folder.folder_id, folder_id)
+
+    def test_link_records_a_document_event_for_a_long_sharepoint_url(self):
+        """The reported 500: a Graph ``webUrl`` longer than the event column.
+
+        ``Attachment.sharepoint_web_url`` allows 2048 characters, and the
+        ``document-attached`` event copies that URL into ``WorkflowEvent``. A
+        narrower column there let the attachment through and *then* raised, so the
+        record showed the document with no activity for it (migration 0038).
+        """
+        long_url = "https://contoso.sharepoint.com/sites/committee/" + "C" * 240
+        metadata = _graph_file()
+        metadata["webUrl"] = long_url
+        self.assertGreater(len(long_url), 200)
+
+        self.client.force_login(self.owner)
+        with (
+            patch.object(
+                attachments.graph, "get_application_token", return_value=TOKEN
+            ),
+            patch.object(
+                attachments.graph, "get_item", new=AsyncMock(return_value=metadata)
+            ),
+        ):
+            response = self.client.post(
+                reverse("pwms:attachment_link"), self._post_data(item_id="item-1")
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            self.report.attachments.get().sharepoint_web_url,
+            long_url,
+        )
+        event = self.report.events().get(event_type__slug="document-attached")
+        self.assertEqual(event.document_url, long_url)
+        # The row and its activity entry both open through the app, which resolves
+        # the document with the application token rather than sending the reader to
+        # SharePoint to sign in.
+        attachment = self.report.attachments.get()
+        self.assertContains(response, self._open_url(attachment), count=2)
+
+    def test_a_document_name_opens_through_the_app(self):
+        attachment = self._attachment()
+        self.client.force_login(self.owner)
+
+        response = self.client.get(
+            reverse("pwms:delegation_report_detail", args=[self.report.public_id])
+        )
+
+        self.assertContains(response, self._open_url(attachment))
+
+    def test_open_redirects_to_a_fresh_pre_authenticated_url(self):
+        attachment = self._attachment()
+        self.client.force_login(self.owner)
+        with (
+            patch.object(
+                attachments.graph, "get_application_token", return_value=TOKEN
+            ),
+            patch.object(
+                attachments.graph,
+                "get_item",
+                new=AsyncMock(return_value=_graph_file()),
+            ) as get_item,
+        ):
+            response = self.client.get(self._open_url(attachment))
+
+        get_item.assert_awaited_once_with(TOKEN, "drive-1", "item-1")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(
+            response["Location"], "https://contoso.sharepoint.com/dl/draft.pdf"
+        )
+
+    def test_open_requires_view_permission(self):
+        attachment = self._attachment()
+        self.client.force_login(self.stranger)
+        response = self.client.get(self._open_url(attachment))
+        self.assertEqual(response.status_code, 403)
+
+    def test_open_reports_a_sharepoint_failure(self):
+        attachment = self._attachment()
+        self.client.force_login(self.owner)
+        with (
+            patch.object(
+                attachments.graph, "get_application_token", return_value=TOKEN
+            ),
+            patch.object(
+                attachments.graph,
+                "get_item",
+                new=AsyncMock(side_effect=Exception("boom")),
+            ),
+        ):
+            response = self.client.get(self._open_url(attachment), follow=True)
+
+        self.assertEqual(response.status_code, 200)
+        # The reader lands back on the record with the reason shown as a message.
+        self.assertContains(response, "SharePoint request failed")
 
     def test_link_reports_a_duplicate_attachment(self):
         self.client.force_login(self.owner)
@@ -1134,3 +1309,104 @@ class AttachmentEventTypeTests(TestCase):
             EventType.objects.filter(slug__in=expected).values_list("slug", flat=True)
         )
         self.assertEqual(seeded, expected)
+
+
+class DocumentEventBackfillTests(TestCase):
+    """Migration 0039 restores document events lost to the old 200-character column."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.owner = User.objects.create_user(username="backfill-owner", password="pw")
+        report_type = WorkflowType.objects.get(name="Delegation Report")
+        cls.report = DelegationReport.objects.create(
+            workflow_type=report_type,
+            current_state=report_type.get_initial_state(),
+            title="Backfill test report",
+            owner=cls.owner,
+        )
+        cls.event_type = EventType.objects.get(slug="document-attached")
+
+    def _migration(self):
+        return import_module("pwms.migrations.0039_backfill_document_attached_events")
+
+    def _attachment(self, name="filed.pdf", **overrides):
+        """An attachment on the report with no event recorded for it."""
+        data = {
+            "content_type": self.report._instance_ct(),
+            "object_id": str(self.report.pk),
+            "name": name,
+            "drive_id": "drive-1",
+            "item_id": f"item-{name}",
+            "type": "document",
+            "uploaded_by": self.owner,
+            "sharepoint_web_url": (
+                "https://contoso.sharepoint.com/sites/committee/filed.pdf"
+            ),
+            "download_url": "https://contoso.sharepoint.com/dl/filed.pdf",
+        }
+        data.update(overrides)
+        return Attachment.objects.create(**data)
+
+    def _events(self):
+        return WorkflowEvent.objects.filter(
+            content_type=self.report._instance_ct(),
+            object_id=str(self.report.pk),
+            event_type=self.event_type,
+        )
+
+    def test_the_missing_event_is_reconstructed_from_the_attachment(self):
+        attachment = self._attachment()
+        attachment.refresh_from_db()
+
+        self._migration().backfill_document_events(apps, None)
+
+        event = self._events().get()
+        # Written long after the fact, so the system wrote it and nobody is named.
+        self.assertEqual(event.origin, "system")
+        self.assertIsNone(event.actor)
+        # The link the activity panel renders is the web URL, not the download URL.
+        self.assertEqual(event.document_url, attachment.sharepoint_web_url)
+        self.assertEqual(event.occurred_at, attachment.created_at)
+        self.assertEqual(event.payload["attachment_id"], str(attachment.public_id))
+        self.assertTrue(event.payload["backfilled"])
+
+    def test_an_attachment_whose_event_was_recorded_is_left_alone(self):
+        attachment = self._attachment()
+        self.report.record_event(
+            self.event_type,
+            actor=self.owner,
+            payload={"attachment_id": str(attachment.public_id)},
+            document_url=attachment.sharepoint_web_url,
+        )
+
+        self._migration().backfill_document_events(apps, None)
+
+        self.assertEqual(self._events().count(), 1)
+
+    def test_an_event_without_a_payload_still_counts_as_the_attachments(self):
+        # `seed_demo_data` records the event with no payload, so it cannot name its
+        # attachment; the target's counts match, so nothing is invented for it.
+        self._attachment()
+        self.report.record_event(self.event_type, actor=self.owner)
+
+        self._migration().backfill_document_events(apps, None)
+
+        self.assertEqual(self._events().count(), 1)
+
+    def test_the_reverse_removes_only_the_reconstructed_events(self):
+        recorded = self._attachment(name="recorded.pdf")
+        self.report.record_event(
+            self.event_type,
+            actor=self.owner,
+            payload={"attachment_id": str(recorded.public_id)},
+        )
+        self._attachment(name="lost.pdf")
+
+        migration = self._migration()
+        migration.backfill_document_events(apps, None)
+        self.assertEqual(self._events().count(), 2)
+
+        migration.unbackfill_document_events(apps, None)
+
+        self.assertEqual(self._events().count(), 1)
+        self.assertFalse(self._events().get().payload.get("backfilled"))

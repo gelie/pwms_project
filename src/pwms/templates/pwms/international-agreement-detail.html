@@ -10,6 +10,7 @@
 
 {% block actions %}
   {% include "pwms/partials/document_actions.html" with object=agreement %}
+  {% include "pwms/partials/status_transitions.html" with object=agreement %}
   {% include "pwms/partials/workflow_actions.html" with object=agreement edit_url="pwms:international_agreement_update" delete_url="pwms:international_agreement_delete" %}
 {% endblock actions %}
 

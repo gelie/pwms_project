@@ -27,8 +27,23 @@ Context: attachment_events.
           {% endif %}
           · {{ event.occurred_at|date:"Y-m-d H:i" }}
         </span>
-        {% if event.document_url %}
-          <a href="{{ event.document_url }}" target="_blank" rel="noopener">open</a>
+        {% comment %}
+          Opens the document. One that is still attached goes through the record's
+          own endpoint, which resolves a URL carrying the application's
+          authorisation — the reader is never asked to sign in to SharePoint. A
+          detached document has no row left to resolve from, so its event's
+          snapshot URL is the best the trail can offer.
+        {% endcomment %}
+        {% if event.payload.attachment_id in live_attachment_ids %}
+          <a href="{% url "pwms:attachment_open" event.payload.attachment_id %}"
+             target="_blank"
+             rel="noopener">open</a>
+        {% else %}
+          {% with document_url=event.document_url|default:event.payload.web_url %}
+            {% if document_url %}
+              <a href="{{ document_url }}" target="_blank" rel="noopener">open</a>
+            {% endif %}
+          {% endwith %}
         {% endif %}
       </li>
     {% endfor %}

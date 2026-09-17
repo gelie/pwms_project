@@ -13,9 +13,9 @@ from .users import User
 
 
 class SharepointSite(BaseModel):
-    name = models.CharField(max_length=200)
-    url = models.URLField()
-    site_id = models.CharField(max_length=200)
+    name = models.CharField(max_length=500)
+    url = models.URLField(max_length=2048)
+    site_id = models.CharField(max_length=512)
     is_personal_site = models.BooleanField(default=False)
     # Local curation flag: only enabled sites are offered by the document
     # picker. Deliberately never written by ``populate_sites``, so re-running
@@ -65,8 +65,11 @@ class SharepointSiteMember(BaseModel):
 class SharepointDrive(BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid7, editable=False)
     site = models.ForeignKey(SharepointSite, on_delete=models.CASCADE)
-    name = models.CharField(max_length=200)
-    drive_id = models.CharField(max_length=200)
+    name = models.CharField(max_length=500)
+    # A Graph drive id, which is not bounded by anything this app controls.
+    # Sized as ``Attachment.drive_id`` is, so the mirror can always store the id
+    # the attachment it backs already holds.
+    drive_id = models.CharField(max_length=512)
 
     def __str__(self):
         return self.name
@@ -108,8 +111,12 @@ class SharepointFolder(BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid7, editable=False)
     site = models.ForeignKey(SharepointSite, on_delete=models.CASCADE)
     drive = models.ForeignKey(SharepointDrive, on_delete=models.CASCADE)
-    folder_id = models.CharField(max_length=200, help_text="Sharepoint folder ID")
-    name = models.CharField(max_length=200)
+    # A Graph item id for the folder. These run well past the 200 characters this
+    # column used to allow — long enough that no folder could be mirrored and
+    # linking a document inside one failed with a DataError — so it is sized as
+    # ``Attachment.item_id`` is.
+    folder_id = models.CharField(max_length=512, help_text="Sharepoint folder ID")
+    name = models.CharField(max_length=500)
     parent_folder = models.ForeignKey(
         "self",
         null=True,
@@ -118,7 +125,10 @@ class SharepointFolder(BaseModel):
         related_name="subfolders",
     )
     web_url = models.URLField(
-        blank=True, null=True, help_text="Direct URL to folder in Sharepoint"
+        max_length=2048,
+        blank=True,
+        null=True,
+        help_text="Direct URL to folder in Sharepoint",
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

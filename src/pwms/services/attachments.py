@@ -515,3 +515,24 @@ def version_download_url(attachment, version):
             "SharePoint did not return a download link for that version."
         )
     return url
+
+
+def open_url(attachment):
+    """A fresh pre-authenticated URL that opens the attachment's document.
+
+    Graph's ``@microsoft.graph.downloadUrl`` carries its own short-lived
+    authorisation, so the browser fetches the document **without the reader
+    signing in to SharePoint** — the application token resolved the link. It is
+    looked up per request rather than read off the row because SharePoint issues
+    these for about an hour, so the ``download_url`` copied onto the
+    :class:`~pwms.models.Attachment` is usually stale by the time anyone clicks.
+    """
+    metadata = _run(
+        lambda: graph.get_item(_token(), attachment.drive_id, attachment.item_id)
+    )
+    url = metadata.get("@microsoft.graph.downloadUrl") or ""
+    if not url:
+        raise AttachmentError(
+            "SharePoint did not return an openable link for that document."
+        )
+    return url

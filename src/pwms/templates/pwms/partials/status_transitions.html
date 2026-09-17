@@ -1,0 +1,30 @@
+{% comment %}
+  The "Status" menu shared by every workflow detail page: the transitions
+  available from the record's current state, each opening the confirmation page
+  where the transition's comment is recorded (see ``pwms.views.workflow_transition``).
+
+  Sits beside the Document menu so the toolbar reads as one family. Include with
+  `object=<the workflow instance>`; reads `transitions` (the instance's available
+  transitions) and `can_transition` from the page context. It renders nothing
+  unless the reader may take a transition — ``transition`` is a capability of its
+  own, separate from ``edit`` — and there is at least one to take.
+{% endcomment %}
+{% if can_transition and transitions %}
+  <div class="dropdown">
+    <button class="btn btn-sm btn-outline-secondary dropdown-toggle"
+            type="button"
+            data-bs-toggle="dropdown"
+            aria-expanded="false">{% lucide "move-right" size=16 %} Status</button>
+    <ul class="dropdown-menu dropdown-menu-end">
+      {% for transition in transitions %}
+        <li>
+          <a class="dropdown-item"
+             href="{% url "pwms:workflow_transition" object.public_id %}?transition={{ transition.pk }}">
+            {{ transition.name }}
+            <span class="d-block small workflow-muted">→ {{ transition.to_state.name }}</span>
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}

@@ -1386,3 +1386,50 @@ html.password-toggle-ready .password-toggle {
     align-items: center;
 
 }
+
+/* Flash messages (django.contrib.messages) — see pwms/partials/messages.html and
+   static/js/messages.js. A stack of toast-like boxes at the top of the page: in
+   the flow at the top of #content, and pinned just below the sticky
+   #desktop-nav (64px tall) once the page is scrolled past it, so a reader sees
+   what the last action did without losing their place. */
+.site-messages {
+    position: sticky;
+    top: 72px;
+    /* Above the nav bar (999) and the picker overlays (1050). */
+    z-index: 1090;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    /* The gaps between the boxes stay click-through; the boxes do not. */
+    pointer-events: none;
+}
+
+.site-message {
+    pointer-events: auto;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    width: min(100%, 34rem);
+    margin-bottom: 0;
+    box-shadow: 0 0.5rem 1rem light-dark(rgba(17, 17, 17, 0.12), rgba(0, 0, 0, 0.5));
+    /* Keep in step with FADE_MS in static/js/messages.js. */
+    transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+/* Set by static/js/messages.js just before the box is taken out of the page. */
+.site-message--closing {
+    opacity: 0;
+    transform: translateY(-0.5rem);
+}
+
+.site-message-text {
+    flex: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .site-message {
+        transition: none;
+    }
+}

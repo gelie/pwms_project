@@ -101,7 +101,7 @@ Django user with parliamentary profile fields:
 | `is_mp`, `is_staff_member`, `is_active` | flags |
 | `constituency`, `party_affiliation` | political attributes |
 
-Methods include membership/role helpers (`User.ministers()`, `current_portfolio`) and `can_transition_workflow(...)`.
+Methods include membership/role helpers (`User.ministers()`, `current_portfolio`, `has_role_in_group(...)`). `User.can_transition_workflow(...)` is **legacy and unused** — it is called from nowhere and reads `workflow_instance.group`, an attribute the instance does not have.
 
 ### `Group(MPTTModel, BaseModel)` — `pwms.Group`
 
@@ -128,7 +128,8 @@ separate "executive user" model is needed.
 | Field | Notes |
 | --- | --- |
 | `name`, `slug` (unique), `description` | identity |
-| `can_transition_workflows`, `can_create_workflows`, `can_assign_workflows`, `can_manage_permissions` | workflow capability flags |
+| `can_manage_permissions` | grants `manage` on any resource — the only one of these flags the resolver consults |
+| `can_transition_workflows`, `can_create_workflows`, `can_assign_workflows` | **legacy, unused** — carried on the role but consulted nowhere; who may transition is decided by the per-instance RBAC tables (see Functional Design §4) |
 
 ### `GroupMembership(BaseModel)`
 
@@ -204,7 +205,7 @@ Uniqueness: `(workflow_type, name)` and `(workflow_type, slug)`.
 | `workflow_type` (FK, related `transitions`) | owning machine |
 | `name`, `slug` | identity (slug unique per type) |
 | `from_state`, `to_state` (FK `State`) | the edge |
-| `allowed_roles` (M2M `Role`) | who may take this transition |
+| `allowed_roles` (M2M `Role`) | **advisory** — labels the diagram and, via `next_actor_roles()`, adds these roles to the transition's alert; it does **not** authorise the transition (the RBAC tables do — see Functional Design §4) |
 | `notify_roles` (M2M `Role`) | who gets alerted on it |
 | `required_event_types` (M2M `EventType`) | event guards — blocked until each type has been recorded on the instance |
 | `requires_comment`, `order` | behaviour |
@@ -737,7 +738,7 @@ always a concrete workflow instance.
 | `content_type` + `object_id` → `content_object` | **GFK** to the owning record. `object_id` is a `CharField` (unlike the integer target used elsewhere) so any pk type fits |
 | `name`, `mimetype`, `size` | file facts, as captured when attached |
 | `drive_id`, `item_id` | the SharePoint coordinates; `item_id` is what “the same file” means to a re-upload |
-| `download_url`, `sharepoint_web_url` | stored links — `get_sharepoint_url()` prefers the stable web URL, since a Graph download URL expires |
+| `download_url`, `sharepoint_web_url` | stored links. Opening a document does **not** use either: the attachments table links to `pwms:attachment_open`, which resolves a fresh pre-authenticated URL so the reader never signs in to SharePoint. `get_sharepoint_url()` prefers `sharepoint_web_url` — a Graph download URL expires within the hour — and is what the formal instrument document cites |
 | `sharepoint_site`, `sharepoint_drive`, `sharepoint_folder` (FKs) | resolved against the local mirror, so rendering an attachment needs no Graph call |
 | `sharepoint_folder_path` | human-readable folder path, taken from the mirrored folder |
 | `type` | `ATTACHMENT_TYPE_CHOICES` — what the document *is* (agenda, bill, gazette, memorandum, report, resolution, …); alphabetical, and the picker's dropdown |
