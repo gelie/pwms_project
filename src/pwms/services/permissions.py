@@ -22,6 +22,12 @@ the group chain) flows down to the instance's descendants. The ``manage`` action
 additionally honours the global ``Role.can_manage_permissions`` capability, so a
 manager role grants the ability to administer any resource even without a
 per-instance grant.
+
+A caller may also ask about a workflow instance *as if no referral had conferred
+anything* (``resolve(..., ignore_referral_grants=True)``): a referral lends the
+referred group edit so its members can contribute to the record, which is not
+authority to administer it. The Referrals tab uses that to keep a referred group
+from raising or withdrawing referrals on a record it was asked to advise on.
 """
 
 from __future__ import annotations
@@ -75,12 +81,19 @@ def has_global_manage_role(user) -> bool:
     ).exists()
 
 
-def resolve(user, resource, action: str) -> bool:
+def resolve(
+    user, resource, action: str, *, ignore_referral_grants: bool = False
+) -> bool:
     """
     Return whether ``user`` may perform ``action`` on ``resource``.
 
     Unauthenticated users are denied everything; superusers are granted
     everything. ``action`` must be one of :data:`ALL_ACTIONS`.
+
+    ``ignore_referral_grants`` resolves a workflow instance as though no referral
+    had conferred anything on the user's groups (see
+    ``AbstractLegislativeWorkflow.can``); it makes no difference to any other
+    resource.
     """
     action = action.lower()
     if action not in ALL_ACTIONS:
@@ -96,7 +109,9 @@ def resolve(user, resource, action: str) -> bool:
         return True
 
     if isinstance(resource, AbstractLegislativeWorkflow):
-        return _resolve_workflow_instance(user, resource, action)
+        return _resolve_workflow_instance(
+            user, resource, action, ignore_referral_grants=ignore_referral_grants
+        )
 
     resolver = _RESOLVERS.get(type(resource), _default_resolver)
     return resolver(user, resource, action)
@@ -113,7 +128,9 @@ def _has_direct_view_grant(user, instance) -> bool:
     return user.pk in (instance.owner_id, instance.assigned_to_id)
 
 
-def _resolve_workflow_instance(user, instance, action: str) -> bool:
+def _resolve_workflow_instance(
+    user, instance, action: str, *, ignore_referral_grants: bool = False
+) -> bool:
     """
     Resolve an action against a workflow instance's RBAC chain.
 
@@ -128,6 +145,9 @@ def _resolve_workflow_instance(user, instance, action: str) -> bool:
     Traversal goes through :class:`WorkflowRelationship` (``get_ancestors()``),
     so it works for any parent/child :class:`WorkflowType` pair, including ones
     added later, rather than being tied to report/resolution.
+
+    ``ignore_referral_grants`` is passed down to every group-chain check, so the
+    answer rests on anything *but* a referral's own grant (see ``resolve``).
     """
     if action == CREATE:
         # An instance already exists; "create" is a type-level capability.
@@ -142,14 +162,16 @@ def _resolve_workflow_instance(user, instance, action: str) -> bool:
     # group/Role/State grant — assigning work must not widen anyone's authority.
     if action == VIEW and user.pk == instance.assigned_to_id:
         return True
-    if instance.can(user, action):
+    if instance.can(user, action, ignore_referral_grants=ignore_referral_grants):
         return True
 
     # Only the view right is inherited from ancestors (owner, assignee or the
     # group chain).
     if action == VIEW:
         for ancestor in instance.get_ancestors():
-            if _has_direct_view_grant(user, ancestor) or ancestor.can(user, action):
+            if _has_direct_view_grant(user, ancestor) or ancestor.can(
+                user, action, ignore_referral_grants=ignore_referral_grants
+            ):
                 return True
     return False
 
@@ -183,7 +205,11 @@ def visible_instances(user, queryset) -> list:
     return [obj for obj in queryset if resolve(user, obj, VIEW)]
 
 
-def require(user, resource, action: str) -> None:
+def require(
+    user, resource, action: str, *, ignore_referral_grants: bool = False
+) -> None:
     """Raise :class:`PermissionDenied` unless ``user`` may ``action`` ``resource``."""
-    if not resolve(user, resource, action):
+    if not resolve(
+        user, resource, action, ignore_referral_grants=ignore_referral_grants
+    ):
         raise PermissionDenied(f"Permission denied: {action} on {resource}.")

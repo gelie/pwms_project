@@ -157,6 +157,7 @@ Unique on `(user, group, role, start_date)`; `clean()` validates dates.
 | `group` (FK, related `workflow_types`) | RBAC scope: the group whose members/roles govern this type |
 | `create_roles` (M2M to `Role`, related `creatable_workflow_types`) | roles **from that group** allowed to create instances; empty means superusers only |
 | `viewer_groups` (M2M to `Group`, related `viewer_workflow_types`) | read-only stakeholder groups; every new instance is shared with them (a read-only `WorkflowGroupAccess` row) at creation |
+| `owner_can_edit`, `owner_can_transition`, `owner_can_delete`, `owner_can_share`, `owner_can_comment`, `owner_can_manage` | the type's **capability policy** for its owning group — what `materialize_group_access()` grants that group on every new instance. Defaults: edit and transition on, the rest off. Turned into a `WorkflowGroupAccess` defaults dict by `owner_access_defaults()` |
 | `parent_type` (self-FK, related `child_types`) | optional type hierarchy; declaring child types opts the parent into type-restricted instance links |
 
 Reverse relations: `states`, `transitions`, `child_types`, `%(class)s_instances`.
@@ -177,15 +178,20 @@ groups with an interest in every instance of the type but no active role in
 producing it. On creation each instance materialises its `WorkflowGroupAccess`
 rows from the type via `AbstractLegislativeWorkflow.materialize_group_access()`:
 
-* the type's owning `group`, flagged `is_primary` and granted `can_view`
-  **and** `can_edit` — the unit that governs the type works on its records;
+* the type's owning `group`, flagged `is_primary` and granted `can_view` plus
+  whatever the type's `owner_can_*` policy allows (edit and transition by
+  default) — the unit that governs the type works on its records, including
+  moving them on;
 * one row per `viewer_groups` entry, read-only (`can_view` only).
 
 Every other capability starts off, so "who can see this instance" stays
 answerable from the instance's own access table with a `granted_at` timestamp per
-grant. Materialisation runs only at creation; run the `sync_type_group_access`
-command to backfill instances that predate a policy change (migration `0037`
-widened the primary row's `can_edit` for instances that predate this default).
+grant. Materialisation runs only at creation, from the type's policy: change the
+`owner_can_*` fields and either create new instances or run
+`sync_type_group_access --update-existing` to reconcile existing ones (without the
+flag the command only creates missing rows, so an administrator's edits are never
+overwritten). Migrations `0037`, `0040` and `0041` are how the policy itself
+arrived: view + edit first, then transition, then the type fields that state it.
 
 ### `State`
 
@@ -469,6 +475,13 @@ auditlog CRUD rows for the instance's own content type, so these domain events
 surface with the other `WorkflowEvent` rows rather than in the Timeline — see
 [§5 of the Functional Design](./Functional%20Design.md#5-auditing--history).)
 
+A referral also **carries the referred group's access** to the record: view and
+edit while a referral to it is open, then view once every referral has closed. (It
+confers no `transition` — see `WorkflowGroupAccess` below.) The same `save()` keeps
+that grant in step, re-deriving both groups when a referral is reassigned and
+stepping back when one is deleted — see `WorkflowGroupAccess` below for the columns
+that record the provenance.
+
 ### `WorkflowNote(BaseModel)`
 
 A dated note someone recorded against a workflow instance. Where a type has its
@@ -543,8 +556,31 @@ seeded close guard requires.
 | `content_type` + `object_id` → `content_object` | **GFK** to the workflow instance |
 | `can_view`, `can_edit`, `can_delete`, `can_share`, `can_comment`, `can_manage`, `can_transition` | group-level defaults |
 | `is_primary`, `granted_by` (FK `User`), `granted_at` | grant metadata |
+| `via_referral` | the row was created by a **referral**, not by materialisation or an administrator |
+| `referral_raised_edit` | a referral raised `can_edit` on a row that already existed, so closing it hands the capability back |
 
 Indexed on `(content_type, object_id)`.
+
+A row comes from one of three places: the type's **materialisation** at creation
+(the owning group and the viewer groups, see `WorkflowType`), an
+**administrator**'s grant in the admin, or a **referral**. Referring an instance
+to a group gives that group view and edit for as long as a referral to it is open
+— enough to read the record and contribute the answer — and leaves it **view** once
+every referral has closed, so the group can still see what it was asked to
+consider, which is what audit and reporting need.
+
+A referral confers no `transition`: moving a record on stays with the owning group,
+because the *Status* menu offers *every* transition out of the current state rather
+than the stage the committee is considering. Nor does it buy authority over the
+referral registers — a referred group may contribute to a record, but not withdraw
+the referral it is answering, answer one addressed to another group, or raise
+further ones.
+
+`via_referral` marks a row the referral system created, while
+`referral_raised_edit` marks a capability it had to raise on a row that already
+existed (a viewer group's, say). A right the group already held is never marked, so
+a referral closing cannot narrow an organic grant, and a row that is more than a
+referral grant is never removed.
 
 ### `WorkflowRolePermission`
 

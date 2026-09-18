@@ -134,6 +134,14 @@ with a parliamentary document library.
   `document-*` `WorkflowEvent`s on the record's append-only event log, and shown
   as the section's “Document activity” list.
   Tests: `pwms/tests_attachments.py` (63 tests).
+- **SharePoint link columns widened (2026-09-18)** — the seven `*_document_url`
+  fields a user pastes a SharePoint link into (`DelegationReport.report_document_url`,
+  `DelegationReportUpdate.atc_document_url`, `InternationalAgreement.agreement_document_url`
+  and `explanatory_memorandum_url`, `Bill.bill_document_url`,
+  `BillVersion.document_url`, `WorkflowReferral.response_document_url`) now allow
+  2048 characters (migration `0042`), matching what migration `0038` did for the
+  links the app writes itself from Graph. A real `webUrl` in this tenant runs to 249
+  characters, so the form that documents pasting one was refusing it at 200.
 
 **Groundwork / considerations**
 
@@ -240,7 +248,9 @@ when `Transition.requires_comment` — and names any unmet guard before the POST
 applying one lands the reader on the record's Timeline. The menu needs the
 **`transition`** capability, so it is gated separately from *Edit*/Delete, and the
 Referrals tab's *Available transitions* table offers the same transitions as row
-links for a reader who holds it.
+links for a reader who holds it. Materialisation now grants that capability to a
+type's owning group (migration `0040`), so IRP and LSO can move their own records
+on without an administrator raising it instance by instance.
 
 ✅ **Flash messages surfaced as toasts (2026-09-17)** — `django.contrib.messages`
 was queued by every create / update / delete / status view but never rendered, so
@@ -249,17 +259,25 @@ every page as a stack of toast-like boxes (`pwms/partials/messages.html`,
 `static/js/messages.js`, styles in `static/css/style.css`) that fade on their own,
 mapping Django's message levels onto Bootstrap's alert classes.
 
+✅ **Capability policy configurable per type (2026-09-18)** — the owning group's
+materialised rights were hard-coded, so narrowing a type (a register that should
+not be edited) or widening one (delete on disposable records) meant editing
+`WorkflowGroupAccess` rows instance by instance. `WorkflowType` now carries the
+policy as fields — `owner_can_edit`, `owner_can_transition`, `owner_can_delete`,
+`owner_can_share`, `owner_can_comment`, `owner_can_manage` (migration `0041`, no
+backfill: the defaults are what materialisation already granted) — and
+`owner_access_defaults()` turns them into the primary row.
+`sync_type_group_access --update-existing` re-applies a changed policy to records
+that already exist, touching only the owning group's own flags. `view` stays
+unconditional and viewer groups stay read-only by design.
+
 Remaining (🔜):
 
 - Extend the group-scoped RBAC (`WorkflowType.group` + `create_roles`) further in
-  the web UI: the owning group now gets view + edit on its type's records by
-  default, but delete and transition still need an explicit grant.
-- **Configure transition rights.** Nothing is granted at creation, so the *Status*
-  menu and the Referrals tab's transition links are visible to superusers only
-  until an administrator raises `can_transition` on an instance
-  (`WorkflowGroupAccess`), a role (`WorkflowRolePermission`) or a state
-  (`WorkflowStatePermission`). `Transition.allowed_roles` does **not** do this — it
-  is advisory (see [Functional Design §4](Functional%20Design.md#who-may-move-a-record-on)).
+  the web UI: the owning group's capabilities are now the type's `owner_can_*`
+  policy, but the *actions* that consult the resolver — Edit, Delete, the Status
+  menu — remain partly admin- or API-only, and viewer-group grants are view-only by
+  design.
 - Share / comment / manage actions in the web UI — Edit, Delete and the Status
   menu are gated on `instance.can(...)`, but those three are still admin- or
   API-only.
@@ -375,6 +393,34 @@ notes, and answers or withdraws each open row (`partials/referral_section.html`,
 `pwms:referral_create` / `referral_respond` / `referral_recall`). Raising and
 withdrawing need the record's `edit` right; responding is also open to an active
 member of the referred-to committee.
+
+✅ **A referral carries the referred group's access (2026-09-18)** — referring an
+instance to a group now grants that group view and edit on the record while a
+referral to it is open, and leaves it **view** once every referral has closed.
+Before this, a committee could answer a referral (the view allowed that) but could
+not open the page it was answering from — the detail view refused it. The grant is
+a `WorkflowGroupAccess` row like any other, marked `via_referral` and kept in step
+from `WorkflowReferral.save()` / `delete()`; only a capability the referral itself
+**raised** is handed back (`referral_raised_edit`), so closing one never narrows an
+organic grant and a group that already had edit keeps it. Reassigning a referral
+re-derives both groups.
+
+The grant is deliberately **not** the state machine, and not authority over the
+referral registers. A referral confers no `transition`: the *Status* menu offers
+every transition out of the current state — for a Bill referred to committee, even
+*"Withdraw bill (referred to committee)"* — so lending it would let a committee
+close or withdraw a record it was only asked to advise on; moving a record on stays
+with the owning group. And it does not buy the referral registers: a referred group
+may contribute to a record, but not withdraw the referral it is answering, answer
+one addressed to another group, or raise further ones, so `_can_recall_referral`,
+`_can_answer_referral` and *Add Referral* all resolve `edit` with the referral's own
+grant left out (`resolve(..., ignore_referral_grants=True)`). The last of those is
+what let a committee secretary answer a neighbouring committee's open referral, so
+it is worth naming plainly: answering on a committee's behalf is for the record's
+own editors, not for another group holding borrowed edit.
+Migrations `0043` (provenance columns) → `0044` (backfill: every existing referral
+is given the access it implies) → `0045` (withdraw the transition the first two
+handed out). Tests: `pwms/tests_referral_access.py`.
 
 Migrations: `0008` (model) → `0009` (backfill one open referral per existing M2M
 row + events) → `0010` (drop the M2M and legacy `atc_*` fields); auditlog no

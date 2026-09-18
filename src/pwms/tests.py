@@ -2644,15 +2644,15 @@ class ViewerGroupAccessTests(TestCase):
         )
         self.assertTrue(access.is_primary)
         self.assertTrue(access.can_view)
-        # The owning unit works on its own records, so it may edit them; every
-        # other capability still starts off.
+        # The owning unit works on its own records: it may edit them and move them
+        # on. Every other capability still starts off.
         self.assertTrue(access.can_edit)
+        self.assertTrue(access.can_transition)
         for flag in (
             "can_delete",
             "can_share",
             "can_comment",
             "can_manage",
-            "can_transition",
         ):
             self.assertFalse(getattr(access, flag))
 
@@ -2677,7 +2677,9 @@ class ViewerGroupAccessTests(TestCase):
         self.assertEqual(rows.count(), 1)
         self.assertTrue(rows.first().is_primary)
 
-    def test_owner_group_may_edit_its_records_but_a_viewer_group_may_not(self):
+    def test_owner_group_may_edit_and_move_its_records_but_a_viewer_group_may_not(
+        self,
+    ):
         owner_group = Group.objects.create(name="Owning Editors", group_type="division")
         owner_role = Role.objects.create(name="Owning Editor")
         member = get_user_model().objects.create_user(
@@ -2695,15 +2697,75 @@ class ViewerGroupAccessTests(TestCase):
             owner=self.creator,
         )
 
-        # The type's owning unit can work on its records; the capability is the
-        # owning group's alone, and does not extend past edit.
+        # The type's owning unit can work on its records and move them on. The
+        # rights are the owning group's alone, and neither extends to deleting.
         self.assertTrue(resolve(member, resolution, VIEW))
         self.assertTrue(resolve(member, resolution, EDIT))
+        self.assertTrue(resolve(member, resolution, TRANSITION))
         self.assertFalse(resolve(member, resolution, DELETE))
-        self.assertFalse(resolve(member, resolution, TRANSITION))
         # A viewer group stays read-only.
         self.assertTrue(resolve(self.viewer, resolution, VIEW))
         self.assertFalse(resolve(self.viewer, resolution, EDIT))
+        self.assertFalse(resolve(self.viewer, resolution, TRANSITION))
+
+    def test_materialisation_honours_the_type_capability_policy(self):
+        # The owning group's capabilities are the type's policy, so a type can
+        # narrow or widen them for every instance at once instead of per instance.
+        owner_group = Group.objects.create(
+            name="Policy Owning Unit", group_type="division"
+        )
+        owner_role = Role.objects.create(name="Policy Owner")
+        member = get_user_model().objects.create_user(
+            username="policy-owner", password="pw"
+        )
+        GroupMembership.objects.create(user=member, group=owner_group, role=owner_role)
+        wt = WorkflowType.objects.create(
+            name="Test Policy Type",
+            group=owner_group,
+            owner_can_edit=False,
+            owner_can_transition=False,
+            owner_can_delete=True,
+        )
+        state = State.objects.create(workflow_type=wt, name="Open", is_initial=True)
+        resolution = InternationalResolution.objects.create(
+            workflow_type=wt,
+            current_state=state,
+            resolution_number="IR-POLICY-1",
+            title="Policy",
+            owner=self.creator,
+        )
+
+        access = WorkflowGroupAccess.objects.get(
+            content_type=ContentType.objects.get_for_model(InternationalResolution),
+            object_id=resolution.pk,
+            group=owner_group,
+        )
+        self.assertTrue(access.can_view)
+        self.assertFalse(access.can_edit)
+        self.assertFalse(access.can_transition)
+        self.assertTrue(access.can_delete)
+        # The resolver reads the same row, so the policy is what members get.
+        self.assertTrue(resolve(member, resolution, VIEW))
+        self.assertFalse(resolve(member, resolution, EDIT))
+        self.assertFalse(resolve(member, resolution, TRANSITION))
+        self.assertTrue(resolve(member, resolution, DELETE))
+
+    def test_owner_access_defaults_maps_the_type_policy_to_access_flags(self):
+        wt = WorkflowType.objects.create(name="Test Defaults Type")
+
+        self.assertEqual(
+            wt.owner_access_defaults(),
+            {
+                "is_primary": True,
+                "can_view": True,
+                "can_edit": True,
+                "can_transition": True,
+                "can_delete": False,
+                "can_share": False,
+                "can_comment": False,
+                "can_manage": False,
+            },
+        )
 
 
 class SyncTypeGroupAccessCommandTests(TestCase):
@@ -2797,6 +2859,68 @@ class SyncTypeGroupAccessCommandTests(TestCase):
         self.assertFalse(owner_access.can_edit)
         self.assertIn("added 0 row(s)", out.getvalue())
 
+    def test_update_existing_reconciles_the_primary_grant_to_the_type_policy(self):
+        owner_access = self._rows().get(group=self.owner_group)
+        # An administrator narrows edit and adds delete by hand.
+        owner_access.can_edit = False
+        owner_access.can_delete = True
+        owner_access.save(update_fields=["can_edit", "can_delete"])
+
+        # Without the flag an edited row is left alone, as documented.
+        call_command("sync_type_group_access", stdout=StringIO())
+        owner_access.refresh_from_db()
+        self.assertFalse(owner_access.can_edit)
+        self.assertTrue(owner_access.can_delete)
+
+        # With it the type's policy wins in both directions: edit comes back and
+        # the hand-granted delete goes.
+        out = StringIO()
+        call_command("sync_type_group_access", "--update-existing", stdout=out)
+        owner_access.refresh_from_db()
+        self.assertTrue(owner_access.can_edit)
+        self.assertFalse(owner_access.can_delete)
+        self.assertIn("refreshed owning-group grant", out.getvalue())
+        self.assertIn("can_delete, can_edit", out.getvalue())
+
+    def test_update_existing_touches_no_other_row(self):
+        # Give the owning group a role override and narrow the viewer's row, then
+        # reconcile: only the owning group's own base flags may change.
+        owner_access = self._rows().get(group=self.owner_group)
+        owner_access.can_edit = False
+        owner_access.save(update_fields=["can_edit"])
+        role = Role.objects.create(name="Sync Owner Role")
+        role_perm = WorkflowRolePermission.objects.create(
+            group_access=owner_access, role=role, can_edit=True
+        )
+        viewer_access = self._rows().get(group=self.viewer_group)
+        viewer_access.can_view = False
+        viewer_access.save(update_fields=["can_view"])
+
+        call_command("sync_type_group_access", "--update-existing", stdout=StringIO())
+
+        owner_access.refresh_from_db()
+        viewer_access.refresh_from_db()
+        role_perm.refresh_from_db()
+        self.assertTrue(owner_access.can_edit)
+        self.assertTrue(role_perm.can_edit)
+        # A viewer group is not the owning group, so its row is not the policy's
+        # business: the narrowed view stays narrowed.
+        self.assertFalse(viewer_access.can_view)
+
+    def test_update_existing_dry_run_writes_nothing(self):
+        owner_access = self._rows().get(group=self.owner_group)
+        owner_access.can_edit = False
+        owner_access.save(update_fields=["can_edit"])
+
+        out = StringIO()
+        call_command(
+            "sync_type_group_access", "--update-existing", "--dry-run", stdout=out
+        )
+
+        owner_access.refresh_from_db()
+        self.assertFalse(owner_access.can_edit)
+        self.assertIn("would refresh", out.getvalue())
+
     def test_unknown_workflow_type_raises(self):
         with self.assertRaises(CommandError):
             call_command("sync_type_group_access", "--workflow-type", "Nope")
@@ -2859,6 +2983,65 @@ class OwnerGroupEditGrantMigrationTests(TestCase):
 
         self.assertFalse(self._access(self.owner_group).can_edit)
         self.assertFalse(self._access(self.viewer_group).can_edit)
+
+
+class OwnerGroupTransitionGrantMigrationTests(TestCase):
+    """Migration 0040 backfills the transition right onto materialised grants."""
+
+    def setUp(self):
+        User = get_user_model()
+        self.owner = User.objects.create_user(username="mig-trans-owner", password="pw")
+        self.owner_group = Group.objects.create(
+            name="Migration Transition Unit", group_type="division"
+        )
+        self.viewer_group = Group.objects.create(
+            name="Migration Transition Committee", group_type="portfolio_committee"
+        )
+        workflow_type = WorkflowType.objects.create(
+            name="Migration Transition Type", group=self.owner_group
+        )
+        workflow_type.viewer_groups.add(self.viewer_group)
+        state = State.objects.create(
+            workflow_type=workflow_type, name="Open", is_initial=True
+        )
+        self.resolution = InternationalResolution.objects.create(
+            workflow_type=workflow_type,
+            current_state=state,
+            resolution_number="IR-MIG-TR-1",
+            title="Materialised before the transition default",
+            owner=self.owner,
+        )
+        # Put the rows back in their pre-0040 shape: the primary grant already
+        # carried the edit right (migration 0037) but not the transition one.
+        WorkflowGroupAccess.objects.filter(
+            content_type=ContentType.objects.get_for_model(InternationalResolution),
+            object_id=self.resolution.pk,
+        ).update(can_transition=False)
+
+    def _access(self, group):
+        return WorkflowGroupAccess.objects.get(
+            content_type=ContentType.objects.get_for_model(InternationalResolution),
+            object_id=self.resolution.pk,
+            group=group,
+        )
+
+    def _migration(self):
+        return import_module("pwms.migrations.0040_widen_owner_group_transition_grant")
+
+    def test_forward_widens_the_primary_grant_only(self):
+        self._migration().widen_owner_group_transition(apps, None)
+
+        self.assertTrue(self._access(self.owner_group).can_transition)
+        # Viewer groups stay read-only — only the primary row is widened.
+        self.assertFalse(self._access(self.viewer_group).can_transition)
+
+    def test_reverse_narrows_the_primary_grant_again(self):
+        migration = self._migration()
+        migration.widen_owner_group_transition(apps, None)
+        migration.narrow_owner_group_transition(apps, None)
+
+        self.assertFalse(self._access(self.owner_group).can_transition)
+        self.assertFalse(self._access(self.viewer_group).can_transition)
 
 
 class PlaceDataTests(TestCase):

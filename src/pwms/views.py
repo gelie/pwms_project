@@ -568,26 +568,42 @@ def _can_answer_referral(user, referral, instance):
     """
     Whether ``user`` may record the answer to ``referral``.
 
-    The committee a matter was referred to owns the answer, so an active member
-    of that group may respond; anyone who may edit the instance may record the
-    response on its behalf instead.
+    The committee a matter was referred to owns the answer, so an active member of
+    that group may respond — checked first, so it holds however little else the
+    member may do. Failing that, anyone who may edit the **record** may record the
+    response on the committee's behalf instead.
+
+    That second path means the record's own editors, not a group whose edit comes
+    from a referral: a referral lends the referred group edit while it is open, and
+    reading that as "an editor of the record" let one committee answer another
+    committee's referral merely because its own was open. Hence
+    ``ignore_referral_grants`` (see ``resolve``).
     """
     if not getattr(user, "is_authenticated", False) or not referral.is_open:
         return False
-    if resolve(user, instance, EDIT):
-        return True
-    return user.memberships.filter(
+    if user.memberships.filter(
         is_active=True, group_id=referral.referred_to_id
-    ).exists()
+    ).exists():
+        return True
+    return resolve(user, instance, EDIT, ignore_referral_grants=True)
 
 
 def _can_recall_referral(user, referral, instance):
-    """Whether ``user`` may withdraw ``referral`` (whoever raised it, or an editor)."""
+    """
+    Whether ``user`` may withdraw ``referral``.
+
+    Whoever raised it may withdraw it, and so may an editor of the record — but
+    an editor whose right comes from **a referral's own grant** may not: the group
+    a matter was referred to answers it, and does not get to withdraw the request
+    it is answering. Anything the record's own policy gives that editor still
+    counts, because only the referral's contribution is left out (see
+    ``resolve``).
+    """
     if not getattr(user, "is_authenticated", False) or not referral.is_open:
         return False
     if user.pk == referral.referred_by_id:
         return True
-    return resolve(user, instance, EDIT)
+    return resolve(user, instance, EDIT, ignore_referral_grants=True)
 
 
 def _referral_context(request, instance):
@@ -598,7 +614,9 @@ def _referral_context(request, instance):
     the reader may take on it, because a template cannot resolve a permission
     that takes arguments. ``can_refer`` folds the edit right together with the
     state's own ``allows_referrals`` gate — the same gate ``refer()`` enforces —
-    so the button never offers a referral the model would refuse.
+    so the button never offers a referral the model would refuse. That edit right
+    ignores what a referral conferred, so a group the record was referred to
+    cannot refer it on (see :func:`_can_recall_referral`).
     """
     referrals = list(
         instance.referrals().select_related(
@@ -607,7 +625,7 @@ def _referral_context(request, instance):
     )
     state = instance.current_state
     can_refer = bool(
-        resolve(request.user, instance, EDIT)
+        resolve(request.user, instance, EDIT, ignore_referral_grants=True)
         and state is not None
         and state.allows_referrals
     )
@@ -2196,7 +2214,7 @@ def _attachment_response(request, target, *, success="", error=""):
 # ``object_id``, so one set of views serves every concrete workflow subclass.
 
 
-def _workflow_target(request, action):
+def _workflow_target(request, action, *, ignore_referral_grants=False):
     """Resolve a request's ``content_type``/``object_id`` to an allowed record.
 
     Shared by the fragments that name their target rather than sitting on a
@@ -2218,7 +2236,7 @@ def _workflow_target(request, action):
     ):
         raise Http404("Unknown referral target.")
     target = get_object_or_404(model, pk=object_id)
-    require(request.user, target, action)
+    require(request.user, target, action, ignore_referral_grants=ignore_referral_grants)
     return target
 
 
@@ -2239,7 +2257,11 @@ def _referral_response(request, target, *, success="", error="", form=None):
 @require_POST
 def referral_create(request):
     """Refer a workflow instance to a group (HTMX fragment)."""
-    target = _workflow_target(request, EDIT)
+    # Raising a referral is the record's business, not something a group the
+    # record was referred to does: what a referral conferred is left out of the
+    # check, so a committee cannot refer a record onward on the strength of being
+    # asked to advise on it.
+    target = _workflow_target(request, EDIT, ignore_referral_grants=True)
     state = target.current_state
     if state is not None and not state.allows_referrals:
         return _referral_response(

@@ -391,9 +391,21 @@ class WorkflowGroupAccessAdmin(admin.ModelAdmin):
         "can_manage",
         "can_transition",
         "is_primary",
+        "via_referral",
         "granted_at",
     )
-    list_filter = ("group", "can_view", "can_edit", "can_transition", "is_primary")
+    list_filter = (
+        "group",
+        "can_view",
+        "can_edit",
+        "can_transition",
+        "is_primary",
+        "via_referral",
+    )
+    # Provenance is written by the referral lifecycle (and read back to decide what
+    # may be withdrawn), so it is shown but not editable: a hand-edited flag would
+    # make a referral close with the wrong grant.
+    readonly_fields = ("via_referral", "referral_raised_edit")
     search_fields = ("group__name", "object_id")
     autocomplete_fields = ("group",)
     ordering = ("group", "-granted_at")

@@ -388,22 +388,23 @@ class ReferralAlertTests(AlertFixture):
         )
         self.assertCountEqual(set(recipients), {"member", "author"})
 
-    def test_committee_member_is_told_without_group_access(self):
+    def test_committee_member_is_told_without_an_access_row(self):
         """
-        A committee may hold no access row on the record it is referred — the
-        referral is the entitlement, which is why this audience is not
-        RBAC-filtered like the role-driven one.
+        The referral is the entitlement: its audience is the committee's members,
+        not whoever holds an access row on the record. The grant the referral
+        materialises is not what puts them on this list, which is why this
+        audience is not RBAC-filtered like the role-driven one.
         """
         referral = self._referred()
+        # The referral does grant access (see tests_referral_access), so remove it
+        # to show the audience does not depend on it.
+        WorkflowGroupAccess.objects.filter(
+            group=self.committee,
+            content_type=ContentType.objects.get_for_model(DelegationReport),
+            object_id=self.report.pk,
+        ).delete()
 
         self.assertIn(self.member, referral_audience(referral))
-        self.assertFalse(
-            WorkflowGroupAccess.objects.filter(
-                group=self.committee,
-                content_type=ContentType.objects.get_for_model(DelegationReport),
-                object_id=self.report.pk,
-            ).exists()
-        )
 
     def test_assignee_hears_about_referral_activity(self):
         """

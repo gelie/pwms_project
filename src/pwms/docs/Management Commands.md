@@ -211,19 +211,27 @@ share takes it out of the queue immediately.
 
 ### Type-level group access
 
-Configuring a `WorkflowType` — its owning `group` and its `viewer_groups` —
-materialises `WorkflowGroupAccess` rows on **new** instances only
+Configuring a `WorkflowType` — its owning `group`, its `viewer_groups` and the
+`owner_can_*` capabilities it grants that group — materialises
+`WorkflowGroupAccess` rows on **new** instances only
 (`AbstractLegislativeWorkflow.materialize_group_access()`).
 `sync_type_group_access` applies the current configuration to instances that
-predate it: the owning group flagged `is_primary` with view + edit, each viewer
-group read-only. It is idempotent and never overwrites an existing row, so it is
-safe to re-run — a grant an administrator has narrowed stays narrowed (migration
-`0037` widened the primary rows that predated the edit default).
+predate it: it creates missing rows (the owning group flagged `is_primary` with the
+type's capabilities, each viewer group read-only) and, with `--update-existing`,
+also re-applies the type's capability policy to the owning group's existing row.
+Without that flag it never overwrites an existing row, so it is safe to re-run — a
+grant an administrator has narrowed stays narrowed (migrations `0037`, `0040` and
+`0041` are how the policy itself arrived: edit, then transition, then the type
+fields that state it). `--update-existing` touches only the owning group's own
+flags: never the per-role `WorkflowRolePermission` or per-state
+`WorkflowStatePermission` children, and never a viewer group's row. Use `--dry-run`
+to preview either behaviour.
 
 | Option | Effect |
 | --- | --- |
 | `--workflow-type NAME_OR_SLUG` | restrict the backfill to one workflow type |
-| `--dry-run` | report what would be created without writing anything |
+| `--update-existing` | also re-apply the type's `owner_can_*` policy to the owning group's existing row, instead of only creating missing rows |
+| `--dry-run` | report what would be created or changed without writing anything |
 
 ### Hierarchy inspection
 

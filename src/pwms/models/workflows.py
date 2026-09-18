@@ -71,6 +71,44 @@ class WorkflowType(BaseModel):
         ),
     )
 
+    # Materialised capability policy: what this type's owning group may do on every
+    # instance of the type. ``materialize_group_access`` writes these onto the
+    # primary ``WorkflowGroupAccess`` row at creation, and
+    # ``sync_type_group_access --update-existing`` re-applies them to rows that
+    # predate a change. View is always granted and viewer groups stay read-only;
+    # these are the owning group's defaults, not ceilings — an instance, role or
+    # state row can still narrow or raise an individual capability.
+    owner_can_edit = models.BooleanField(
+        default=True,
+        verbose_name=_("Owning group may edit"),
+        help_text="New instances let this group change fields.",
+    )
+    owner_can_transition = models.BooleanField(
+        default=True,
+        verbose_name=_("Owning group may transition"),
+        help_text="New instances let this group move the record on.",
+    )
+    owner_can_delete = models.BooleanField(
+        default=False,
+        verbose_name=_("Owning group may delete"),
+        help_text="New instances let this group delete the record.",
+    )
+    owner_can_share = models.BooleanField(
+        default=False,
+        verbose_name=_("Owning group may share"),
+        help_text="New instances let this group share the record.",
+    )
+    owner_can_comment = models.BooleanField(
+        default=False,
+        verbose_name=_("Owning group may comment"),
+        help_text="New instances let this group comment on the record.",
+    )
+    owner_can_manage = models.BooleanField(
+        default=False,
+        verbose_name=_("Owning group may manage access"),
+        help_text="New instances let this group manage the record's access.",
+    )
+
     # Type-level hierarchy: lets the registry declare container relationships,
     # e.g. "International Resolution" nests under "Delegation Report".
     parent_type = models.ForeignKey(
@@ -140,6 +178,32 @@ class WorkflowType(BaseModel):
             if workflow_type.can_create(user)
         ]
         return cls.objects.filter(enabled=True, pk__in=allowed_ids)
+
+    #: Capability a type can grant its owning group, mapped to the field holding its
+    #: default. ``view`` is not configurable: a group that cannot see a record cannot
+    #: work on it, and viewer groups are read-only by design.
+    OWNER_CAPABILITY_FIELDS = (
+        ("edit", "owner_can_edit"),
+        ("transition", "owner_can_transition"),
+        ("delete", "owner_can_delete"),
+        ("share", "owner_can_share"),
+        ("comment", "owner_can_comment"),
+        ("manage", "owner_can_manage"),
+    )
+
+    def owner_access_defaults(self):
+        """
+        ``WorkflowGroupAccess`` defaults this type materialises for its owner.
+
+        Returns a dict suitable for ``get_or_create(defaults=...)``: the primary
+        flag, view, and one ``can_*`` entry per configurable capability. Read by
+        ``materialize_group_access`` for new instances and by
+        ``sync_type_group_access --update-existing`` to reconcile existing ones.
+        """
+        defaults = {"is_primary": True, "can_view": True}
+        for action, field in self.OWNER_CAPABILITY_FIELDS:
+            defaults[f"can_{action}"] = getattr(self, field)
+        return defaults
 
     # -- type hierarchy helpers --------------------------------------------
     @property
@@ -284,14 +348,17 @@ class AbstractLegislativeWorkflow(BaseModel):
         Two kinds are materialised:
 
         * the type's owning ``group``, flagged ``is_primary`` — the unit that
-          governs the type, and which may therefore view *and edit* its records;
+          governs the type, so it may view and work on its records;
         * each of the type's ``viewer_groups`` — read-only shared stakeholders
           (an interest in every instance but no active role in producing it).
 
-        The owning group gets ``can_edit`` and nothing else, so the unit that
-        owns a type can work on its records out of the box; viewer groups and
-        every other capability still start off. Raise further capabilities per
-        instance or through ``WorkflowRolePermission`` as needed. Runs on
+        The owning group's capabilities are the type's ``owner_can_*`` policy (view
+        is always granted): by default edit and transition, so the unit that owns a
+        type can work on its records and move them on out of the box, without being
+        able to delete, share or administer them; viewer groups start read-only.
+        Configure the type to change that for every instance at once, or raise or
+        narrow a capability per instance, or override it for a role or a state
+        through ``WorkflowRolePermission`` / ``WorkflowStatePermission``. Runs on
         creation (see :meth:`save`) and is reused by the ``sync_type_group_access``
         backfill command. Idempotent: an existing row for a group is left as
         configured, so an administrator's edits are never overwritten.
@@ -308,7 +375,7 @@ class AbstractLegislativeWorkflow(BaseModel):
                 content_type=content_type,
                 object_id=self.pk,
                 group_id=owner_group_id,
-                defaults={"is_primary": True, "can_view": True, "can_edit": True},
+                defaults=workflow_type.owner_access_defaults(),
             )
             if was_created:
                 created.append(access)
@@ -534,6 +601,75 @@ class AbstractLegislativeWorkflow(BaseModel):
         notify_referral_created(referral, actor=referred_by)
         return referral
 
+    def sync_referral_access(self, group_id):
+        """
+        Align ``group_id``'s access row with its referrals on this instance.
+
+        A referral is what gives the referred group a foothold on the record:
+        while a referral to it is **open** the group may view and edit the record
+        — enough to read it and contribute the answer — and once every referral has
+        closed the group keeps **view**, so it can still see what it was asked
+        about, which is what audit and reporting need. Runs whenever a referral is
+        created, changes status, is reassigned or is deleted (see
+        :class:`WorkflowReferral`).
+
+        A referral deliberately confers no ``transition``: moving a record on is the
+        owning group's job, and ``transition`` is all-or-nothing — the Status menu
+        offers every transition out of the current state, not just the stage the
+        committee is considering, so lending it to a referred group would let that
+        group close or withdraw a record it was only asked to advise on (see
+        Functional Design §4).
+
+        Only what a referral itself raised is taken back: a capability the group
+        already held (as the type's owner or a viewer group, or from an
+        administrator) is never narrowed, and a row that is more than a referral
+        grant is never removed. A row that exists *only* because of referrals goes
+        when the last referral row does — the referral registers are the history.
+        """
+        referrals = self.referrals().filter(referred_to_id=group_id)
+        has_referral = referrals.exists()
+        has_open_referral = referrals.filter(status="open").exists()
+
+        access = self.group_accesses().filter(group_id=group_id).first()
+        if access is None:
+            if not has_referral:
+                return None
+            return WorkflowGroupAccess.objects.create(
+                content_type=self._instance_ct(),
+                object_id=self.pk,
+                group_id=group_id,
+                can_view=True,
+                can_edit=has_open_referral,
+                referral_raised_edit=has_open_referral,
+                via_referral=True,
+            )
+
+        changed = []
+        if has_open_referral:
+            # The group reads and works on the record for as long as the referral is
+            # open — editing it, and contributing the answer — but no transition:
+            # see the note above.
+            if not access.can_edit:
+                access.can_edit = True
+                access.referral_raised_edit = True
+                changed += ["can_edit", "referral_raised_edit"]
+        elif access.referral_raised_edit:
+            # The referral stage is over: hand back what it raised, and keep view so
+            # the group can still see the record it considered.
+            access.can_edit = False
+            access.referral_raised_edit = False
+            changed += ["can_edit", "referral_raised_edit"]
+
+        if changed:
+            access.save(update_fields=changed)
+
+        # The grant is the referrals': with the last of them gone, a row that
+        # exists only because of them has nothing left to justify it.
+        if not has_referral and access.via_referral and access.grants_only_view:
+            access.delete()
+            return None
+        return access
+
     # -- notes (typed rows, see WorkflowNote) -------------------------------
     def note_log(self):
         """WorkflowNote rows recorded against this instance, newest first."""
@@ -724,7 +860,7 @@ class AbstractLegislativeWorkflow(BaseModel):
         "transition": "can_transition",
     }
 
-    def can(self, user, action):
+    def can(self, user, action, *, ignore_referral_grants=False):
         """
         Resolve effective permission for ``user`` across every group holding
         access on this instance.
@@ -738,10 +874,19 @@ class AbstractLegislativeWorkflow(BaseModel):
            override applies only in those states);
         2. :class:`WorkflowStatePermission` for ``(group_access, current_state)``;
         3. base flags stored on :class:`WorkflowGroupAccess`.
+
+        ``ignore_referral_grants`` answers the same question as if no referral had
+        conferred anything: a row a referral created is passed over, and a
+        capability a referral raised on an existing row is not counted. A referred
+        group is given edit so its members can contribute to the record, which is
+        not authority to administer it — role/state rows, the type's policy and
+        anything else the group genuinely holds still count.
         """
-        field = self.PERMISSION_ACTIONS.get(action.lower())
+        action = action.lower()
+        field = self.PERMISSION_ACTIONS.get(action)
         if field is None:
             raise ValueError(f"Unknown action: {action!r}")
+        raised_by_referral = f"referral_raised_{action}"
 
         memberships = user.memberships.filter(is_active=True).select_related(
             "group", "role"
@@ -756,6 +901,10 @@ class AbstractLegislativeWorkflow(BaseModel):
         for membership in memberships:
             access = access_by_group.get(membership.group_id)
             if access is None:
+                continue
+            if ignore_referral_grants and access.via_referral:
+                # The row exists only because of a referral, so it grants nothing
+                # when that grant is being left out of the answer.
                 continue
 
             # 1) Role override (authoritative when it applies in this state)
@@ -789,7 +938,9 @@ class AbstractLegislativeWorkflow(BaseModel):
                 return True
 
             # 3) Group-level default
-            if getattr(access, field):
+            if getattr(access, field) and not (
+                ignore_referral_grants and getattr(access, raised_by_referral, False)
+            ):
                 return True
 
         return False
@@ -837,6 +988,15 @@ class WorkflowGroupAccess(BaseModel):
     serves every concrete workflow subclass. ``can_*`` here are the group-level
     defaults; :class:`WorkflowRolePermission` refines them per role and
     :class:`WorkflowStatePermission` per state.
+
+    A row may exist because the instance was **referred** to the group (see
+    :meth:`AbstractLegislativeWorkflow.sync_referral_access`): while the referral
+    is open the group may view and **edit** the record, and once it closes the grant
+    narrows to view so the group can still see what it was asked about.
+    ``via_referral`` and ``referral_raised_edit`` record that provenance, and only a
+    capability a referral itself raised is ever taken back. A referral does not
+    confer ``transition`` — see
+    :meth:`~AbstractLegislativeWorkflow.sync_referral_access`.
     """
 
     group = models.ForeignKey(
@@ -866,6 +1026,31 @@ class WorkflowGroupAccess(BaseModel):
     )
     granted_at = models.DateTimeField(auto_now_add=True)
 
+    # Provenance for a referral-driven grant: the row was created by a referral
+    # rather than by the type's materialisation or an administrator, and these are
+    # the capabilities that referral actually raised (and so may take back — a
+    # right the group already held is never marked here).
+    via_referral = models.BooleanField(
+        default=False,
+        help_text=(
+            "Created by a referral, rather than by materialisation or an administrator."
+        ),
+    )
+    referral_raised_edit = models.BooleanField(
+        default=False,
+        help_text="A referral raised can_edit; withdraw it once the referrals close.",
+    )
+
+    #: Capabilities that make a grant more than "may read this record".
+    BEYOND_VIEW_FIELDS = (
+        "can_edit",
+        "can_delete",
+        "can_share",
+        "can_comment",
+        "can_manage",
+        "can_transition",
+    )
+
     class Meta:
         indexes = [
             models.Index(fields=["content_type", "object_id"]),
@@ -877,6 +1062,11 @@ class WorkflowGroupAccess(BaseModel):
             getattr(obj, "title", str(obj)) if obj is not None else f"#{self.object_id}"
         )
         return f"{self.group.name} -> {label}"
+
+    @property
+    def grants_only_view(self):
+        """True when nothing on this row lets the group do more than read."""
+        return not any(getattr(self, field) for field in self.BEYOND_VIEW_FIELDS)
 
 
 class WorkflowRolePermission(BaseModel):
@@ -1420,6 +1610,13 @@ class WorkflowReferral(BaseModel):
     Creation and lifecycle actions (``respond()`` / ``recall()`` /
     ``mark_expired()``) emit ``referral-*`` :class:`WorkflowEvent` rows, so
     every referral lands on the instance timeline automatically.
+
+    A referral also carries the referred group's access to the record: while it is
+    open the group may view and edit the record — enough to read it and contribute
+    the answer — and after it closes the group keeps **view** for audit and
+    reporting. That grant is materialised as a :class:`WorkflowGroupAccess` row and
+    kept in step from here (see
+    ``AbstractLegislativeWorkflow.sync_referral_access``).
     """
 
     STATUS_CHOICES = [
@@ -1469,7 +1666,7 @@ class WorkflowReferral(BaseModel):
         blank=True,
         related_name="workflow_referrals_responded",
     )
-    response_document_url = models.URLField(blank=True)
+    response_document_url = models.URLField(max_length=2048, blank=True)
     response_notes = models.TextField(blank=True)
 
     recalled_at = models.DateTimeField(null=True, blank=True)
@@ -1584,11 +1781,11 @@ class WorkflowReferral(BaseModel):
 
     def save(self, *args, **kwargs):
         created = self._state.adding
-        previous_status = None
+        previous = None
         if not created:
-            previous_status = (
+            previous = (
                 WorkflowReferral.objects.filter(pk=self.pk)
-                .values_list("status", flat=True)
+                .values("status", "referred_to_id")
                 .first()
             )
         super().save(*args, **kwargs)
@@ -1599,7 +1796,7 @@ class WorkflowReferral(BaseModel):
                 actor=self.referred_by,
                 payload={"referred_to": self.referred_to.name},
             )
-        elif previous_status != self.status:
+        elif previous and previous["status"] != self.status:
             slug = self.STATUS_EVENT_SLUGS.get(self.status)
             if slug:
                 self._emit_event(
@@ -1607,6 +1804,34 @@ class WorkflowReferral(BaseModel):
                     actor=self.responded_by or self.recalled_by,
                     payload={"status": self.status},
                 )
+
+        # The referral is what grants the referred group its access, so keep that
+        # grant in step — including for a group a reassignment moved it away from.
+        self._sync_access(self.referred_to_id)
+        if previous and previous["referred_to_id"] != self.referred_to_id:
+            self._sync_access(previous["referred_to_id"])
+
+    def delete(self, *args, **kwargs):
+        """
+        Drop this referral, then let the referred group's access fall back.
+
+        The grant is granted for the referral's lifetime, so removing the row has
+        to re-derive it: a purely referral-driven grant goes with it, while an
+        organic one is only narrowed back to what it held before. (A bulk
+        ``queryset.delete()`` bypasses this, as it always does.)
+        """
+        group_id = self.referred_to_id
+        instance = self.content_object
+        result = super().delete(*args, **kwargs)
+        if instance is not None:
+            instance.sync_referral_access(group_id)
+        return result
+
+    def _sync_access(self, group_id):
+        """Ask the instance to re-derive ``group_id``'s access from its referrals."""
+        instance = self.content_object
+        if instance is not None:
+            instance.sync_referral_access(group_id)
 
 
 class WorkflowNote(BaseModel):
@@ -1854,6 +2079,7 @@ class DelegationReport(AbstractLegislativeWorkflow):
 
     # BR02.3.14 / BR03.5.5 / BR11: documents live in SharePoint.
     report_document_url = models.URLField(
+        max_length=2048,
         blank=True,
         help_text="SharePoint link to the delegation report document (BR02.3.14).",
     )
@@ -2136,6 +2362,7 @@ class DelegationReportUpdate(BaseModel):
         max_length=50, blank=True, help_text="ATC page number (BR03.5.3)."
     )
     atc_document_url = models.URLField(
+        max_length=2048,
         blank=True,
         help_text="SharePoint link to the ATC / update document (BR03.5.5).",
     )
@@ -2325,10 +2552,12 @@ class InternationalAgreement(AbstractLegislativeWorkflow):
         ),
     )
     agreement_document_url = models.URLField(
+        max_length=2048,
         blank=True,
         help_text="SharePoint link to the uploaded agreement document (BR02).",
     )
     explanatory_memorandum_url = models.URLField(
+        max_length=2048,
         blank=True,
         help_text="SharePoint link to the explanatory memorandum (BR02).",
     )
@@ -2509,6 +2738,7 @@ class Bill(AbstractLegislativeWorkflow):
         help_text="Order paper reference, where available (BRS §7B).",
     )
     bill_document_url = models.URLField(
+        max_length=2048,
         blank=True,
         help_text="SharePoint link to the bill document (BRS §7B).",
     )
@@ -2613,6 +2843,7 @@ class BillVersion(BaseModel):
         help_text="Date this version was tabled / published.",
     )
     document_url = models.URLField(
+        max_length=2048,
         blank=True,
         help_text="SharePoint link to this version's document (BRS §7B).",
     )

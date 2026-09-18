@@ -1,9 +1,13 @@
 """The Status menu: performing state transitions from a record's detail page.
 
 Covers the dropdown the shared toolbar renders, the confirmation page it links
-to, and the transition that page applies. The right that gates all of it is the
-``transition`` capability — separate from ``edit`` — so the fixtures grant one
-without the other and assert that only the transition right opens the menu.
+to, and the transition that page applies.
+
+Materialisation gives a type's **owning group** view, edit *and* transition, so a
+member of it can move its records on out of the box. What gates the menu is the
+``transition`` capability rather than group membership, so the tests also withhold
+it from an owning-group member (who may still edit) and use a viewer-group member
+who may only read.
 """
 
 from django.contrib.auth import get_user_model
@@ -29,27 +33,37 @@ class StatusTransitionTests(TestCase):
     def setUpTestData(cls):
         User = get_user_model()
         cls.owner = User.objects.create_user(username="status-owner", password="pw")
-        # Both are members of the type's owning group (which the materialised
-        # grant lets edit); only `mover` is also given the transition right.
+        # Both are members of the type's owning group, which materialisation gives
+        # view, edit and transition to.
         cls.mover = User.objects.create_user(username="status-mover", password="pw")
         cls.editor = User.objects.create_user(username="status-editor", password="pw")
+        # A read-only stakeholder: may open the record, may not change it.
+        cls.viewer = User.objects.create_user(username="status-viewer", password="pw")
         cls.stranger = User.objects.create_user(
             username="status-stranger", password="pw"
         )
 
         cls.group = Group.objects.create(name="Status Office", group_type="division")
+        cls.viewer_group = Group.objects.create(
+            name="Status Committee", group_type="portfolio_committee"
+        )
         cls.officer_role = Role.objects.create(name="Status Officer")
         cls.clerk_role = Role.objects.create(name="Status Clerk")
+        cls.viewer_role = Role.objects.create(name="Status Observer")
         GroupMembership.objects.create(
             user=cls.mover, group=cls.group, role=cls.officer_role
         )
         GroupMembership.objects.create(
             user=cls.editor, group=cls.group, role=cls.clerk_role
         )
+        GroupMembership.objects.create(
+            user=cls.viewer, group=cls.viewer_group, role=cls.viewer_role
+        )
 
         cls.workflow_type = WorkflowType.objects.create(
             name="Status Transition Type", group=cls.group
         )
+        cls.workflow_type.viewer_groups.add(cls.viewer_group)
         cls.open_state = State.objects.create(
             workflow_type=cls.workflow_type, name="Open", is_initial=True
         )
@@ -86,10 +100,14 @@ class StatusTransitionTests(TestCase):
         data.update(overrides)
         return InternationalResolution.objects.create(**data)
 
-    def _allow_transitions(self, resolution):
-        """Give the owning group the transition right, as an admin would."""
+    def _withhold_transitions(self, resolution):
+        """Narrow the owning group's grant, as an administrator might.
+
+        The materialised default includes the transition right, so a reader who
+        cannot move a record on has either had it withheld (this) or never held it.
+        """
         access = resolution.group_accesses().get(group=self.group)
-        access.can_transition = True
+        access.can_transition = False
         access.save(update_fields=["can_transition"])
 
     def _detail_url(self, resolution):
@@ -114,7 +132,6 @@ class StatusTransitionTests(TestCase):
     # -- the menu -----------------------------------------------------------
     def test_detail_page_offers_the_status_menu_with_the_available_transitions(self):
         resolution = self._resolution()
-        self._allow_transitions(resolution)
         self.client.force_login(self.mover)
 
         response = self.client.get(self._detail_url(resolution))
@@ -126,14 +143,15 @@ class StatusTransitionTests(TestCase):
         # A pending state is not offered: it is not reachable from Open.
         self.assertNotContains(response, self._transition_url(resolution, self.close))
 
-    def test_status_menu_is_hidden_from_a_member_who_may_only_edit(self):
+    def test_status_menu_is_hidden_when_the_transition_right_is_withheld(self):
         resolution = self._resolution()
+        self._withhold_transitions(resolution)
         self.client.force_login(self.editor)
 
         response = self.client.get(self._detail_url(resolution))
 
         self.assertEqual(response.status_code, 200)
-        # The owning group may edit its records, so Edit is offered...
+        # The owning group may still edit its records, so Edit is offered...
         self.assertContains(
             response,
             reverse(
@@ -146,7 +164,6 @@ class StatusTransitionTests(TestCase):
 
     def test_referrals_tab_lists_the_transitions_as_links(self):
         resolution = self._resolution()
-        self._allow_transitions(resolution)
         self.client.force_login(self.mover)
 
         response = self.client.get(self._detail_url(resolution))
@@ -159,7 +176,7 @@ class StatusTransitionTests(TestCase):
 
     def test_referrals_tab_lists_the_transitions_as_facts_without_the_right(self):
         resolution = self._resolution()
-        self.client.force_login(self.editor)
+        self.client.force_login(self.viewer)
 
         response = self.client.get(self._detail_url(resolution))
 
@@ -173,7 +190,6 @@ class StatusTransitionTests(TestCase):
     # -- the confirmation page ---------------------------------------------
     def test_confirm_page_describes_the_transition(self):
         resolution = self._resolution()
-        self._allow_transitions(resolution)
         self.client.force_login(self.mover)
 
         response = self.client.get(self._transition_url(resolution, self.assign))
@@ -186,6 +202,7 @@ class StatusTransitionTests(TestCase):
 
     def test_confirm_page_requires_the_transition_right(self):
         resolution = self._resolution()
+        self._withhold_transitions(resolution)
         self.client.force_login(self.editor)
 
         response = self.client.get(self._transition_url(resolution, self.assign))
@@ -203,7 +220,6 @@ class StatusTransitionTests(TestCase):
     def test_a_transition_not_available_from_this_state_is_a_404(self):
         # `assign` starts from Open, which this record has already left.
         resolution = self._resolution(state=self.assigned)
-        self._allow_transitions(resolution)
         self.client.force_login(self.mover)
 
         response = self.client.get(self._transition_url(resolution, self.assign))
@@ -223,7 +239,6 @@ class StatusTransitionTests(TestCase):
             to_state=other_end,
         )
         resolution = self._resolution()
-        self._allow_transitions(resolution)
         self.client.force_login(self.mover)
 
         response = self.client.get(self._transition_url(resolution, foreign))
@@ -233,7 +248,6 @@ class StatusTransitionTests(TestCase):
     # -- applying one -------------------------------------------------------
     def test_post_applies_the_transition_and_lands_on_the_timeline(self):
         resolution = self._resolution()
-        self._allow_transitions(resolution)
         self.client.force_login(self.mover)
 
         response = self.client.post(
@@ -257,7 +271,6 @@ class StatusTransitionTests(TestCase):
 
     def test_a_comment_required_transition_is_refused_without_one(self):
         resolution = self._resolution(state=self.assigned)
-        self._allow_transitions(resolution)
         self.client.force_login(self.mover)
 
         response = self.client.post(
@@ -276,7 +289,6 @@ class StatusTransitionTests(TestCase):
 
     def test_a_comment_required_transition_is_applied_with_one(self):
         resolution = self._resolution(state=self.assigned)
-        self._allow_transitions(resolution)
         self.client.force_login(self.mover)
 
         response = self.client.post(
@@ -291,7 +303,6 @@ class StatusTransitionTests(TestCase):
 
     def test_an_unmet_condition_is_explained_and_blocks_the_post(self):
         resolution = self._resolution()
-        self._allow_transitions(resolution)
         TransitionCondition.objects.create(
             transition=self.assign,
             condition_type="field_set",

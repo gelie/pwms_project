@@ -38,7 +38,13 @@ after a real Graph folder id overflowed `varchar(200)` — which blocked *every*
 written. The same migration widened `WorkflowEvent.document_url`, for the same
 reason: the attachment service copies `Attachment.sharepoint_web_url` into the
 record's `document-attached` event, and a real `webUrl` in this tenant already
-runs to 249 characters.
+runs to 249 characters. Migration `0042` extended the same reasoning to the links
+a *user* pastes rather than the app writes: the workflow `*_document_url` fields
+(`DelegationReport.report_document_url`,
+`DelegationReportUpdate.atc_document_url`, `InternationalAgreement`'s
+`agreement_document_url` / `explanatory_memorandum_url`, `Bill.bill_document_url`,
+`BillVersion.document_url`, `WorkflowReferral.response_document_url`) now allow
+2048 as well — at 200 they refused exactly the links the app hands out elsewhere.
 
 Run it from the repo root:
 

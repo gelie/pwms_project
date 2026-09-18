@@ -173,11 +173,28 @@ The **Referrals tab** on every detail page drives the lifecycle without the
 admin: *Add Referral* opens a searchable committee picker plus a response
 deadline and notes, and each open row carries *Respond* and *Withdraw*
 (`pwms/templates/pwms/partials/referral_section.html`). Raising a referral and
-withdrawing one need the record's `edit` right; **responding** is also open to an
-active member of the referred-to committee (`views._can_answer_referral`). The
-tab also lists the transitions available from the current state (performing them
-from the web UI is still to come), and the deadline reminders / expiry are driven
-by the `check_referral_deadlines` command.
+withdrawing one need the record's `edit` right; **responding** is open to an active
+member of the referred-to committee, and otherwise to an editor of the record who
+may answer on that committee's behalf (`views._can_answer_referral`). All three
+checks read `edit` with the referral's *own* grant left out
+(`resolve(..., ignore_referral_grants=True)`): a committee answers its own
+referral, and its grant — edit while the referral is open — is not authority to
+answer a neighbouring committee's, withdraw its own, or raise further referrals.
+The tab also lists the transitions available from the current state, and the
+deadline reminders / expiry are driven by the `check_referral_deadlines` command.
+
+A referral is also what **grants the referred group its access** to the record:
+while a referral to it is open the group may view and edit the record — enough to
+read it and contribute the answer — and once every referral has closed it keeps
+**view**, so the committee can still see what it was asked to consider. That grant
+is a `WorkflowGroupAccess` row like any other (marked `via_referral`), so the
+instance's access table remains the one place that answers "who can see this"; only
+the capability the referral itself raised is withdrawn when it closes, so a right
+the group already held stands, and a row that is more than a referral grant is
+never removed. A referral confers no **`transition`** — see
+[§4](#4-access-control) — and no authority over the referral registers: the group a
+matter was referred to cannot withdraw the referral it is answering or raise
+further ones.
 
 ---
 
@@ -215,23 +232,41 @@ view / edit / delete / share / comment / manage / transition on existing rows.
 A type may also declare **viewer groups** (`viewer_groups`): read-only
 stakeholders with an interest in every instance but no active role in producing
 it. When an instance is created it materialises its `WorkflowGroupAccess` rows
-from the type — the type's owning `group` (flagged `is_primary`, granted view
-**and** edit) and one read-only row per viewer group (view on, every other
-capability off) — so members of those groups can see it and each grant appears
-in the instance's own access table with a `granted_at` timestamp. Raise
-individual capabilities per instance or through `WorkflowRolePermission` as
+from the type — the type's owning `group` (flagged `is_primary`, granted view plus
+the capabilities the type configures) and one read-only row per viewer group (view
+on, every other capability off) — so members of those groups can see it and each
+grant appears in the instance's own access table with a `granted_at` timestamp.
+Raise individual capabilities per instance or through `WorkflowRolePermission` as
 needed. This is creation-time materialisation only; run
-`manage.py sync_type_group_access` to backfill instances that predate a
-configuration change.
+`manage.py sync_type_group_access` to create rows for instances that predate a
+configuration change, or add `--update-existing` to re-apply a changed capability
+policy to the rows that already exist.
 
-Materialised rows grant **view by default, and edit to the owning group only**:
-the primary row (`is_primary`) gets `can_view` + `can_edit`, while viewer groups
-get a view-only row (every other capability off). A brand-new instance is
-therefore workable out of the box by its **owning group**, its **owner** and
-superusers — which matches how the office is arranged (IRP owns the three
-international-relations types, LSO the Bill); delete, share, comment,
-manage and transition still need an explicit grant per instance or through
-`WorkflowRolePermission`, and viewer groups never gain them by default.
+Materialised rows grant the owning group **view** plus whatever the type's
+`owner_can_*` policy allows — by default **edit and transition**, so the primary
+row (`is_primary`) gets `can_view` + `can_edit` + `can_transition` — while viewer
+groups get a view-only row. The policy is stated once per type and read at
+creation, so a type that must not be edited (a register) or whose records are
+disposable (delete) is configured on the type in the admin rather than instance by
+instance, and `sync_type_group_access --update-existing` re-applies a changed
+policy to records that already exist. A brand-new instance is therefore worked on
+out of the box by its **owning group**, its **owner** and superusers, which matches
+how the office is arranged (IRP owns the three international-relations types, LSO
+the Bill): the owning unit can draft, correct *and move on* its own records, but by
+default cannot delete, share or administer them. A capability the policy withholds
+can still be raised per instance, or through
+`WorkflowRolePermission`/`WorkflowStatePermission`, and viewer groups never gain
+more than view from materialisation.
+
+An access row can also come from a **referral**: while a referral to a group is
+open its members may view and edit the record, and once every referral has closed
+they keep view (see [§3.4](#34-referrals)). That grant is materialised as an access
+row like any other — marked `via_referral`, and recording whether a referral had to
+raise `edit` on a row that already existed — so a referral closing hands back
+exactly what it added and never narrows the type's policy or an administrator's
+grant. A referral never grants **`transition`**, and never authority over the
+referral registers: the group it was sent to contributes to the record, it does not
+move it on, withdraw the referral or raise further ones.
 
 All of this is exposed through one **`PermissionResolver` service**
 (`pwms/services/permissions.py`), the single source of truth the web UI and the
@@ -257,7 +292,9 @@ state) needs **`transition`** instead, so a group may be able to edit a record
 without being able to move it on. Notes carry one extra rule on top: a note may be
 changed only by its **author** (`views._can_change_note`). Given the defaults
 above, the edit-gated controls are visible to a record's owning group and its
-owner from the start, and to anyone else once those rights are granted.
+owner from the start, and to anyone else once those rights are granted — such as a
+committee the record is currently referred to, whose referral grant carries edit
+for as long as the referral is open.
 
 ### Who may move a record on
 
@@ -273,7 +310,7 @@ It is granted by the RBAC tables, in the resolution order above:
 `WorkflowStatePermission.can_transition` for the current state, else the group
 default `WorkflowGroupAccess.can_transition`. Superusers bypass the lot.
 
-Two things are easy to misread, so they are worth stating plainly:
+Three things are easy to misread, so they are worth stating plainly:
 
 - **`Transition.allowed_roles` is not an authorisation rule.** It is advisory
   metadata: a diagram label, and — through `next_actor_roles()` — extra
@@ -281,14 +318,24 @@ Two things are easy to misread, so they are worth stating plainly:
   their transitions.
 - **`Role.can_transition_workflows` is a legacy flag** that `PermissionResolver`
   never consults (see [§2](#2-identity--organisation-management)).
+- **A referral confers no `transition`.** The group a record was referred to may
+  read and edit it, but moving it on is the owning group's job — and `transition`
+  is not that specific: the *Status* menu offers *every* transition out of the
+  current state, so lending it to a referred group would let that group close or
+  withdraw a record it was only asked to advise on (see
+  [§3.4](#34-referrals)).
 
-**Nothing is granted at creation.** Materialisation writes view (plus edit, for
-the owning group) and stops there, so until an administrator raises
-`can_transition` somewhere, **only superusers can perform a transition**: the
-*Status* menu is not rendered for anyone else, and the Referrals tab shows the
-transitions as plain reference. Raise it per instance (`WorkflowGroupAccess`),
-per role (`WorkflowRolePermission`, optionally per state) or per state
-(`WorkflowStatePermission`) in the admin.
+**The owning group is granted it at creation**, by the type's
+`owner_can_transition` field: materialisation gives the owning group
+`can_transition` along with view and its other configured capabilities, so the unit
+that owns a type can move its own records on without an administrator touching each
+instance. A type whose records its own group should not move unchecks the field
+(and `sync_type_group_access --update-existing` takes the right back off existing
+records); a viewer group, and everyone else, never gets it from materialisation.
+Beyond that it is raised (or narrowed) per instance on `WorkflowGroupAccess`, per
+role on `WorkflowRolePermission` (optionally limited with `allowed_states`) or per
+state on `WorkflowStatePermission` in the admin — and those override the
+materialised default.
 
 ---
 
