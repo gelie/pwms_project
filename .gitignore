@@ -16,3 +16,4 @@ logs/*
 workflow_requirements/*
 src/old/*
 src/sharepoint_integration/*
+local_pwms.sql
