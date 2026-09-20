@@ -367,8 +367,8 @@ AUTH_LDAP_CONNECTION_OPTIONS = {
     ldap.OPT_REFERRALS: 0,  # AD referrals break everything if not disabled
     # The sign-in form waits on this connection, so fail fast and let the local
     # backend take over instead of tying up a worker.
-    ldap.OPT_NETWORK_TIMEOUT: 5,
-    ldap.OPT_TIMEOUT: 5,  # Overall operation timeout
+    ldap.OPT_NETWORK_TIMEOUT: 3,
+    ldap.OPT_TIMEOUT: 3,  # Overall operation timeout
     # This tells OpenSSL/python-ldap to skip CA verification
     # Perfectly safe when you fully control both ends (internal AD)
     ldap.OPT_X_TLS_REQUIRE_CERT: ldap.OPT_X_TLS_ALLOW,
