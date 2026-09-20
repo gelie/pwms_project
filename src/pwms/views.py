@@ -1638,6 +1638,7 @@ def workflow_diagram(request, public_id):
     return FileResponse(path.open("rb"), content_type="image/svg+xml")
 
 
+<<<<<<< Updated upstream
 def _transition_or_404(instance, raw_id):
     """
     The instance's transition named by ``raw_id``, if it is available right now.
@@ -1726,6 +1727,9 @@ def workflow_transition(request, public_id):
     return _transition_page(request, instance, transition, unmet=unmet)
 
 
+=======
+@login_not_required
+>>>>>>> Stashed changes
 def about(request):
     """About page (sign-in required)."""
     return render(request, "pwms/about.html")
