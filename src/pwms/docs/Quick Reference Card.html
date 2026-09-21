@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>PWMS — IRPD Quick Reference</title>
+    <style>
+      @page { size: A4 portrait; margin: 9mm 8mm; }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        color: #111;
+        font-family: "DejaVu Sans", "Liberation Sans", "Helvetica Neue", Arial, sans-serif;
+        font-size: 8pt;
+        line-height: 1.3;
+      }
+
+      header {
+        border-bottom: 2px solid #1F4E9C;
+        padding-bottom: 1.4mm;
+        margin-bottom: 2.2mm;
+      }
+      h1 { margin: 0; font-size: 14pt; color: #1F4E9C; letter-spacing: -0.3pt; }
+      .sub { margin: 0.5mm 0 0; font-size: 7.4pt; color: #555; }
+
+      .cols { column-count: 3; column-gap: 5mm; }
+
+      section { break-inside: avoid; margin-bottom: 2.6mm; }
+
+      h2 {
+        margin: 0 0 1.1mm;
+        padding: 0.6mm 1.4mm;
+        font-size: 8.6pt;
+        color: #fff;
+        background: #1F4E9C;
+        border-radius: 1mm;
+      }
+
+      ul { margin: 0; padding-left: 3.4mm; }
+      li { margin-bottom: 0.85mm; }
+
+      strong { color: #163A73; }
+
+      code {
+        font-family: "DejaVu Sans Mono", "Liberation Mono", monospace;
+        font-size: 7.4pt;
+      }
+
+      .ref { font-family: "DejaVu Sans Mono", "Liberation Mono", monospace; font-size: 7.4pt; }
+
+      .box { padding: 1mm 1.4mm; margin-top: 1mm; border-radius: 0.8mm; }
+      .note { background: #fff6db; border-left: 2px solid #efbd47; }
+      .warn { background: #fdecea; border-left: 2px solid #B23A30; }
+
+      .chain { font-size: 7.6pt; }
+      .chain b { color: #275937; }
+
+      .screen-only {
+        max-width: 210mm;
+        margin: 6mm auto 2mm;
+        padding: 2mm 3mm;
+        background: #eef3fb;
+        border: 1px solid #c8d8ef;
+        border-radius: 1mm;
+        font-size: 8.5pt;
+        color: #333;
+      }
+
+      @media screen {
+        body { background: #e9e9ec; padding-bottom: 10mm; }
+        header, .cols {
+          max-width: 210mm;
+          margin-left: auto;
+          margin-right: auto;
+          background: #fff;
+        }
+        header { padding: 6mm 8mm 2mm; margin-top: 4mm; }
+        .cols { padding: 0 8mm 8mm; box-shadow: 0 1mm 4mm rgba(0, 0, 0, .18); }
+      }
+
+      @media print {
+        .screen-only { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <p class="screen-only">
+      <strong>Print this card:</strong> A4, portrait, scale 100%, background
+      graphics on. Keep this page for the section's wall; the details behind
+      every line are in <em>Training Manual.md</em>.
+    </p>
+
+    <header>
+      <h1>PWMS — IRPD Quick Reference</h1>
+      <p class="sub">
+        Parliamentary Workflow Management System · Delegation Reports ·
+        International Resolutions · International Agreements
+      </p>
+    </header>
+
+    <main class="cols">
+      <section>
+        <h2>Sign in &amp; your day</h2>
+        <ul>
+          <li>
+            Sign in with your <strong>Parliament directory account</strong> — no
+            separate PWMS password. Use the show/hide control to check your
+            typing.
+          </li>
+          <li>
+            Dashboard figures: <strong>Total workflows</strong> (open ·
+            unassigned) · <strong>Assigned to you</strong> (you owe the next
+            action) · <strong>Due in 7 days</strong> · <strong>Overdue</strong>.
+          </li>
+          <li>
+            Work lists: <strong>Assigned to you</strong> ·
+            <strong>Due soon</strong> · <strong>Overdue</strong> ·
+            <strong>Awaiting your committees</strong>.
+          </li>
+          <li>
+            <strong>Overdue</strong> = deadline passed while the record is still
+            open. A record in a final stage is never overdue.
+          </li>
+          <li>
+            The <strong>bell</strong> shows alerts. The search box in the page
+            header is decorative — use the <strong>Search</strong> on the page
+            you are working in.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>The three lifecycles</h2>
+        <p class="chain">
+          <strong>Delegation Report</strong><br />
+          Awaiting PGIR approval → Submitted for tabling → Tabled and referred
+          to Committee → <b>Closed – House approved</b><br />
+          <span class="ref">DR-YYYY-NNNN</span> (issued by PWMS)
+        </p>
+        <p class="chain">
+          <strong>International Resolution</strong><br />
+          Captured → Assigned → In Progress → Implemented → <b>Closed</b><br />
+          <span class="ref">number is typed by you and must be unique</span>
+        </p>
+        <p class="chain">
+          <strong>International Agreement</strong><br />
+          <em>(Submitted for tabling)</em> →
+          <b>Agreement Tabled – referred to Committee</b> [start] → Committee
+          considering and processing → Committee submitted report for tabling →
+          House adopted – referred to Department → <b>Closed – House approved</b
+          ><br />
+          <span class="ref">IA-YYYY-NNNN</span> (issued by PWMS)
+        </p>
+        <div class="box note">
+          A new agreement starts at stage 2, not at
+          <em>Submitted for tabling</em>. Reference numbers restart at
+          <span class="ref">0001</span> each January — always quote the year.
+        </div>
+      </section>
+
+      <section>
+        <h2>Create a record</h2>
+        <ul>
+          <li>
+            <em>Common to all three:</em> <strong>Title</strong> (required),
+            Description, Assigned to, <strong>Deadline</strong>, Priority.
+          </li>
+          <li>
+            <strong>Delegation Report</strong> <em>(New Report)</em>: engagement
+            name, country → city, start/end dates (<strong
+              >never future; end ≥ start</strong
+            >), report document link, delegates (member or support official +
+            role held), resolutions adopted.
+          </li>
+          <li>
+            <strong>International Resolution</strong> <em>(New Resolution)</em>:
+            <strong>resolution number</strong> (required, unique), delegation
+            report (optional), adoption date, responsible group, resolution
+            text, implementation progress.
+          </li>
+          <li>
+            <strong>International Agreement</strong> <em>(New Agreement)</em>:
+            agreement type 231(2)/231(3), ATC tabling date, submitting
+            department, responsible minister, referral committees, ATC
+            reference, agreement + memorandum links.
+          </li>
+        </ul>
+        <div class="box note">
+          <strong>Minister:</strong> link a <strong>serving</strong> office
+          holder in <em>Responsible minister</em>. For a former minister or one
+          with no account, type the name in <em>Responsible minister name</em> —
+          PWMS refuses anyone holding no executive appointment.
+        </div>
+      </section>
+
+      <section>
+        <h2>Move a record on</h2>
+        <ul>
+          <li>
+            Toolbar: <strong>Document</strong> (PDF/HTML) ·
+            <strong>Status</strong> · <strong>Edit</strong> ·
+            <strong>Delete</strong> — each appears only if you may use it.
+          </li>
+          <li>
+            <strong>Status</strong> lists only the moves legal from the current
+            stage. Each opens <strong>Change status</strong>: add a
+            <strong>Comment</strong> (good practice — it lands on the Timeline),
+            then <strong>Confirm status change</strong>. You land on the
+            <strong>Timeline</strong>.
+          </li>
+          <li>
+            Taking a move validates it, advances the stage, writes the history
+            entry, and <strong>alerts</strong> the people who need to know.
+          </li>
+          <li>
+            No <strong>Status</strong> menu = you may read or edit the record
+            but <strong>not move it on</strong> (the usual case for a committee
+            it was referred to).
+          </li>
+        </ul>
+        <div class="box warn">
+          <strong>Blocked?</strong> A warning —
+          <em>This transition cannot be taken yet</em> — lists every unmet
+          requirement and disables the button.
+          <strong>Closing a delegation report</strong> needs an
+          <strong>ATC update published</strong> entry, or PWMS answers
+          <em>“Requires a 'ATC update published' event on this workflow.”</em>
+        </div>
+      </section>
+
+      <section>
+        <h2>Referrals</h2>
+        <ul>
+          <li>
+            <strong>Raise:</strong> Referrals tab →
+            <strong>Add Referral</strong> → <code>Refer to</code>,
+            <code>Response due</code> (always set it), notes →
+            <strong>Send referral</strong>. Needs <strong>Edit</strong>.
+          </li>
+          <li>
+            Grants the committee <strong>view</strong>, plus
+            <strong>edit while the referral is open</strong>, and keeps
+            <strong>view</strong> after it closes. It grants
+            <strong>no</strong> right to move the record on.
+          </li>
+          <li>
+            <strong>Answer:</strong> <strong>Respond</strong> → response
+            document link + notes → <strong>Record response</strong>. The linked
+            committee may answer; otherwise an editor, on its behalf.
+          </li>
+          <li>
+            <strong>Withdraw:</strong> the person who raised it. Reminders go
+            out at <strong>24 h</strong> and <strong>1 h</strong>; unanswered
+            referrals expire.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Documents (SharePoint)</h2>
+        <ul>
+          <li>
+            <strong>Attach:</strong> Attachments tab →
+            <strong>Add attachment</strong> → browse
+            <em>Sites you are a member of</em> → <strong>Attach</strong> an
+            existing file, or choose a file + <strong>Attachment type</strong> →
+            <strong>Upload &amp; attach</strong>. Needs <strong>Edit</strong>.
+          </li>
+          <li>
+            <strong>Open:</strong> select the document name. Never copy or email
+            the resolved address — it expires in about an hour. Share the
+            <em>record</em> instead.
+          </li>
+          <li>
+            <strong>Versions</strong> shows the history with a
+            <strong>Download</strong> per version. Same name into the same
+            folder = a <strong>new version</strong>, not a second document.
+          </li>
+          <li>
+            <strong>Detach</strong> removes the link only; the file stays in
+            SharePoint. Activity is recorded on the record.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Notes — two kinds</h2>
+        <ul>
+          <li>
+            The record's <strong>Notes field</strong> — free text captured on
+            the create/edit form and shown as <em>Notes on the record</em>.
+          </li>
+          <li>
+            The <strong>note log</strong> — dated entries on the
+            <strong>Notes</strong> tab (<strong>Add Note</strong>; needs Edit).
+          </li>
+          <li>
+            A note may be changed or deleted
+            <strong>only by its author</strong>, and only while they may still
+            edit the record. Add a correcting note instead.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Reports &amp; exports</h2>
+        <ul>
+          <li>
+            <strong>Reports → Report builder</strong>: filter by report type,
+            search, priority, sort, workflow type, state, owner, group, period
+            or explicit dates, overdue / due soon / unassigned.
+          </li>
+          <li>
+            A report — and its export, print or share — shows
+            <strong>only records you may open</strong>. Never more.
+          </li>
+          <li>
+            Exports: <strong>Excel (.xlsx)</strong> ·
+            <strong>PDF (.pdf)</strong> · <strong>Web page (.html)</strong> ·
+            <strong>Comma-separated (.csv)</strong>.
+            <strong>CSV is the register only</strong>; the others always carry
+            summary, breakdowns, register, activity and referrals, whichever
+            report type you picked.
+          </li>
+          <li>
+            One instrument as a formal document: the record's
+            <strong>Document</strong> menu.
+          </li>
+        </ul>
+        <div class="box note">
+          <strong>Share:</strong> link + expiry, optional repeat and email. The
+          recipient <strong>must sign in</strong> and sees
+          <strong>your</strong> figures. It is fixed once created, and
+          <strong>only an administrator can revoke it</strong>. A share dies if
+          its creator's account is removed.
+        </div>
+      </section>
+
+      <section>
+        <h2>Alerts</h2>
+        <ul>
+          <li>
+            Bell = unread count and the 5 newest.
+            <strong>View all alerts</strong> lists the newest 25;
+            <strong>Mark all read</strong> clears every unread, not just those
+            25.
+          </li>
+          <li>
+            Opening an alert marks it read;
+            <strong>viewing the page marks nothing</strong>.
+          </li>
+          <li>
+            Raised on: record created · record moved on · referral raised,
+            answered, recalled, expired or due.
+          </li>
+          <li>
+            The person who acted is never alerted, and nobody who cannot view
+            the record is ever told about it.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Escalate when…</h2>
+        <ul>
+          <li>
+            <strong>New Report / Resolution / Agreement refuses you</strong> —
+            ask your administrator for the creating role.
+          </li>
+          <li>
+            <strong>A record is missing from your register</strong> — ask for
+            access, or for a referral to your committee.
+          </li>
+          <li>
+            <strong>The Status menu is missing</strong> or the move you expect
+            is absent — confirm your move-on right, then check the
+            <strong>Diagram</strong> tab.
+          </li>
+          <li>
+            <strong>A transition is blocked</strong> — read the warning box; a
+            report close normally needs the ATC update.
+          </li>
+          <li>
+            <strong>Attachments show no SharePoint sites</strong> — ask for the
+            site to be enabled and your membership synced.
+          </li>
+          <li>
+            <strong>No alert email arrives</strong> — ask the administrator to
+            check the mail service and the background worker.
+          </li>
+          <li>
+            <strong>A share must be revoked</strong> — only an administrator
+            can; do not rely on the link meanwhile.
+          </li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>
