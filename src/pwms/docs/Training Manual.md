@@ -759,9 +759,9 @@ Open a record to reach its tabs:
 
 | Tab | What it is for |
 | --- | --- |
-| **Overview** | Key information, ownership, description and the instrument's own facts. Start here for a record you do not know. |
+| **Overview** | Key information, ownership, description and the instrument's own facts — plus, on a report, the **BR03 updates** history and the form that records one. Start here for a record you do not know. |
 | **Progress** | The completion ring, the state sequence and the journey so far. |
-| **Related** | The hierarchy (parent and attached records) and, for reports, the participants and BR03 updates. |
+| **Related** | The hierarchy (parent and attached records) and, for reports, the participants. |
 | **Notes** | The note log, plus the record's own notes text where the instrument has one. |
 | **Attachments** | The documents held against the record. |
 | **Referrals** | Referrals raised and received, and the transitions available from the current state. |
@@ -866,16 +866,23 @@ For IRPD's instruments there is one such precondition in the seeded configuratio
 > **ATC update published** event on the record. Until the report's update has been
 > published in the Announcements, Tablings and Committee Reports with its
 > reference, date and page, PWMS refuses with **"Requires a 'ATC update published'
-> event on this workflow."**
+> event on this workflow."** Recording that publication is IRPD's own job — see
+> below.
 
 Two practical points:
 
 - The **Conditions** column on the Referrals tab may show `—` for that same
   transition, because it lists a different kind of rule. Only the confirmation page
   reveals the event requirement. Do not read `—` as "nothing to satisfy".
-- Recording the ATC update is currently an **administrator task** rather than a
-  screen IRPD can use — see item E1.6 in Appendix E. If the close is blocked and the
-  update has genuinely been published, ask the administrator to record it.
+- **Recording it is yours to do.** Open the report's **Overview** tab, find the
+  **BR03 updates** card and select **Add update**. Give the update's date and any
+  one of the ATC reference, publication date, page number or document link, then
+  select **Record update**. PWMS replies that the report may now be closed, and the
+  *Status* menu's move will go through.
+- An update recorded **without** any ATC detail is still kept — it is the report's
+  update history — but it publishes nothing and leaves the close blocked. That is
+  what the *"Add the ATC reference, date, page or document to record the
+  publication."* answer means.
 
 ### 7.5 When a move is not offered
 
@@ -1680,8 +1687,9 @@ shares in the name of a current officer before a colleague leaves?
 | I want to… | Go to |
 | --- | --- |
 | See what the record is | **Overview** |
+| Record the ATC publication, or read the update history | **Overview** (the BR03 updates card) |
 | See how far along it is | **Progress** |
-| See its parent or attached records, delegates, updates | **Related** |
+| See its parent or attached records, and its delegates | **Related** |
 | Record a decision or follow-up | **Notes** |
 | Find or add a document | **Attachments** |
 | Ask a committee or answer one | **Referrals** |
@@ -1716,7 +1724,7 @@ before the section is trained, because each one changes what trainees will see.
 | E1.3 | **IRPD staff are active members** of the owning group, with the intended roles | Group ownership is what grants IRPD automatic view, edit and move-on rights. |
 | E1.4 | **SharePoint sites are enabled and memberships synced** | A user's document picker lists only the sites they are a member of. |
 | E1.5 | **A mail service and the background worker are running** | Otherwise alert and share email is written to the server console rather than delivered, and repeating shares never send. |
-| E1.6 | **A route for recording ATC updates is agreed** | The *Close – House approved* transition on a delegation report requires an **ATC update published** event. There is currently no dedicated user screen for it; agree how IRPD will request it. |
+| E1.6 | **IRPD staff hold the edit right on their reports** | Recording an ATC update — and so unblocking the close — is done from the report's **Overview** tab and needs the record's **edit** right, which the owning group and the record's owner hold by default. |
 | E1.7 | **The section's conventions are agreed** | A resolution-numbering house style and a rule on transition comments (see Module 7.6) — PWMS will not enforce either. |
 
 ### E.2 Known limitations to disclose honestly in training

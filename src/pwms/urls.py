@@ -68,6 +68,13 @@ urlpatterns = [
         views.delegation_report_participant_delete,
         name="delegation_report_participant_delete",
     ),
+    # BR03 updates (the ATC publication among them) are rows of the report too;
+    # the detail page records one at a time from the Related tab.
+    path(
+        "workflows/delegation-reports/<uuid:public_id>/updates/add/",
+        views.delegation_report_update_add,
+        name="delegation_report_update_add",
+    ),
     # International resolutions
     path(
         "workflows/international-resolutions/",

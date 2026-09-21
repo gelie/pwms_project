@@ -529,7 +529,8 @@ cycles, and enforce the parent type's declared child types when any exist.
 
 The BR03 update history for a delegation report: one row per update, replacing
 the previous single-set ATC fields (now read-only "latest" properties on
-`DelegationReport`). Append via `report.record_update(...)`.
+`DelegationReport`). Append via `report.record_update(...)`, from the report's
+Overview tab (the `delegation_report_update_add` endpoint), or in the admin.
 
 | Field | Notes |
 | --- | --- |

@@ -1,0 +1,114 @@
+{% comment %}
+The BR03 update history on a delegation report: the updates recorded against it,
+the form that records another, and — in the header — how many there are.
+
+Recording an update that carries any ATC detail (reference, publication date,
+page or document) emits the ``atc-update-published`` event, which is the evidence
+the *Close – House approved* transition is guarded by (see
+``pwms.models.DelegationReportUpdate``). This is therefore the screen that
+unblocks closing a report; an update without ATC detail is still recorded, it
+just publishes nothing.
+
+Rendered standalone as the HTMX response to a create, and included by
+``pwms/delegation-report-detail.html``. The response root and the include target
+are both ``#report-updates-section``; callers swap it with ``outerHTML``, and the
+status alert lives outside it in the tab pane so it survives that swap.
+
+Context (from ``pwms.views._updates_context``): report, updates, can_edit_updates,
+update_form; plus updates_status ({level, message}) when one was just recorded.
+{% endcomment %}
+<section class="workflow-card" id="report-updates-section">
+  <div class="workflow-card-head">
+    <span class="d-flex align-items-center gap-2">{% lucide "clipboard-list" size=16 %} BR03 updates
+    <span class="badge badge-muted">{{ updates|length }}</span></span>
+    {% if can_edit_updates %}
+      <button class="btn btn-outline-primary btn-sm"
+              type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#report-update-form"
+              aria-expanded="false"
+              aria-controls="report-update-form">Add update</button>
+    {% endif %}
+  </div>
+  {% if can_edit_updates %}
+    <div id="report-update-form"
+         class="collapse{% if update_form.errors %} show{% endif %} border-bottom p-3">
+      <form method="post"
+            hx-post="{% url "pwms:delegation_report_update_add" report.public_id %}"
+            hx-target="#report-updates-section"
+            hx-swap="outerHTML">
+        {% csrf_token %}
+        <p class="small workflow-muted">
+          Record the update, and the ATC publication it appeared in. Entering any
+          ATC detail publishes an <em>ATC update published</em> event, which is
+          what allows the report to be closed.
+        </p>
+        <div class="row g-3">
+          {% include "pwms/_form_field.html" with field=update_form.update_date wrapper_class="col-12 col-md-4" %}
+          {% include "pwms/_form_field.html" with field=update_form.resulting_state wrapper_class="col-12 col-md-8" %}
+          {% include "pwms/_form_field.html" with field=update_form.atc_reference wrapper_class="col-12 col-md-6" %}
+          {% include "pwms/_form_field.html" with field=update_form.atc_publication_date wrapper_class="col-12 col-md-3" %}
+          {% include "pwms/_form_field.html" with field=update_form.atc_page_number wrapper_class="col-12 col-md-3" %}
+          {% include "pwms/_form_field.html" with field=update_form.atc_document_url wrapper_class="col-12" %}
+          {% include "pwms/_form_field.html" with field=update_form.notes wrapper_class="col-12" %}
+        </div>
+        <div class="d-flex gap-2 mt-3">
+          <button class="btn btn-primary btn-sm" type="submit">Record update</button>
+          <button class="btn btn-link btn-sm"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#report-update-form">Cancel</button>
+        </div>
+      </form>
+    </div>
+  {% endif %}
+  <div class="table-responsive">
+    <table class="table table-striped table-hover align-middle mb-0">
+      <caption class="visually-hidden">Report update history</caption>
+      <thead>
+        <tr>
+          <th scope="col">Date</th>
+          <th scope="col">Resulting state</th>
+          <th scope="col">ATC details</th>
+          <th scope="col">Recorded by</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for update in updates %}
+          <tr>
+            <td>{{ update.update_date|date:"d M Y" }}</td>
+            <td>
+              {% if update.resulting_state %}
+                <span class="badge badge-state">{{ update.resulting_state.name }}</span>
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>
+              {% if update.has_atc_details %}
+                {{ update.atc_reference|default:"—" }}
+                {% if update.atc_page_number %}· p. {{ update.atc_page_number }}{% endif %}
+                {% if update.atc_publication_date %}· published {{ update.atc_publication_date|date:"d M Y" }}{% endif %}
+                {% if update.atc_document_url %}
+                  · <a href="{{ update.atc_document_url }}" rel="noopener" target="_blank">document</a>
+                {% endif %}
+              {% else %}
+                —
+              {% endif %}
+            </td>
+            <td>{{ update.recorded_by.display_name|default:"—" }}</td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="text-center workflow-muted py-4">No updates recorded.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% if updates_status %}
+  <div id="report-updates-status" hx-swap-oob="true">
+    <div class="alert alert-{{ updates_status.level }} py-2 mb-3" role="alert">{{ updates_status.message }}</div>
+  </div>
+{% endif %}
