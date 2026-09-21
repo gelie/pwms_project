@@ -1590,6 +1590,29 @@ class WorkflowEvent(models.Model):
         )
         return f"{label} - {self.event_type.name} @ {self.occurred_at}"
 
+    # -- payload accessors ---------------------------------------------------
+    # The payload is JSON, so it need not carry any particular key: seed_demo_data
+    # records document events with no payload at all. Reading a key straight out of
+    # it in a template raises ``VariableDoesNotExist`` when that read is a *filter
+    # argument* -- ``event.document_url|default:event.payload.web_url`` -- because
+    # Django guards the filter's own variable but resolves its arguments through
+    # ``Variable.resolve``, which does not catch. These keep the read in Python,
+    # where a missing key is an empty string.
+    @property
+    def payload_name(self):
+        """Document name an attachment event records, "" when it has none."""
+        return (self.payload or {}).get("name", "")
+
+    @property
+    def payload_attachment_id(self):
+        """``public_id`` of the document an event names, "" when it has none."""
+        return (self.payload or {}).get("attachment_id", "")
+
+    @property
+    def payload_web_url(self):
+        """SharePoint URL of the document an event names, "" when it has none."""
+        return (self.payload or {}).get("web_url", "")
+
     def save(self, *args, **kwargs):
         if not self._state.adding:
             raise ValidationError(
