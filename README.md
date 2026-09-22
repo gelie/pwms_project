@@ -98,8 +98,10 @@ The self-documentation lives in [`pwms/docs/`](src/pwms/docs/):
 | [SharePoint Sync](src/pwms/docs/SharePoint%20Sync.md) | `populate_sites`, the local `Sharepoint*` tables and document attachments |
 | [Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md) | Email, notifications, SharePoint, exports and what remains |
 | [User Manual Introduction](src/pwms/docs/User%20Manual%20Introduction.md) | *Systems Overview* and *The Purpose* in plain language |
+| [Introductory Lesson Plan](src/pwms/docs/Introductory%20Lesson%20Plan.md) | The 90-minute induction session for the IRPD section: outcomes, timed running order, tasks, exit ticket |
 | [Training Manual](src/pwms/docs/Training%20Manual.md) | The IRPD training course: objectives and outcomes, modules, exercises, assessment |
 | [Quick Reference Card](src/pwms/docs/Quick%20Reference%20Card.pdf) | Printable one-page A4 wall card for the section ([HTML source](src/pwms/docs/Quick%20Reference%20Card.html)) |
+| [UAT Form](src/pwms/docs/UAT%20Form.pdf) | User acceptance testing form for the IRPD section, with the results workbook ([HTML source](src/pwms/docs/UAT%20Form.html), [workbook](src/pwms/docs/UAT%20Form.xlsx)) |
 
 ---
 

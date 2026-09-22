@@ -281,6 +281,33 @@ a section member sees only the registers their group owns.
 python manage.py seed_demo_data --force
 ```
 
+### Acceptance-test workbook
+
+`build_uat_workbook` builds the results workbook the section fills in when it
+accepts the system — **from the printable UAT form, not from a second handwritten
+list**. `src/pwms/docs/UAT Form.html` is the single source of truth for the
+scenarios: the command reads its scenario tables, severity scale, result key,
+expected-behaviour list and acceptance criteria, and writes `UAT Form.xlsx`
+beside it. The scenario rows are never edited in the workbook; change the form
+and re-run the command.
+
+The workbook is laid out for a section rather than one person. `Results` is a
+matrix — one row per scenario, one column per tester (eight of them) — so several
+testers work in the same file, and each row carries *Failed by*, *Blocked by*,
+*Tested* and a triage *Status* as live formulas. `Summary` counts that matrix and
+the defect log, and states whether the form's own acceptance criteria (§15) are
+met, so the section can see whether it is ready to sign without counting by hand.
+
+| Option | Effect |
+| --- | --- |
+| `--form PATH` | the form to read (default: `<docs>/UAT Form.html`) |
+| `--output PATH` | the workbook to write (default: `<docs>/UAT Form.xlsx`) |
+| `--docs-dir PATH` | the directory holding the form, and receiving the workbook |
+
+```bash
+python manage.py build_uat_workbook
+```
+
 ## Background tasks (the queue worker)
 
 Two jobs run through `django-background-tasks` rather than inline, so

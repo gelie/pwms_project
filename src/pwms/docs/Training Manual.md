@@ -37,6 +37,11 @@ your PWMS administrator before training is marked **⚠ Administrator task**.
 > **Wall card.** A printable one-page summary of this manual —
 > [`Quick Reference Card.pdf`](./Quick%20Reference%20Card.pdf) — is meant to be
 > pinned up beside the section's workstations. Print it A4 portrait at 100%.
+>
+> **Before this manual.** The 90-minute session that first introduces the section
+> to PWMS — with its timed running order, demonstration scripts, hands-on tasks
+> and trainer checklist — is the
+> [Introductory Lesson Plan](./Introductory%20Lesson%20Plan.md).
 
 ---
 
@@ -506,7 +511,8 @@ held, and any resolutions adopted.
 5. Under **Resolutions adopted** — shown only if you may create resolutions — add
    each resolution adopted at the engagement: its **Number**, **Title** and
    **Adopted** date, then select **Add Resolution**. Anything already linked is
-   listed under *Already linked to this report*.
+   listed under *Already linked to this report*. A resolution can also be added
+   later from the report's **Related** tab, so a missed one is never a problem.
 6. Select **Create report**.
 
 PWMS confirms with *"Delegation report "DR-…" created."* and assigns the reference
@@ -577,7 +583,12 @@ report, and link or unlink the parent.
 | Route | When to use it | Effect |
 | --- | --- | --- |
 | **From the report's form** — *Resolutions adopted* | During the capture of a delegation report | The resolution is created, placed in the stage *Captured*, owned by you, and linked to the report |
+| **From the report's page** — **Related** tab → *Resolutions adopted* → **Add Resolution** | When a resolution is captured after the report exists, or when one was missed | The resolution is created, placed in the stage *Captured*, owned by you, and linked to the report |
 | **From the resolution register** — **New Resolution** | When a resolution is recorded independently, or when it belongs to a report already on file | The resolution is created as a root record; you may then link it to a report |
+
+Whichever route you take from a report, you need **both** the **edit** right on
+that report **and** a role that may create resolutions: capturing one creates a
+new instrument, so editing the report is not enough on its own.
 
 ### 4.2 Create a resolution from the register
 
@@ -605,10 +616,12 @@ report, and link or unlink the parent.
 - **From the resolution**: set the `Delegation report` field on the edit page and
   save. Clearing the field detaches the resolution from its report.
 - **From the report**: add the resolution under *Resolutions adopted* when creating
-  or editing the report.
+  or editing the report, or at any time afterwards from the report's **Related**
+  tab (**Add Resolution**).
 
 The **Related** tab of either record shows the link: the resolution shows its
-parent, and the report lists its attached resolutions under **Hierarchy**.
+parent, and the report lists its resolutions on the **Resolutions adopted** card
+— which is also where **Add Resolution** lives.
 
 **Two limits worth knowing.**
 
@@ -761,7 +774,7 @@ Open a record to reach its tabs:
 | --- | --- |
 | **Overview** | Key information, ownership, description and the instrument's own facts — plus, on a report, the **BR03 updates** history and the form that records one. Start here for a record you do not know. |
 | **Progress** | The completion ring, the state sequence and the journey so far. |
-| **Related** | The hierarchy (parent and attached records) and, for reports, the participants. |
+| **Related** | What belongs to the record: on a report, the resolutions captured at the engagement (with **Add Resolution**) and the delegates; on the other instruments, the hierarchy (parent and attached records). |
 | **Notes** | The note log, plus the record's own notes text where the instrument has one. |
 | **Attachments** | The documents held against the record. |
 | **Referrals** | Referrals raised and received, and the transitions available from the current state. |
@@ -1689,7 +1702,7 @@ shares in the name of a current officer before a colleague leaves?
 | See what the record is | **Overview** |
 | Record the ATC publication, or read the update history | **Overview** (the BR03 updates card) |
 | See how far along it is | **Progress** |
-| See its parent or attached records, and its delegates | **Related** |
+| See what belongs to it — its resolutions and delegates, or its parent and attached records | **Related** |
 | Record a decision or follow-up | **Notes** |
 | Find or add a document | **Attachments** |
 | Ask a committee or answer one | **Referrals** |

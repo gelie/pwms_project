@@ -23,17 +23,25 @@ meant to be read by people who will not be reading the code.
 | Document | Contents |
 | --- | --- |
 | [User Manual Introduction](./User%20Manual%20Introduction.md) | *Systems Overview* and *The Purpose* — PWMS in plain language, for the front of a user manual |
+| [Introductory Lesson Plan](./Introductory%20Lesson%20Plan.md) | The 90-minute induction for the IRPD section: objectives and outcomes, a timed running order with demo scripts, hands-on tasks, an exit ticket and the trainer's preparation checklist |
 | [Training Manual](./Training%20Manual.md) | The complete IRPD training course: learning objectives and outcomes, fourteen modules, practical exercises, an assessment and the administrator prerequisites |
 | [Quick Reference Card](./Quick%20Reference%20Card.html) ([PDF](./Quick%20Reference%20Card.pdf)) | A printable one-page A4 wall card for the section: the three lifecycles, creating records, transitions, referrals, documents, reports, alerts and who to escalate to |
+| [UAT Form](./UAT%20Form.html) ([PDF](./UAT%20Form.pdf), [workbook](./UAT%20Form.xlsx)) | The user acceptance testing form: 38 IRPD scenarios with acceptance criteria (10 of them critical), a defect log, the expected-behaviour list, the acceptance decision and sign-off — plus the results workbook the section fills in, which rolls the results up |
 
-### Regenerating the quick-reference card
+### Regenerating the generated files
 
-The card's source is the HTML file; the PDF beside it is **generated, not
-hand-edited**. After changing the HTML, rebuild the PDF with WeasyPrint (already a
-project dependency) and confirm it is still a single A4 page before committing:
+The quick-reference card and the UAT form are generated from their HTML source,
+and the UAT workbook is generated from the form; the PDFs and the workbook are
+**generated, not hand-edited**. After changing either HTML file, rebuild what
+depends on it with WeasyPrint and `build_uat_workbook` (both are project
+dependencies) and check the result before committing — the card must stay a single
+A4 page, the form's tables must still repeat their header rows across page breaks,
+and the workbook must build from the form without error:
 
 ```bash
 .venv/bin/python -c "from weasyprint import HTML; d = HTML(filename='src/pwms/docs/Quick Reference Card.html').render(); print('pages:', len(d.pages)); d.write_pdf('src/pwms/docs/Quick Reference Card.pdf')"
+.venv/bin/python -c "from weasyprint import HTML; d = HTML(filename='src/pwms/docs/UAT Form.html').render(); print('pages:', len(d.pages)); d.write_pdf('src/pwms/docs/UAT Form.pdf')"
+.venv/bin/python manage.py build_uat_workbook
 ```
 
 ## Conventions used in these documents

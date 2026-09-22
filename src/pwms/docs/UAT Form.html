@@ -1,0 +1,803 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>PWMS — User Acceptance Testing (IRPD)</title>
+<style>
+  @page {
+    size: A4 portrait;
+    margin: 9mm 8mm 12mm;
+    @bottom-center {
+      content: "PWMS User Acceptance Testing — IRPD · page " counter(page) " of " counter(pages);
+      font-size: 6.8pt;
+      color: #666;
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    color: #111;
+    font-family: "DejaVu Sans", "Liberation Sans", "Helvetica Neue", Arial, sans-serif;
+    font-size: 7.8pt;
+    line-height: 1.3;
+  }
+
+  h1 { margin: 0; font-size: 14pt; color: #1F4E9C; letter-spacing: -0.3pt; }
+  .sub { margin: 0.6mm 0 0; font-size: 7.2pt; color: #555; }
+
+  header { border-bottom: 2px solid #1F4E9C; padding-bottom: 1.6mm; margin-bottom: 2.6mm; }
+
+  h2 {
+    margin: 3mm 0 1.4mm;
+    padding: 0.7mm 1.6mm;
+    font-size: 8.4pt;
+    color: #fff;
+    background: #1F4E9C;
+    border-radius: 1mm;
+    break-after: avoid;
+  }
+  h2:first-of-type { margin-top: 0; }
+
+  h3 { margin: 2.4mm 0 1mm; font-size: 8pt; color: #163A73; break-after: avoid; }
+
+  p { margin: 0 0 1.4mm; }
+  ol, ul { margin: 0 0 1.4mm; padding-left: 4.4mm; }
+  li { margin-bottom: 0.7mm; }
+
+  table { width: 100%; border-collapse: collapse; }
+
+  .fields td {
+    border: 1px solid #c8d3e4;
+    padding: 1.1mm 1.4mm;
+    vertical-align: top;
+  }
+  .fields .label { background: #f2f6fc; width: 26%; color: #163A73; }
+  .fields .blank { height: 6.2mm; }
+
+  .scenarios th {
+    background: #eef3fb;
+    border: 1px solid #c8d3e4;
+    padding: 1mm 1.2mm;
+    text-align: left;
+    font-size: 7.4pt;
+    color: #163A73;
+  }
+  .scenarios td {
+    border: 1px solid #c8d3e4;
+    padding: 1.1mm 1.2mm;
+    vertical-align: top;
+  }
+  .scenarios tr { break-inside: avoid; }
+  .id { font-family: "DejaVu Sans Mono", "Liberation Mono", monospace; font-size: 7.2pt; white-space: nowrap; }
+  .res { text-align: center; white-space: nowrap; font-size: 7.4pt; }
+  .ev { color: #444; }
+
+  .box { padding: 1.4mm 1.8mm; border-radius: 1mm; margin: 0 0 2mm; }
+  .note { background: #fff6db; border-left: 2px solid #efbd47; }
+  .warn { background: #fdecea; border-left: 2px solid #B23A30; }
+
+  .key { margin: 0 0 1.6mm; padding-left: 0; list-style: none; }
+  .key li { display: inline-block; margin-right: 4.5mm; }
+
+  .sig td { border: 1px solid #c8d3e4; padding: 1.4mm; vertical-align: top; }
+  .sig .h { background: #f2f6fc; width: 30%; color: #163A73; }
+  .sig .space { height: 10mm; }
+
+  .screen-only {
+    max-width: 210mm;
+    margin: 6mm auto 2mm;
+    padding: 2mm 3mm;
+    background: #eef3fb;
+    border: 1px solid #c8d8ef;
+    border-radius: 1mm;
+    font-size: 8.5pt;
+    color: #333;
+  }
+
+  @media screen {
+    body { background: #e9e9ec; padding-bottom: 8mm; }
+    header, main {
+      max-width: 210mm;
+      margin-left: auto;
+      margin-right: auto;
+      background: #fff;
+    }
+    header { padding: 7mm 9mm 2mm; margin-top: 4mm; }
+    main { padding: 0 9mm 9mm; box-shadow: 0 1mm 4mm rgba(0, 0, 0, .18); }
+  }
+</style>
+</head>
+<body>
+
+<p class="screen-only">
+  <strong>To print:</strong> A4 portrait, scale 100%, background graphics on. Complete
+  one form per tester per round and return it to the section leader. A spreadsheet
+  version for collating several testers' results can be generated on request.
+</p>
+
+<header>
+  <h1>User Acceptance Testing — PWMS</h1>
+  <p class="sub">Parliamentary Workflow Management System · IRPD section · Delegation Reports · International Resolutions · International Agreements</p>
+</header>
+
+<main>
+
+<h2>1. Who is testing, and against what</h2>
+
+<table class="fields">
+  <tr>
+    <td class="label">Tester name</td>
+    <td class="blank"></td>
+    <td class="label">Role / designation</td>
+    <td class="blank"></td>
+  </tr>
+  <tr>
+    <td class="label">Section / group</td>
+    <td class="blank"></td>
+    <td class="label">Date(s) of testing</td>
+    <td class="blank"></td>
+  </tr>
+  <tr>
+    <td class="label">Environment tested (URL)</td>
+    <td class="blank"></td>
+    <td class="label">Build / version under test</td>
+    <td class="blank"></td>
+  </tr>
+  <tr>
+    <td class="label">Browser and device</td>
+    <td class="blank"></td>
+    <td class="label">Round</td>
+    <td class="blank">☐ 1 — first acceptance run &nbsp;&nbsp; ☐ 2 — re-test &nbsp;&nbsp; ☐ 3 — final</td>
+  </tr>
+  <tr>
+    <td class="label">Test records used (references)</td>
+    <td class="blank" colspan="3"></td>
+  </tr>
+</table>
+
+<div class="box warn">
+  <strong>Test on training records only.</strong> Do not run this form against live
+  instruments in production. If a scenario needs a record in a particular stage, ask
+  the administrator to prepare one rather than changing a real record.
+</div>
+
+<h2>2. How to complete this form</h2>
+
+<ol>
+  <li>Work through the scenarios in order. For each one, carry out the steps in
+      <em>What to do</em> and compare what happens with <em>Expected result</em>.</li>
+  <li>Record one result per scenario by <strong>circling</strong> a letter in the
+      <em>Result</em> column. A scenario marked <span class="id">*</span> is
+      <strong>critical to acceptance</strong> and must pass for the section to accept
+      the system.</li>
+  <li>If the result is not <strong>P</strong>, write what actually happened in
+      <em>Evidence / defect ref</em>, and add a row to the <strong>defect log</strong>
+      (§14) giving it an ID. Put that defect ID in the evidence column so the two tie
+      together.</li>
+  <li>If an earlier defect stops you reaching a scenario, mark it <strong>B</strong>
+      and name the defect that blocked it. Do not guess.</li>
+  <li>Mark a scenario <strong>N</strong> only where it genuinely does not apply to the
+      section's work — say why in the evidence column. Where a scenario depends on
+      administrator configuration (for example email or SharePoint), note that in
+      your comments rather than marking it as failed.</li>
+  <li>Attach screenshots where they help. Name each one with the scenario ID
+      (for example <span class="id">E2-blocked.png</span>) and list the files in §16.</li>
+</ol>
+
+<ul class="key">
+  <li><strong>P</strong> — Pass: as expected</li>
+  <li><strong>F</strong> — Fail: not as expected</li>
+  <li><strong>B</strong> — Blocked: could not be carried out</li>
+  <li><strong>N</strong> — Not applicable</li>
+</ul>
+
+<h3>Severity — use this to grade every defect you log</h3>
+
+<table class="fields">
+  <tr>
+    <td class="label">S1 — Blocking</td>
+    <td>The section cannot carry out real work, or data is lost or corrupted.</td>
+  </tr>
+  <tr>
+    <td class="label">S2 — Major</td>
+    <td>A core task gives the wrong result and there is no acceptable workaround.</td>
+  </tr>
+  <tr>
+    <td class="label">S3 — Minor</td>
+    <td>The task works but with an awkward workaround, or a field, label or figure is wrong.</td>
+  </tr>
+  <tr>
+    <td class="label">S4 — Cosmetic</td>
+    <td>Appearance or wording only; nothing about the work changes.</td>
+  </tr>
+</table>
+
+<h2>3. A — Access and sign-in</h2>
+
+<table class="scenarios">
+  <thead>
+    <tr>
+      <th style="width:1.1cm">ID</th>
+      <th style="width:6.5cm">What to do</th>
+      <th style="width:6.2cm">Expected result (acceptance criterion)</th>
+      <th style="width:2.3cm">Result</th>
+      <th style="width:3.0cm">Evidence / defect ref</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="id">A1 *</td>
+      <td>Open the environment and sign in with your normal Parliament directory account.</td>
+      <td>You reach the Dashboard. No separate PWMS password is asked for.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">A2</td>
+      <td>Read the Dashboard: the four figures, then the four work lists.</td>
+      <td>The figures are Total workflows, Assigned to you, Due in 7 days and Overdue. The lists are Assigned to you, Due soon, Overdue and Awaiting your committees, and the records in them are ones you recognise as yours.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">A3 *</td>
+      <td>Open the three instrument registers and the cross-instrument Workflows list.</td>
+      <td>You see the records you are entitled to and no others. A record you may not open does not appear in any list, or in the report builder's filter lists.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">A4</td>
+      <td>Open Workflows → Create a workflow, then each register's New button.</td>
+      <td>New Report, New Resolution and New Agreement are all offered to you.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>4. B — Reading and monitoring a record</h2>
+
+<table class="scenarios">
+  <thead>
+    <tr>
+      <th style="width:1.1cm">ID</th>
+      <th style="width:6.5cm">What to do</th>
+      <th style="width:6.2cm">Expected result (acceptance criterion)</th>
+      <th style="width:2.3cm">Result</th>
+      <th style="width:3.0cm">Evidence / defect ref</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="id">B1</td>
+      <td>Open a delegation report's <strong>Overview</strong> tab.</td>
+      <td>It states the title, owner, who it is assigned to, its stage, priority and due date, its description, the engagement dates and location, the report document link — and carries the BR03 updates card.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">B2</td>
+      <td>Open the <strong>Progress</strong> tab.</td>
+      <td>A completion percentage, the stage sequence with the current stage marked, and a journey naming who moved the record, when and with what comment.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">B3</td>
+      <td>Change the record's title, save, then open its <strong>Timeline</strong> tab.</td>
+      <td>The edit appears in the merged history with your name and the time, alongside every stage change. Nothing on the record changes without appearing here.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">B4</td>
+      <td>Find a record whose deadline has passed while it is still open (set a past deadline on a training record if needed).</td>
+      <td>It is flagged overdue on the record and in the register. A record in a final stage is never shown as overdue.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>5. C — Capturing a delegation report</h2>
+
+<table class="scenarios">
+  <thead>
+    <tr>
+      <th style="width:1.1cm">ID</th>
+      <th style="width:6.5cm">What to do</th>
+      <th style="width:6.2cm">Expected result (acceptance criterion)</th>
+      <th style="width:2.3cm">Result</th>
+      <th style="width:3.0cm">Evidence / defect ref</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="id">C1 *</td>
+      <td>New Report. Complete the title, description, deadline and priority, then the engagement name, country, city, start and end dates and the report document link. Create report.</td>
+      <td>Confirmed. The record is given a <span class="id">DR-&lt;year&gt;-&lt;sequence&gt;</span> reference by the system and starts at <em>Awaiting PGIR approval</em>.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">C2</td>
+      <td>Try to save a start date in the future. Then try an end date earlier than the start date.</td>
+      <td>Both are refused, with the reason given on the field. Neither is saved.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">C3</td>
+      <td>Add a Parliamentary Delegation Member and a Support Official, each with the role they held. Then take one of them off the delegation.</td>
+      <td>Both appear with their type and role. The person taken off stays listed, struck through, showing who removed them and when.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">C4</td>
+      <td>On the report's <strong>Related</strong> tab, use Resolutions adopted → Add Resolution to add a resolution (title, number, adoption date).</td>
+      <td>The resolution is created as an international resolution, owned by you and linked to this report, and is listed on the card.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">C5</td>
+      <td>Try to capture a second resolution using a number that is already in use.</td>
+      <td>Refused, with a message that the resolution number already exists.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>6. D — Capturing a resolution and an agreement</h2>
+
+<table class="scenarios">
+  <thead>
+    <tr>
+      <th style="width:1.1cm">ID</th>
+      <th style="width:6.5cm">What to do</th>
+      <th style="width:6.2cm">Expected result (acceptance criterion)</th>
+      <th style="width:2.3cm">Result</th>
+      <th style="width:3.0cm">Evidence / defect ref</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="id">D1</td>
+      <td>New Resolution, with no parent report: give the number, title, adoption date, responsible group and resolution text.</td>
+      <td>Created successfully at the stage <em>Captured</em>. You supply the resolution number; the system does not generate it.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">D2</td>
+      <td>New Agreement: set the agreement type (Section 231(2) or 231(3)), the ATC tabling date, the submitting department and the referral committees.</td>
+      <td>Created successfully, starting at <em>Agreement Tabled – referred to Committee</em> — not at the first stage printed on the diagram.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">D3</td>
+      <td>As the responsible minister, try to link a person who does not hold a current executive appointment. Then record that person's name in the responsible-minister name field instead.</td>
+      <td>The link is refused, with the reason stated. The name field saves, so an agreement signed by a former minister can still be recorded accurately.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>7. E — Moving a record on, and the ATC publication</h2>
+
+<div class="box note">
+  This is the part of the system the section most depends on: a delegation report
+  cannot be closed until the ATC publication has been recorded. Run E1, E2 and E3 in
+  order, on the same report.
+</div>
+
+<table class="scenarios">
+  <thead>
+    <tr>
+      <th style="width:1.1cm">ID</th>
+      <th style="width:6.5cm">What to do</th>
+      <th style="width:6.2cm">Expected result (acceptance criterion)</th>
+      <th style="width:2.3cm">Result</th>
+      <th style="width:3.0cm">Evidence / defect ref</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="id">E1 *</td>
+      <td>On a report at <em>Tabled and referred to Committee</em> with no ATC update recorded, open <strong>Status</strong> → Close – House approved.</td>
+      <td>The confirmation page refuses it, headed <em>This transition cannot be taken yet</em>, and states that an ATC update published event is required. The confirm button is not available.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">E2 *</td>
+      <td>On the same report's <strong>Overview</strong> tab, use BR03 updates → Add update. Give the date and any one ATC detail (reference, publication date, page or document link). Record update.</td>
+      <td>Confirmed, and PWMS states the report may now be closed from the Status menu. The update is listed in the report's update history and the ATC reference shows on Overview.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">E3 *</td>
+      <td>Now open <strong>Status</strong> → Close – House approved, add a comment, and confirm the change.</td>
+      <td>The move is accepted, and you land on the Timeline showing the move, your name and your comment. The record shows as closed and stops being flagged overdue.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">E4</td>
+      <td>Confirm with the administrator (or a colleague in a committee the record was referred to) what that committee can do on a record while the referral is open.</td>
+      <td>The committee can read and edit the record, but is not offered the Status menu — moving a record on remains the owning section's job.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>8. F — Referrals</h2>
+
+<table class="scenarios">
+  <thead>
+    <tr>
+      <th style="width:1.1cm">ID</th>
+      <th style="width:6.5cm">What to do</th>
+      <th style="width:6.2cm">Expected result (acceptance criterion)</th>
+      <th style="width:2.3cm">Result</th>
+      <th style="width:3.0cm">Evidence / defect ref</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="id">F1</td>
+      <td>On a record, open the <strong>Referrals</strong> tab → Add Referral. Choose a committee, set the response due date, and say what the committee should consider. Send referral.</td>
+      <td>Confirmed. The referral is listed as open with its due date, and the committee's members are notified (bell, and email where configured).</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">F2 *</td>
+      <td>With the committee (or the administrator), confirm what access the referral gave them to the record.</td>
+      <td>The committee can read and edit the record while the referral is open, and keeps view after it closes. It is not given the right to move the record on.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">F3</td>
+      <td>Record an answer to the referral (a response document link and notes). Then raise a second referral and withdraw it, giving a reason.</td>
+      <td>The first is recorded as answered, with who answered and when. The second is recorded as withdrawn, with the reason and who withdrew it.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">F4</td>
+      <td>With the administrator, check that a referral due within 24 hours raises a reminder (needs the background worker and mail service to be configured).</td>
+      <td>A reminder is sent to the committee and recorded against the referral. Mark N/A if email is not yet configured for the environment.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>9. G — Documents</h2>
+
+<table class="scenarios">
+  <thead>
+    <tr>
+      <th style="width:1.1cm">ID</th>
+      <th style="width:6.5cm">What to do</th>
+      <th style="width:6.2cm">Expected result (acceptance criterion)</th>
+      <th style="width:2.3cm">Result</th>
+      <th style="width:3.0cm">Evidence / defect ref</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="id">G1</td>
+      <td><strong>Attachments</strong> tab → Add attachment. Browse your sites and libraries and attach a document that already exists in SharePoint.</td>
+      <td>The document is listed against the record with its type, folder, who attached it and when.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">G2</td>
+      <td>In the same panel, upload a new file into a folder, choosing an attachment type first.</td>
+      <td>Confirmed. The file is placed in SharePoint and attached to the record in one step.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">G3 *</td>
+      <td>Select an attached document's name to open it.</td>
+      <td>It opens in a new tab. You are not asked to sign in to SharePoint.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">G4</td>
+      <td>Open a document's <strong>Versions</strong> panel. Then upload a revised copy using the same file name into the same folder.</td>
+      <td>The version history lists the versions with a download for each. The revised copy is recorded as a new version of the same document, not as a second document.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">G5</td>
+      <td>Detach an attached document, confirming the prompt.</td>
+      <td>The link is removed from the record. The file and its versions remain in SharePoint, and the detachment is recorded on the record's history.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>10. H — Notes</h2>
+
+<table class="scenarios">
+  <thead>
+    <tr>
+      <th style="width:1.1cm">ID</th>
+      <th style="width:6.5cm">What to do</th>
+      <th style="width:6.2cm">Expected result (acceptance criterion)</th>
+      <th style="width:2.3cm">Result</th>
+      <th style="width:3.0cm">Evidence / defect ref</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="id">H1</td>
+      <td><strong>Notes</strong> tab → Add Note, write a note and save it.</td>
+      <td>The note is listed with your name and the date and time it was recorded.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">H2</td>
+      <td>Ask a colleague to try to edit or delete the note you just wrote.</td>
+      <td>They cannot change your note; they can add their own instead. A note belongs to its author.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>11. I — Reporting, exports and sharing</h2>
+
+<table class="scenarios">
+  <thead>
+    <tr>
+      <th style="width:1.1cm">ID</th>
+      <th style="width:6.5cm">What to do</th>
+      <th style="width:6.2cm">Expected result (acceptance criterion)</th>
+      <th style="width:2.3cm">Result</th>
+      <th style="width:3.0cm">Evidence / defect ref</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="id">I1 *</td>
+      <td>Reports → Report builder. Filter by workflow type, state, period and overdue only, then run the report.</td>
+      <td>The preview shows the record count, the four summary figures, and the matching register. It contains only records you are permitted to open — and the filter lists offer no values from records you cannot see.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">I2</td>
+      <td>Export the same report as Excel, PDF, Web page and CSV.</td>
+      <td>All four download and open. The CSV carries the register only; the other three carry the summary, the breakdowns, the register, the activity and the referrals, whichever report type was selected.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">I3</td>
+      <td>Open a record and use its <strong>Document</strong> menu to produce a PDF.</td>
+      <td>A formal document for that one instrument downloads, showing its facts, people, referrals, documents and history.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">I4</td>
+      <td>On the report preview, select <strong>Share</strong>. Give it a name, an expiry and recipient addresses, then create the link. Open the link in a private window.</td>
+      <td>The recipient must sign in to PWMS, then sees the report read-only showing the <em>creator's</em> figures. The Share button is not offered to them.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">I5</td>
+      <td>Open the alert bell. Open one alert. Then use Mark all read.</td>
+      <td>The bell shows the unread count. Opening an alert marks it read and takes you to the record it concerns. Mark all read clears the rest — merely viewing the alerts page marks nothing read.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>12. J — Records and accountability</h2>
+
+<table class="scenarios">
+  <thead>
+    <tr>
+      <th style="width:1.1cm">ID</th>
+      <th style="width:6.5cm">What to do</th>
+      <th style="width:6.2cm">Expected result (acceptance criterion)</th>
+      <th style="width:2.3cm">Result</th>
+      <th style="width:3.0cm">Evidence / defect ref</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td class="id">J1 *</td>
+      <td>Move a record through a transition, then read its Timeline and its Progress tab.</td>
+      <td>The move, the person who made it, the time and the comment are all recorded, and the record's stage and progress have changed accordingly. Nothing is recorded anonymously.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+    <tr>
+      <td class="id">J2</td>
+      <td>Open a record where you have view but not edit (ask the administrator to arrange one if none exists).</td>
+      <td>The controls you may not use are absent rather than failing when clicked.</td>
+      <td class="res">P · F · B · N</td>
+      <td class="ev"></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>13. Before you log a defect — expected behaviour</h2>
+
+<p>
+  The following are deliberate and confirmed with the section. Please do <strong>not</strong>
+  log them as defects; note them in your comments only if they cause a problem for the
+  section's work.
+</p>
+
+<table class="fields">
+  <tr>
+    <td class="label">1. A blocked move may look unblocked</td>
+    <td>The Referrals tab's <em>Conditions</em> column can show a dash for the report's closing move even though it needs the ATC update. The confirmation page is the authority on whether a move may be taken.</td>
+  </tr>
+  <tr>
+    <td class="label">2. An agreement's first stage is not reachable</td>
+    <td><em>Submitted for tabling</em> on an international agreement has no incoming move, so a record starts at <em>Agreement Tabled – referred to Committee</em>.</td>
+  </tr>
+  <tr>
+    <td class="label">3. Lists are not paged</td>
+    <td>Registers, alerts and the timeline show a fixed number of rows without page controls. Use search and the filters to narrow a long list.</td>
+  </tr>
+  <tr>
+    <td class="label">4. The header search box is decorative</td>
+    <td>The search box in the page header does not search anything. Use the Search on the page you are working in.</td>
+  </tr>
+  <tr>
+    <td class="label">5. The report type does not change an export</td>
+    <td>Choosing Referrals or Activity changes what is previewed on screen, but a workbook, PDF or web-page export always carries the summary, breakdowns, register, activity and referrals. The CSV is the register only.</td>
+  </tr>
+  <tr>
+    <td class="label">6. A share is fixed once created</td>
+    <td>A share link's recipients, expiry and message cannot be changed afterwards, and only an administrator can revoke it. It also stops working if the account that created it is removed.</td>
+  </tr>
+  <tr>
+    <td class="label">7. Email needs configuration</td>
+    <td>Alert and shared-report email depends on the mail service and the background worker being configured and running. If email does not arrive, the in-app bell is still accurate — raise it with the administrator.</td>
+  </tr>
+  <tr>
+    <td class="label">8. Detaching keeps the file</td>
+    <td>Detaching removes the link from the record only; the file stays in SharePoint. Re-uploading the same file name into the same folder becomes a new version.</td>
+  </tr>
+  <tr>
+    <td class="label">9. Document links expire</td>
+    <td>A SharePoint address resolved by PWMS is short-lived. Send the record, not the resolved address.</td>
+  </tr>
+  <tr>
+    <td class="label">10. Reference numbers restart each January</td>
+    <td>A delegation report's and an agreement's reference begin again at 0001 each year, so the full reference including the year should always be quoted.</td>
+  </tr>
+  <tr>
+    <td class="label">11. Changing the stage on the edit form</td>
+    <td>The edit form can move a record's stage without taking a transition. It is an administrator's correction tool: it checks no requirement and records no move. If you used it while testing, say so — it is not a defect.</td>
+  </tr>
+</table>
+
+<h2>14. Defect log</h2>
+
+<p>
+  One row per defect. Give the same ID in the scenario's <em>Evidence / defect ref</em>
+  column so the two records tie together.
+</p>
+
+<table class="scenarios">
+  <thead>
+    <tr>
+      <th style="width:1.4cm">Defect ID</th>
+      <th style="width:1.4cm">Scenario</th>
+      <th style="width:1.5cm">Severity</th>
+      <th style="width:9.0cm">What happened, and the steps that produced it</th>
+      <th style="width:1.6cm">Reported to / date</th>
+      <th style="width:1.4cm">Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td style="height:8mm"></td><td></td><td></td><td></td><td></td><td></td></tr>
+    <tr><td style="height:8mm"></td><td></td><td></td><td></td><td></td><td></td></tr>
+    <tr><td style="height:8mm"></td><td></td><td></td><td></td><td></td><td></td></tr>
+    <tr><td style="height:8mm"></td><td></td><td></td><td></td><td></td><td></td></tr>
+    <tr><td style="height:8mm"></td><td></td><td></td><td></td><td></td><td></td></tr>
+    <tr><td style="height:8mm"></td><td></td><td></td><td></td><td></td><td></td></tr>
+    <tr><td style="height:8mm"></td><td></td><td></td><td></td><td></td><td></td></tr>
+    <tr><td style="height:8mm"></td><td></td><td></td><td></td><td></td><td></td></tr>
+  </tbody>
+</table>
+
+<h2>15. Acceptance decision</h2>
+
+<p>The section accepts the system when all of the following are true:</p>
+
+<ol>
+  <li>Every scenario marked <span class="id">*</span> has passed.</li>
+  <li>No Severity 1 or Severity 2 defect is still open.</li>
+  <li>Every other open defect has a workaround the section has agreed and recorded here.</li>
+</ol>
+
+<table class="fields">
+  <tr>
+    <td class="label">Scenario totals</td>
+    <td class="blank">Passed ______ &nbsp;&nbsp; Failed ______ &nbsp;&nbsp; Blocked ______ &nbsp;&nbsp; Not applicable ______</td>
+  </tr>
+  <tr>
+    <td class="label">Critical scenarios</td>
+    <td class="blank">Passed ______ of 10</td>
+  </tr>
+  <tr>
+    <td class="label">Defects by severity</td>
+    <td class="blank">S1 ______ &nbsp;&nbsp; S2 ______ &nbsp;&nbsp; S3 ______ &nbsp;&nbsp; S4 ______</td>
+  </tr>
+  <tr>
+    <td class="label">Agreed workarounds, and anything carried forward</td>
+    <td class="blank" style="height:16mm"></td>
+  </tr>
+  <tr>
+    <td class="label">Overall comments from the tester</td>
+    <td class="blank" style="height:22mm"></td>
+  </tr>
+  <tr>
+    <td class="label">Decision</td>
+    <td class="blank" style="height:10mm">☐ Accept &nbsp;&nbsp; ☐ Accept with the workarounds recorded above &nbsp;&nbsp; ☐ Not accepted — reasons above</td>
+  </tr>
+</table>
+
+<h2>16. Sign-off</h2>
+
+<table class="sig">
+  <tr>
+    <td class="h">Tested by (tester)</td>
+    <td class="space"><br>Name and signature</td>
+    <td class="h">Date</td>
+  </tr>
+  <tr>
+    <td class="h">Reviewed by (section leader)</td>
+    <td class="space"><br>Name and signature</td>
+    <td class="h">Date</td>
+  </tr>
+  <tr>
+    <td class="h">Accepted by (business owner)</td>
+    <td class="space"><br>Name and signature</td>
+    <td class="h">Date</td>
+  </tr>
+  <tr>
+    <td class="h">Screenshots and attachments</td>
+    <td class="space" colspan="2"><br>List the file names, each with its scenario ID</td>
+  </tr>
+</table>
+
+<p class="ev" style="margin-top:2.4mm">
+  By signing, the tester confirms that the scenarios above were carried out as
+  described and that the results recorded are accurate. Return the completed form to
+  the section leader, who forwards it to the PWMS administrator for the defect log.
+</p>
+
+</main>
+</body>
+</html>

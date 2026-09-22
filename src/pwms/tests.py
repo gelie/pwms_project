@@ -3977,3 +3977,132 @@ class GroupListFilterTests(TestCase):
         response = self.client.get(reverse("pwms:all_groups"), {"q": "nothing matches"})
         self.assertContains(response, "No groups match your filters.")
         self.assertNotContains(response, "No groups found.")
+
+
+class BuildUatWorkbookCommandTests(TestCase):
+    """The UAT results workbook is generated from the printable acceptance form.
+
+    The form's HTML is the source of truth for the scenarios, so these tests assert
+    the workbook *mirrors* it rather than pinning a scenario count: adding a
+    scenario to the form must not break the build.
+    """
+
+    @staticmethod
+    def _sheet_rows(sheet, *, first_row):
+        """The non-empty rows of a five-column sheet, from ``first_row`` down."""
+        rows = []
+        for row in range(first_row, sheet.max_row + 1):
+            values = [
+                sheet.cell(row=row, column=column).value for column in range(1, 6)
+            ]
+            if values[0]:
+                rows.append(values)
+        return rows
+
+    def _build(self, **options):
+        """Run the command, writing the workbook into a temporary directory."""
+        from openpyxl import load_workbook
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        output = Path(tmp.name) / "UAT Form.xlsx"
+        out = StringIO()
+        call_command("build_uat_workbook", output=str(output), stdout=out, **options)
+        return load_workbook(output), out.getvalue()
+
+    def test_it_builds_the_sheets_and_opens_on_results(self):
+        workbook, _ = self._build()
+
+        self.assertEqual(
+            workbook.sheetnames,
+            [
+                "Instructions",
+                "Scenarios",
+                "Results",
+                "Defect log",
+                "Summary",
+                "Expected behaviour",
+                "Sign-off",
+            ],
+        )
+        # The section works in the matrix, so that is the sheet presented.
+        self.assertEqual(workbook.active.title, "Results")
+
+    def test_the_matrix_carries_every_scenario_the_form_defines(self):
+        workbook, _ = self._build()
+        scenarios = self._sheet_rows(workbook["Scenarios"], first_row=4)
+        results = self._sheet_rows(workbook["Results"], first_row=10)
+
+        self.assertTrue(scenarios, "the form should define at least one scenario")
+        self.assertEqual(len(results), len(scenarios))
+        # Same scenarios, in the same order, with the same critical marks.
+        self.assertEqual(
+            [(row[0], row[2]) for row in results],
+            [(row[0], row[2]) for row in scenarios],
+        )
+        # The reference sheet carries the steps and the acceptance criteria.
+        for row in scenarios:
+            self.assertTrue(row[3] and row[4])
+
+    def test_the_tester_cells_offer_only_the_four_results(self):
+        workbook, _ = self._build()
+        sheet = workbook["Results"]
+        validation = next(
+            candidate
+            for candidate in sheet.data_validations.dataValidation
+            if candidate.formula1 == '"P,F,B,N"'
+        )
+
+        self.assertTrue(validation.allow_blank)
+        # It covers the tester columns of every scenario row, and the working
+        # columns stay put while a tester scrolls to their own column.
+        self.assertTrue(str(validation.sqref).startswith("H10:"))
+        self.assertEqual(sheet.freeze_panes, "H10")
+
+    def test_the_verdict_counts_the_rows_that_actually_hold_the_conditions(self):
+        """The verdict reads its conditions by reference, not by layout arithmetic.
+
+        Regression: it used to be built by subtracting from its own row number,
+        which pointed at blank and heading rows rather than the counts.
+        """
+        import re
+
+        workbook, _ = self._build()
+        sheet = workbook["Summary"]
+        verdict_row = next(
+            row
+            for row in range(1, sheet.max_row + 1)
+            if isinstance(sheet.cell(row=row, column=3).value, str)
+            and "ACCEPTANCE CRITERIA MET" in sheet.cell(row=row, column=3).value
+        )
+        verdict = sheet.cell(row=verdict_row, column=3).value
+        referenced = re.findall(r"C(\d+)", verdict)
+
+        # The three critical counts, plus the open S1 and S2 counts.
+        self.assertGreaterEqual(len(referenced), 5)
+        conditions = [sheet.cell(row=int(row), column=3).value for row in referenced]
+        for condition in conditions:
+            self.assertIn("COUNTIF", condition)
+        self.assertGreaterEqual(
+            sum("'Defect log'" in condition for condition in conditions), 2
+        )
+
+    def test_it_reads_the_result_key_and_the_severities_from_the_form(self):
+        workbook, _ = self._build()
+        sheet = workbook["Instructions"]
+        text = "\n".join(
+            str(sheet.cell(row=row, column=column).value or "")
+            for row in range(1, sheet.max_row + 1)
+            for column in (2, 3)
+        )
+
+        self.assertIn("Pass: as expected", text)
+        self.assertIn("S1 — Blocking", text)
+
+    def test_a_missing_form_is_reported(self):
+        with self.assertRaises(CommandError):
+            call_command(
+                "build_uat_workbook",
+                form="does-not-exist.html",
+                stdout=StringIO(),
+            )
