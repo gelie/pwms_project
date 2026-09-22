@@ -1,0 +1,20 @@
+{% comment %}
+The record-level tab counters — the Progress percentage and the Timeline's row
+count — refreshed out-of-band.
+
+Both live in the tab bar, outside every panel's swap target, so a panel's own
+swap cannot reach them. No panel action changes them today: a record's state and
+history move through the Status transition, which navigates. Carrying them from
+the panel responses anyway keeps the whole tab bar in step with the record
+however it changed, and means a new in-page action that does move the record has
+somewhere to refresh them from.
+
+Included by the detail-page panel partials. It renders only for an HTMX request,
+and only when the response supplied ``tab_counters`` (see
+``pwms.views._record_counters``) — so a partial rendered without them can never
+blank the counters.
+{% endcomment %}
+{% if request.htmx and tab_counters %}
+  <span class="workflow-tab-count" id="tab-progress-count" hx-swap-oob="true">{{ tab_counters.progress_percent }}%</span>
+  <span class="workflow-tab-count" id="tab-timeline-count" hx-swap-oob="true">{{ tab_counters.timeline_total }}</span>
+{% endif %}

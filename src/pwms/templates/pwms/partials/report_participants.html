@@ -119,6 +119,7 @@ removed.
     </table>
   </div>
 </section>
+{% include "pwms/partials/tab_counters.html" %}
 {% if participants_status %}
   <div id="participants-status" hx-swap-oob="true">
     <div class="alert alert-{{ participants_status.level }} py-2 mb-3" role="alert">{{ participants_status.message }}</div>

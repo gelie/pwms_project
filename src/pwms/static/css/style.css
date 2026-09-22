@@ -980,7 +980,7 @@ html.password-toggle-ready .password-toggle {
     background-color: transparent;
     color: var(--theme-brown);
     font-family: var(--bs-font-serif);
-    font-size: 0.8rem;
+    /*font-size: 0.8rem;*/
     font-weight: 600;
     text-transform: uppercase;
 }

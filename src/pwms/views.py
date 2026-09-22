@@ -30,6 +30,7 @@ from django.views.decorators.http import require_POST
 from .forms import (
     BillForm,
     BillVersionForm,
+    ChildResolutionForm,
     ChildResolutionFormSet,
     DelegateAdderForm,
     DelegationParticipantAdderForm,
@@ -565,6 +566,29 @@ def _participants_context(request, report):
     return context
 
 
+def _resolutions_context(request, report):
+    """
+    Template context for a delegation report's adopted resolutions and its adder.
+
+    ``resolutions`` is the international resolutions the report captured, paired
+    with their URLs so the table can link to each. The adder is offered only to a
+    reader who may both edit the report and create resolutions: capturing one
+    creates a new instrument, so the edit right alone is not enough (see
+    ``_can_create_form_type``), matching the report form's own resolutions section.
+    """
+    can_add = resolve(request.user, report, EDIT) and _can_create_form_type(
+        request.user, InternationalResolutionForm
+    )
+    context = {
+        "report": report,
+        "resolutions": _viewable_sub_workflows(report, request.user),
+        "can_add_resolutions": can_add,
+    }
+    if can_add:
+        context["resolution_form"] = ChildResolutionForm()
+    return context
+
+
 def _can_now_complete(report):
     """Whether recording the ATC publication has unblocked a closing move.
 
@@ -604,6 +628,7 @@ def _updates_context(request, report):
 def _updates_response(request, report, *, success="", error="", form=None):
     """Re-render the BR03 update card, announcing a change when there is one."""
     context = _updates_context(request, report)
+    context.update(_record_counters(report))
     if form is not None:
         context["update_form"] = form
     if error:
@@ -781,6 +806,27 @@ def _workflow_detail_context(request, instance):
     return context
 
 
+def _record_counters(instance):
+    """The record-level tab counters a panel response sends out-of-band.
+
+    The Progress percentage and the Timeline's row count are shown in the tab bar,
+    outside every panel's swap target, so a panel response has to carry them for
+    the bar to stay in step (see ``pwms/partials/tab_counters.html``). Nothing a
+    panel does changes either today; the pair is sent so the bar cannot drift
+    while a reader works, and so a future in-page action that does move the record
+    has somewhere to refresh them from.
+    """
+    if not isinstance(instance, AbstractLegislativeWorkflow):
+        # Attachments accept any target; only a workflow record has this tab bar.
+        return {}
+    return {
+        "tab_counters": {
+            "progress_percent": workflow_progress(instance).percent,
+            "timeline_total": len(instance_timeline(instance)),
+        }
+    }
+
+
 def _deny_uncreatable_workflow_type(request):
     """
     Reject (HTTP 403) a POST naming a workflow type the user may not create in.
@@ -830,6 +876,25 @@ def _child_resolution_formset(request):
     return ChildResolutionFormSet(data, prefix="resolutions")
 
 
+def _create_child_resolution(report, form, user, resolution_type):
+    """Save one validated child-resolution form and nest it under ``report``.
+
+    The workflow type, initial state and owner of a resolution captured from the
+    report are the report page's to supply, not the form's, so they are filled in
+    here before the new instance is linked to the report that produced it.
+    """
+    resolution = form.save(commit=False)
+    resolution.workflow_type = resolution_type
+    resolution.current_state = (
+        resolution_type.get_initial_state()
+        or resolution_type.states.order_by("order", "name").first()
+    )
+    resolution.owner = user
+    resolution.save()
+    report.add_sub_workflow(resolution)
+    return resolution
+
+
 def _save_child_resolutions(report, formset, user):
     """
     Create the resolutions entered on a report form and nest them under it.
@@ -843,15 +908,7 @@ def _save_child_resolutions(report, formset, user):
     for form in formset:
         if not form.cleaned_data:
             continue  # an untouched "add another" row
-        resolution = form.save(commit=False)
-        resolution.workflow_type = resolution_type
-        resolution.current_state = (
-            resolution_type.get_initial_state()
-            or resolution_type.states.order_by("order", "name").first()
-        )
-        resolution.owner = user
-        resolution.save()
-        report.add_sub_workflow(resolution)
+        _create_child_resolution(report, form, user, resolution_type)
 
 
 def _viewable_sub_workflows(instance, user):
@@ -935,6 +992,7 @@ def delegation_report_detail(request, public_id):
         "transitions": report.get_available_transitions(),
     }
     context.update(_participants_context(request, report))
+    context.update(_resolutions_context(request, report))
     context.update(_updates_context(request, report))
     context.update(_workflow_detail_context(request, report))
     context.update(_attachment_context(request, report))
@@ -2291,6 +2349,7 @@ def attachment_open(request, public_id):
 def _attachment_response(request, target, *, success="", error=""):
     """Re-render the attachment list, announcing a change when there is one."""
     context = _attachment_context(request, target)
+    context.update(_record_counters(target))
     if error:
         context["attachment_status"] = {"level": "danger", "message": error}
     elif success:
@@ -2334,6 +2393,7 @@ def _workflow_target(request, action, *, ignore_referral_grants=False):
 def _referral_response(request, target, *, success="", error="", form=None):
     """Re-render the referral panel, announcing a change when there is one."""
     context = _referral_context(request, target)
+    context.update(_record_counters(target))
     if form is not None:
         # Hand the rejected form back bound, so its errors and the values already
         # typed are shown again rather than silently dropped.
@@ -2428,6 +2488,7 @@ def referral_recall(request, public_id):
 def _notes_response(request, target, *, success="", error="", form=None):
     """Re-render the notes panel, announcing a change when there is one."""
     context = _notes_context(request, target)
+    context.update(_record_counters(target))
     if form is not None:
         context["notes_form"] = form
     if error:
@@ -2495,6 +2556,7 @@ def workflow_note_delete(request, public_id):
 def _participants_response(request, report, *, success="", error="", form=None):
     """Re-render the participant table, announcing a change when there is one."""
     context = _participants_context(request, report)
+    context.update(_record_counters(report))
     if form is not None:
         context["participant_form"] = form
     if error:
@@ -2535,3 +2597,50 @@ def delegation_report_participant_delete(request, public_id):
     name = participant.full_name
     participant.remove(by=request.user)
     return _participants_response(request, report, success=f"{name} removed.")
+
+
+# --- Adopted resolutions (BR02.3.9) ------------------------------------------
+
+
+def _resolutions_response(request, report, *, success="", error="", form=None):
+    """Re-render the resolution card, announcing a change when there is one."""
+    context = _resolutions_context(request, report)
+    context.update(_record_counters(report))
+    if form is not None:
+        context["resolution_form"] = form
+    if error:
+        context["resolutions_status"] = {"level": "danger", "message": error}
+    elif success:
+        context["resolutions_status"] = {"level": "success", "message": success}
+    return render(request, "pwms/partials/report_resolutions.html", context)
+
+
+@require_POST
+def delegation_report_resolution_add(request, public_id):
+    """Capture one resolution adopted at the engagement (HTMX fragment).
+
+    The resolution is created as an international resolution and nested under the
+    report, exactly as the report form's resolutions section does. Creating one is
+    a *create* action, so it takes the role that may create resolutions as well as
+    the edit right on the report it is linked to — the same pair the button in
+    ``_resolutions_context`` is hidden behind.
+    """
+    report = get_object_or_404(DelegationReport, public_id=public_id)
+    require(request.user, report, EDIT)
+    resolution_type = _creatable_form_type(request.user, InternationalResolutionForm)
+    if resolution_type is None:
+        raise PermissionDenied(
+            "You do not have a role that may create international resolutions."
+        )
+    form = ChildResolutionForm(request.POST)
+    if not form.is_valid():
+        return _resolutions_response(request, report, form=form)
+    with transaction.atomic():
+        resolution = _create_child_resolution(
+            report, form, request.user, resolution_type
+        )
+    return _resolutions_response(
+        request,
+        report,
+        success=f"Resolution {resolution.resolution_number} added to the report.",
+    )

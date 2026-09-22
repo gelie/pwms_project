@@ -5,7 +5,9 @@ activity, and — when a change was just made — an out-of-band status alert.
 Rendered standalone as the HTMX response to a link/upload/delete, and included
 by ``pwms/partials/attachment_section.html`` for the first paint. The response
 root and the include target are both ``#attachment-list``; callers swap it with
-``outerHTML``.
+``outerHTML``. The document count shown in the section heading and in the tab bar
+both live outside that fragment, so both are refreshed out-of-band when the
+fragment is rendered for an HTMX request.
 
 Context: attachments, attachment_events, can_attach, attachment_content_type,
          attachment_object_id, attachment_status (optional: {level, message}).
@@ -86,6 +88,15 @@ Context: attachments, attachment_events, can_attach, attachment_content_type,
   </div>
   {% include "pwms/partials/attachment_activity.html" %}
 </div>
+{% if request.htmx %}
+  {% comment %}
+    Out-of-band: the section heading's count and the Attachments counter in the tab
+    bar both live outside #attachment-list, so neither is refreshed by the swap.
+  {% endcomment %}
+  <span class="workflow-tab-count" id="tab-attachments-count" hx-swap-oob="true">{{ attachments|length }}</span>
+  <span class="badge badge-muted" id="attachment-count" hx-swap-oob="true">{{ attachments|length }}</span>
+{% endif %}
+{% include "pwms/partials/tab_counters.html" %}
 {% if attachment_status %}
   <div id="attachment-status" hx-swap-oob="true">
     <div class="alert alert-{{ attachment_status.level }} py-2 mb-3" role="alert">{{ attachment_status.message }}</div>

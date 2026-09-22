@@ -417,7 +417,29 @@ class WorkflowDetailViewTests(DetailPageTestCase):
         )
 
         # Two rows: the create and the transition.
-        self.assertContains(response, '<span class="workflow-tab-count">2</span>')
+        self.assertContains(
+            response,
+            '<span class="workflow-tab-count" id="tab-timeline-count">2</span>',
+        )
+
+    def test_the_panelled_tab_counters_carry_out_of_band_target_ids(self):
+        report = self.make_report()
+        response = self.client.get(
+            reverse("pwms:delegation_report_detail", args=[report.public_id])
+        )
+
+        # The panels' HTMX responses refresh these counters out-of-band, so the
+        # spans in the tab bar have to be addressable by id...
+        for element_id in (
+            "tab-progress-count",
+            "tab-notes-count",
+            "tab-attachments-count",
+            "tab-referrals-count",
+            "tab-timeline-count",
+        ):
+            self.assertContains(response, f'id="{element_id}"')
+        # ...and the first paint renders them in place, never out-of-band.
+        self.assertNotContains(response, "hx-swap-oob")
 
 
 #: A minimal stand-in for a rendered diagram.

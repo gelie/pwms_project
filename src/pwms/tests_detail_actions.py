@@ -1,4 +1,4 @@
-"""The detail page's add-* affordances: participants, notes and attachments."""
+"""The detail page's add-* affordances: participants, resolutions, notes and attachments."""
 
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
@@ -187,6 +187,176 @@ class ParticipantAddTests(TestCase):
         self.assertFalse(participant.is_removed)
 
 
+class ResolutionAddTests(TestCase):
+    """Capturing adopted resolutions on a delegation report from its own page.
+
+    Creating a resolution is a *create* action, so the Related tab offers the
+    adder only to a reader who may both edit the report and create resolutions —
+    unlike the other add-* buttons, which follow the edit right alone.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.owner = User.objects.create_user(username="res-owner", password="pw")
+        cls.outsider = User.objects.create_user(username="res-outsider", password="pw")
+        wt = WorkflowType.objects.get(name="Delegation Report")
+        cls.report = DelegationReport.objects.create(
+            workflow_type=wt,
+            current_state=wt.get_initial_state(),
+            title="Resolution capture report",
+            owner=cls.owner,
+        )
+        # Creation is granted by holding one of the type's create roles in its
+        # group, so give the resolution type a group and a role the owner holds.
+        cls.group = Group.objects.create(
+            name="Resolution Capture Unit", group_type="unit"
+        )
+        cls.role = Role.objects.create(name="Resolution Capture Role")
+        GroupMembership.objects.create(user=cls.owner, group=cls.group, role=cls.role)
+        cls.resolution_type = WorkflowType.objects.get(name="International Resolution")
+        cls.resolution_type.group = cls.group
+        cls.resolution_type.save(update_fields=["group"])
+        cls.resolution_type.create_roles.add(cls.role)
+
+    def setUp(self):
+        self.client.force_login(self.owner)
+
+    def _add_url(self):
+        return reverse(
+            "pwms:delegation_report_resolution_add",
+            kwargs={"public_id": self.report.public_id},
+        )
+
+    def _detail_url(self):
+        return reverse(
+            "pwms:delegation_report_detail",
+            kwargs={"public_id": self.report.public_id},
+        )
+
+    def _post_resolution(self, **overrides):
+        data = {
+            "resolution_number": "R-2026-UNGA-99",
+            "title": "Mobilise climate finance for developing economies",
+            "adoption_date": "2026-03-04",
+        }
+        data.update(overrides)
+        return self.client.post(self._add_url(), data)
+
+    def _editor_who_may_not_create(self):
+        """A user with the edit right on the report who may not create resolutions."""
+        editor = get_user_model().objects.create_user(
+            username="res-editor", password="pw"
+        )
+        group = Group.objects.create(name="Resolution Editors", group_type="committee")
+        GroupMembership.objects.create(
+            user=editor,
+            group=group,
+            role=Role.objects.create(name="Resolution Editor Role"),
+        )
+        WorkflowGroupAccess.objects.create(
+            content_type=ContentType.objects.get_for_model(DelegationReport),
+            object_id=self.report.pk,
+            group=group,
+            can_view=True,
+            can_edit=True,
+        )
+        return editor
+
+    def test_the_page_offers_the_add_form_to_a_creator(self):
+        response = self.client.get(self._detail_url())
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Add Resolution")
+        self.assertContains(response, self._add_url())
+
+    def test_the_page_hides_the_adder_from_an_editor_who_may_not_create(self):
+        self.client.force_login(self._editor_who_may_not_create())
+        response = self.client.get(self._detail_url())
+        self.assertEqual(response.status_code, 200)
+        # The editor is genuinely an editor — the other adders are there...
+        self.assertContains(response, "Add Participant")
+        # ...but capturing a resolution creates an instrument, so this one is not.
+        self.assertNotContains(response, "Add Resolution")
+
+    def test_the_resolutions_are_listed_in_their_own_card(self):
+        resolution = InternationalResolution.objects.create(
+            workflow_type=self.resolution_type,
+            current_state=self.resolution_type.get_initial_state(),
+            owner=self.owner,
+            resolution_number="R-2026-UNGA-07",
+            title="Strengthen parliamentary oversight of peacekeeping",
+        )
+        self.report.add_sub_workflow(resolution)
+        response = self.client.get(self._detail_url())
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "R-2026-UNGA-07")
+
+    def test_the_hierarchy_card_is_dropped_for_a_report(self):
+        response = self.client.get(self._detail_url())
+        self.assertEqual(response.status_code, 200)
+        # A report is always a root, so its Hierarchy card only ever repeated (or
+        # stood in for) the resolutions. Their own card lists them, so it is gone.
+        self.assertNotContains(response, "Workflows attached to this record")
+        self.assertNotContains(response, "This record stands alone")
+
+    def test_the_resolutions_card_sits_above_the_participants_table(self):
+        body = self.client.get(self._detail_url()).content
+        self.assertLess(body.index(b"Resolutions adopted"), body.index(b"Participants"))
+
+    def test_a_captured_resolution_is_created_and_nested_under_the_report(self):
+        response = self._post_resolution()
+        self.assertEqual(response.status_code, 200)
+        resolution = InternationalResolution.objects.get(
+            resolution_number="R-2026-UNGA-99"
+        )
+        self.assertEqual(
+            resolution.title, "Mobilise climate finance for developing economies"
+        )
+        self.assertEqual(str(resolution.adoption_date), "2026-03-04")
+        self.assertEqual(resolution.workflow_type, self.resolution_type)
+        self.assertEqual(
+            resolution.current_state, self.resolution_type.get_initial_state()
+        )
+        self.assertEqual(resolution.owner, self.owner)
+        # Nesting, not ownership: the resolution is a child of the report.
+        self.assertIn(resolution, self.report.sub_workflows)
+        # The swapped card shows the new row and says what happened.
+        self.assertContains(response, 'id="resolutions-section"')
+        self.assertContains(response, "R-2026-UNGA-99")
+        self.assertContains(response, "added to the report")
+
+    def test_capturing_a_resolution_needs_the_edit_right(self):
+        self.client.force_login(self.outsider)
+        response = self._post_resolution()
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(InternationalResolution.objects.exists())
+
+    def test_capturing_a_resolution_needs_the_create_role(self):
+        self.client.force_login(self._editor_who_may_not_create())
+        response = self._post_resolution()
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(InternationalResolution.objects.exists())
+
+    def test_a_duplicate_resolution_number_is_refused(self):
+        InternationalResolution.objects.create(
+            workflow_type=self.resolution_type,
+            current_state=self.resolution_type.get_initial_state(),
+            owner=self.owner,
+            resolution_number="R-2026-UNGA-99",
+            title="Already captured",
+        )
+        response = self._post_resolution()
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "already exists")
+        self.assertEqual(InternationalResolution.objects.count(), 1)
+
+    def test_the_adder_needs_a_number_and_a_title(self):
+        response = self._post_resolution(resolution_number="", title="")
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "This field is required.")
+        self.assertFalse(InternationalResolution.objects.exists())
+
+
 class NotesAddTests(TestCase):
     """The note log on a record's page: adding, listing and deleting notes."""
 
@@ -213,7 +383,7 @@ class NotesAddTests(TestCase):
             kwargs={"public_id": self.report.public_id},
         )
 
-    def _add_note(self, body, target=None):
+    def _add_note(self, body, target=None, **extra):
         target = target if target is not None else self.report
         return self.client.post(
             reverse("pwms:workflow_notes_add"),
@@ -222,6 +392,7 @@ class NotesAddTests(TestCase):
                 "object_id": target.pk,
                 "body": body,
             },
+            **extra,
         )
 
     def _editor_who_is_not_the_author(self):
@@ -260,6 +431,27 @@ class NotesAddTests(TestCase):
         # A note is its own row, so the record's notes column is left alone.
         self.report.refresh_from_db()
         self.assertEqual(self.report.notes, "Recorded on the report itself.")
+
+    def test_the_add_response_refreshes_the_notes_tab_counter_out_of_band(self):
+        response = self._add_note(
+            "Chased the committee for an answer.", HTTP_HX_REQUEST="true"
+        )
+        self.assertEqual(response.status_code, 200)
+        # The counter is in the tab bar, outside #notes-section, so the add
+        # response has to carry it as an out-of-band swap.
+        self.assertContains(
+            response,
+            '<span class="workflow-tab-count" id="tab-notes-count" hx-swap-oob="true">1</span>',
+        )
+        # The record-level counters ride along, so the whole tab bar stays fresh.
+        self.assertContains(
+            response,
+            '<span class="workflow-tab-count" id="tab-progress-count" hx-swap-oob="true">0%</span>',
+        )
+        self.assertContains(
+            response,
+            '<span class="workflow-tab-count" id="tab-timeline-count" hx-swap-oob="true">1</span>',
+        )
 
     def test_recording_a_note_needs_the_edit_right(self):
         self.client.force_login(self.outsider)

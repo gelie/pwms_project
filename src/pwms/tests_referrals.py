@@ -40,7 +40,7 @@ class ReferralViewTests(TestCase):
         self.client.force_login(self.owner)
 
     # -- helpers ------------------------------------------------------------
-    def _post_create(self, resolution=None):
+    def _post_create(self, resolution=None, **extra):
         resolution = resolution or self.resolution
         return self.client.post(
             reverse("pwms:referral_create"),
@@ -50,6 +50,7 @@ class ReferralViewTests(TestCase):
                 "referred_to": self.committee.pk,
                 "notes": "Please consider",
             },
+            **extra,
         )
 
     def _referral(self):
@@ -93,6 +94,19 @@ class ReferralViewTests(TestCase):
         self.assertEqual(referral.notes, "Please consider")
         # The refreshed panel shows the new row.
         self.assertContains(response, self.committee.name)
+
+    def test_the_create_response_refreshes_the_referrals_tab_counter_out_of_band(self):
+        response = self._post_create(HTTP_HX_REQUEST="true")
+        self.assertEqual(response.status_code, 200)
+        # The counter is in the tab bar, outside #referral-section, so the create
+        # response has to carry it as an out-of-band swap.
+        self.assertContains(
+            response,
+            '<span class="workflow-tab-count" id="tab-referrals-count" hx-swap-oob="true">1</span>',
+        )
+        # The record-level counters ride along, so the whole tab bar stays fresh.
+        self.assertContains(response, 'id="tab-progress-count" hx-swap-oob="true"')
+        self.assertContains(response, 'id="tab-timeline-count" hx-swap-oob="true"')
 
     def test_creating_a_referral_needs_the_edit_right(self):
         self.client.force_login(self.outsider)

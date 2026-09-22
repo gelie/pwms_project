@@ -45,6 +45,12 @@
 
   </div>
 
+  {% comment %}
+    The Notes / Attachments / Referrals counters carry ids so their panels' HTMX
+    responses can refresh them out-of-band when a row is added or removed (see
+    pwms/partials/notes_section.html, referral_section.html and
+    attachment_list.html).
+  {% endcomment %}
   <ul class="nav nav-tabs workflow-tabs" id="workflow-tabs" role="tablist">
     <li class="nav-item" role="presentation">
       <button class="nav-link active"
@@ -66,7 +72,7 @@
               aria-controls="pane-progress"
               aria-selected="false">
         {% lucide "gauge" size=16 %}<span>Progress</span>
-        <span class="workflow-tab-count">{{ progress.percent }}%</span>
+        <span class="workflow-tab-count" id="tab-progress-count">{{ progress.percent }}%</span>
       </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -88,7 +94,7 @@
               role="tab"
               aria-controls="pane-notes"
               aria-selected="false">{% lucide "notebook-pen" size=16 %}<span>Notes</span>
-        <span class="workflow-tab-count">{{ note_rows|length }}</span></button>
+        <span class="workflow-tab-count" id="tab-notes-count">{{ note_rows|length }}</span></button>
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link"
@@ -100,7 +106,7 @@
               aria-controls="pane-attachments"
               aria-selected="false">
         {% lucide "paperclip" size=16 %}<span>Attachments</span>
-        <span class="workflow-tab-count">{{ attachments|length }}</span>
+        <span class="workflow-tab-count" id="tab-attachments-count">{{ attachments|length }}</span>
       </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -113,7 +119,7 @@
               aria-controls="pane-referrals"
               aria-selected="false">
         {% lucide "send" size=16 %}<span>Referrals</span>
-        <span class="workflow-tab-count">{{ referral_rows|length }}</span>
+        <span class="workflow-tab-count" id="tab-referrals-count">{{ referral_rows|length }}</span>
       </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -136,7 +142,7 @@
               aria-controls="pane-timeline"
               aria-selected="false">
         {% lucide "history" size=16 %}<span>Timeline</span>
-        <span class="workflow-tab-count">{{ timeline_total }}</span>
+        <span class="workflow-tab-count" id="tab-timeline-count">{{ timeline_total }}</span>
       </button>
     </li>
   </ul>
@@ -411,68 +417,70 @@
          role="tabpanel"
          aria-labelledby="tab-related"
          tabindex="0">
-      <section class="workflow-card workflow-card--pad">
-        <h2 class="workflow-card-title">{% lucide "git-branch" size=16 %} Hierarchy</h2>
-        {% if parent or children %}
-          <dl class="workflow-facts">
-            <div class="workflow-fact">
-              <dt>Parent</dt>
-              <dd>
-                {% if parent %}
-                  {% if parent_url %}
-                    <a href="{{ parent_url }}">{{ parent }}</a>
+      {% block hierarchy %}
+        <section class="workflow-card workflow-card--pad">
+          <h2 class="workflow-card-title">{% lucide "git-branch" size=16 %} Hierarchy</h2>
+          {% if parent or children %}
+            <dl class="workflow-facts">
+              <div class="workflow-fact">
+                <dt>Parent</dt>
+                <dd>
+                  {% if parent %}
+                    {% if parent_url %}
+                      <a href="{{ parent_url }}">{{ parent }}</a>
+                    {% else %}
+                      {{ parent }}
+                    {% endif %}
                   {% else %}
-                    {{ parent }}
+                    —
                   {% endif %}
-                {% else %}
-                  —
-                {% endif %}
-              </dd>
-            </div>
-            <div class="workflow-fact">
-              <dt>Relationship</dt>
-              <dd>{{ object.relationship_type|default:"—" }}</dd>
-            </div>
-          </dl>
-          {% if children %}
-            <div class="table-responsive mt-3">
-              <table class="table table-striped table-hover align-middle mb-0">
-                <caption class="visually-hidden">Workflows attached to this record</caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Reference</th>
-                    <th scope="col">Title</th>
-                    <th scope="col">Type</th>
-                    <th scope="col">State</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {% for row in children %}
+                </dd>
+              </div>
+              <div class="workflow-fact">
+                <dt>Relationship</dt>
+                <dd>{{ object.relationship_type|default:"—" }}</dd>
+              </div>
+            </dl>
+            {% if children %}
+              <div class="table-responsive mt-3">
+                <table class="table table-striped table-hover align-middle mb-0">
+                  <caption class="visually-hidden">Workflows attached to this record</caption>
+                  <thead>
                     <tr>
-                      <td>
-                        {% if row.url %}
-                          <a href="{{ row.url }}">{{ row.object.identifier|default:"—" }}</a>
-                        {% else %}
-                          {{ row.object.identifier|default:"—" }}
-                        {% endif %}
-                      </td>
-                      <td>{{ row.object.title }}</td>
-                      <td>{{ row.object.workflow_type.name }}</td>
-                      <td>
-                        <span class="badge badge-state">{{ row.object.current_state.name }}</span>
-                      </td>
+                      <th scope="col">Reference</th>
+                      <th scope="col">Title</th>
+                      <th scope="col">Type</th>
+                      <th scope="col">State</th>
                     </tr>
-                  {% endfor %}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {% for row in children %}
+                      <tr>
+                        <td>
+                          {% if row.url %}
+                            <a href="{{ row.url }}">{{ row.object.identifier|default:"—" }}</a>
+                          {% else %}
+                            {{ row.object.identifier|default:"—" }}
+                          {% endif %}
+                        </td>
+                        <td>{{ row.object.title }}</td>
+                        <td>{{ row.object.workflow_type.name }}</td>
+                        <td>
+                          <span class="badge badge-state">{{ row.object.current_state.name }}</span>
+                        </td>
+                      </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% endif %}
+          {% else %}
+            <p class="workflow-muted mb-0">
+              This record stands alone — it has no parent and no attached workflows.
+            </p>
           {% endif %}
-        {% else %}
-          <p class="workflow-muted mb-0">
-            This record stands alone — it has no parent and no attached workflows.
-          </p>
-        {% endif %}
-      </section>
+        </section>
+      {% endblock hierarchy %}
       {% block related %}{% endblock related %}
     </div>
 

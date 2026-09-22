@@ -938,6 +938,28 @@ class AttachmentViewTests(AttachmentTestCase):
         self.assertFalse(Attachment.objects.filter(pk=attachment.pk).exists())
         self.assertContains(response, "removed")
 
+    def test_a_detach_refreshes_the_counters_out_of_band(self):
+        self._attachment(name="keep.pdf", item_id="item-1")
+        doomed = self._attachment(name="drop.pdf", item_id="item-2")
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse("pwms:attachment_delete", args=[doomed.public_id]),
+            HTTP_HX_REQUEST="true",
+        )
+        self.assertEqual(response.status_code, 200)
+        # Neither counter is inside #attachment-list, so both arrive out-of-band.
+        self.assertContains(
+            response,
+            '<span class="workflow-tab-count" id="tab-attachments-count" hx-swap-oob="true">1</span>',
+        )
+        self.assertContains(
+            response,
+            '<span class="badge badge-muted" id="attachment-count" hx-swap-oob="true">1</span>',
+        )
+        # The record-level counters ride along, so the whole tab bar stays fresh.
+        self.assertContains(response, 'id="tab-progress-count" hx-swap-oob="true"')
+        self.assertContains(response, 'id="tab-timeline-count" hx-swap-oob="true"')
+
     def test_delete_requires_edit_permission(self):
         attachment = Attachment.objects.create(
             content_type=self.report._instance_ct(),

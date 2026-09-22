@@ -86,11 +86,18 @@
   {% include "pwms/partials/report_updates.html" %}
 {% endblock overview_extra %}
 
+{% block hierarchy %}{% endblock hierarchy %}
+
 {% block related %}
   {% comment %}
-    The status alert lives outside the swapped panel so it survives the HTMX
-    swap of #participants-section (see pwms/partials/report_participants.html).
+    A report can never have a parent, so the Hierarchy card would only ever repeat
+    (or stand in for) the resolutions — which their own card lists. The resolutions
+    card is dropped in above the participants table, and both status alerts live
+    outside the swapped panels so they survive the HTMX swap of
+    #resolutions-section / #participants-section.
   {% endcomment %}
+  <div id="resolutions-status" aria-live="polite"></div>
+  {% include "pwms/partials/report_resolutions.html" %}
   <div id="participants-status" aria-live="polite"></div>
   {% include "pwms/partials/report_participants.html" %}
 {% endblock related %}
