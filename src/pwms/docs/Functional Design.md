@@ -456,12 +456,17 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
   refresh — or a shared link — returns to it. The panels are the shell's own, so
   a change to one lands on every instrument:
 
+  - **Overview** — the key information, ownership and facts cards plus, on a
+    delegation report, the BR03 update history and the form that records it.
+    Recording an update that carries any ATC detail emits `atc-update-published`,
+    the evidence *Close – House approved* is guarded by, so that affordance sits
+    here rather than behind the Related tab.
   - **Toolbar** — *Document* (the instrument as a PDF or standalone web page)
     and *Status* (the transitions available from the current state, each opening
     a confirmation page that records the transition's comment).
   - **Related** — the hierarchy plus each type's own tables: participants (added
     inline, and removed *softly*, so former delegates stay listed, muted,
-    alongside who removed them and when; BR03 updates; bill versions).
+    alongside who removed them and when) and bill versions.
   - **Notes** — a per-instrument note log (`WorkflowNote`) whose entries can be
     edited inline, plus the type's own `notes` text and progress fields where it
     has them.

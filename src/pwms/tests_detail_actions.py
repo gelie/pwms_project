@@ -376,7 +376,13 @@ class DetailAddAffordancePermissionTests(TestCase):
     """
 
     #: The add-* buttons the detail page can show.
-    BUTTONS = ("Add attachment", "Add Referral", "Add Note", "Add Participant")
+    BUTTONS = (
+        "Add attachment",
+        "Add Referral",
+        "Add Note",
+        "Add Participant",
+        "Add update",
+    )
 
     @classmethod
     def setUpTestData(cls):
@@ -426,6 +432,156 @@ class DetailAddAffordancePermissionTests(TestCase):
         self.assertEqual(response.status_code, 200)
         for label in self.BUTTONS:
             self.assertNotContains(response, label)
+
+
+class ReportUpdateAddTests(TestCase):
+    """Recording BR03 updates — the ATC publication among them — on a report.
+
+    The seeded *Close – House approved* transition is guarded by an
+    ``atc-update-published`` event, so recording an update that carries any ATC
+    detail is what unblocks closing a report (see
+    ``pwms.models.DelegationReportUpdate``). The card sits on the report's
+    **Overview** tab, so the affordance is visible without opening Related.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.owner = User.objects.create_user(username="update-owner", password="pw")
+        cls.outsider = User.objects.create_user(
+            username="update-outsider", password="pw"
+        )
+        type_ = WorkflowType.objects.get(name="Delegation Report")
+        # "Tabled and referred to Committee": the state the close move leaves.
+        cls.report = DelegationReport.objects.create(
+            workflow_type=type_,
+            current_state=type_.states.get(name="Tabled and referred to Committee"),
+            title="ATC update test report",
+            owner=cls.owner,
+        )
+
+    def setUp(self):
+        self.client.force_login(self.owner)
+
+    def _add_url(self):
+        return reverse(
+            "pwms:delegation_report_update_add",
+            kwargs={"public_id": self.report.public_id},
+        )
+
+    def _detail_url(self):
+        return reverse(
+            "pwms:delegation_report_detail",
+            kwargs={"public_id": self.report.public_id},
+        )
+
+    def _close_transition(self):
+        return self.report.get_available_transitions().get(
+            name="Close – House approved"
+        )
+
+    def _post_update(self, **overrides):
+        data = {"update_date": "2026-03-04"}
+        data.update(overrides)
+        return self.client.post(self._add_url(), data)
+
+    def _published(self):
+        return (
+            self.report.events()
+            .filter(event_type__slug="atc-update-published")
+            .exists()
+        )
+
+    def test_the_close_move_starts_blocked(self):
+        self.assertEqual(
+            self.report.unmet_transition_conditions(self._close_transition()),
+            ["Requires a 'ATC update published' event on this workflow."],
+        )
+
+    def test_recording_the_atc_publication_emits_the_event(self):
+        response = self._post_update(
+            atc_reference="ATC 2026 No 12",
+            atc_publication_date="2026-03-04",
+            atc_page_number="4120",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        update = self.report.updates.get()
+        self.assertEqual(update.recorded_by, self.owner)
+        self.assertEqual(update.atc_page_number, "4120")
+        self.assertTrue(self._published())
+
+    def test_recording_the_atc_publication_unblocks_closing(self):
+        self._post_update(atc_reference="ATC 2026 No 12")
+
+        self.report.refresh_from_db()
+        self.assertEqual(
+            self.report.unmet_transition_conditions(self._close_transition()), []
+        )
+
+    def test_the_answer_says_the_report_may_now_be_closed(self):
+        response = self._post_update(atc_reference="ATC 2026 No 12")
+
+        self.assertContains(response, "may now be closed")
+
+    def test_the_answer_swaps_the_card_and_its_status_alert(self):
+        """The response is the card again, plus the alert swapped out of band."""
+        response = self._post_update(atc_reference="ATC 2026 No 12")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="report-updates-section"')
+        self.assertContains(response, 'hx-swap-oob="true"')
+
+    def test_an_update_without_atc_details_publishes_nothing(self):
+        response = self._post_update(notes="Chased the department.")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.report.updates.count(), 1)
+        self.assertFalse(self._published())
+        self.assertContains(response, "Add the ATC reference")
+        self.assertTrue(
+            self.report.unmet_transition_conditions(self._close_transition())
+        )
+
+    def test_the_status_may_not_come_from_another_type(self):
+        other = WorkflowType.objects.get(name="International Resolution")
+        response = self._post_update(resulting_state=other.states.first().pk)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(self.report.updates.exists())
+        self.assertContains(response, "Select a valid choice")
+
+    def test_recording_an_update_needs_the_edit_right(self):
+        self.client.force_login(self.outsider)
+        response = self._post_update(atc_reference="ATC 2026 No 12")
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(self.report.updates.exists())
+
+    def test_the_history_lists_the_newest_update_first(self):
+        self._post_update(update_date="2026-03-04", atc_reference="ATC-Alpha")
+        self._post_update(update_date="2026-04-04", atc_reference="ATC-Zulu")
+
+        page = self.client.get(self._detail_url()).content.decode()
+        self.assertLess(page.index("ATC-Zulu"), page.index("ATC-Alpha"))
+
+    def test_the_affordance_is_on_the_overview_tab(self):
+        """It is reachable without opening Related — the close depends on it."""
+        overview, related = self._panes(
+            self.client.get(self._detail_url()).content.decode()
+        )
+
+        self.assertIn('id="report-updates-section"', overview)
+        self.assertNotIn('id="report-updates-section"', related)
+
+    @staticmethod
+    def _panes(page):
+        """The Overview and Related panes, split out by their pane ids."""
+        overview = page.split('id="pane-overview"', 1)[1].split(
+            'id="pane-progress"', 1
+        )[0]
+        related = page.split('id="pane-related"', 1)[1].split('id="pane-notes"', 1)[0]
+        return overview, related
 
 
 class DetailPanelWiringTests(TestCase):

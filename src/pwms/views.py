@@ -35,6 +35,7 @@ from .forms import (
     DelegationParticipantAdderForm,
     DelegationParticipantFormSet,
     DelegationReportForm,
+    DelegationReportUpdateForm,
     InternationalAgreementForm,
     InternationalResolutionForm,
     ReferralForm,
@@ -564,6 +565,92 @@ def _participants_context(request, report):
     return context
 
 
+def _can_now_complete(report):
+    """Whether recording the ATC publication has unblocked a closing move.
+
+    The seeded *Close – House approved* transition is guarded by an
+    ``atc-update-published`` event, so the message that follows the update form
+    can say whether the report may now be closed. It runs the same guard check
+    ``perform_transition`` repeats, rather than assuming the event was the only
+    thing standing in the way.
+    """
+    for transition in report.get_available_transitions():
+        to_state = transition.to_state
+        if to_state is None or not to_state.is_terminal:
+            continue
+        if not report.unmet_transition_conditions(transition):
+            return True
+    return False
+
+
+def _updates_context(request, report):
+    """Template context for a report's BR03 update history and its adder.
+
+    Recording an update carrying any ATC detail is what emits the
+    ``atc-update-published`` event the close guard needs, so the card is both the
+    record of the publication and the screen that unblocks closing the report.
+    """
+    can_edit = resolve(request.user, report, EDIT)
+    context = {
+        "report": report,
+        "updates": report.updates.select_related("resulting_state", "recorded_by"),
+        "can_edit_updates": can_edit,
+    }
+    if can_edit:
+        context["update_form"] = DelegationReportUpdateForm(report=report)
+    return context
+
+
+def _updates_response(request, report, *, success="", error="", form=None):
+    """Re-render the BR03 update card, announcing a change when there is one."""
+    context = _updates_context(request, report)
+    if form is not None:
+        context["update_form"] = form
+    if error:
+        context["updates_status"] = {"level": "danger", "message": error}
+    elif success:
+        context["updates_status"] = {"level": "success", "message": success}
+    return render(request, "pwms/partials/report_updates.html", context)
+
+
+def _update_recorded_message(report, update):
+    """What to tell whoever recorded ``update``, given what it did to the report."""
+    if not update.has_atc_details:
+        return (
+            "Update recorded. Add the ATC reference, date, page or document to "
+            "record the publication."
+        )
+    if _can_now_complete(report):
+        return (
+            "ATC update published recorded. The report may now be closed from "
+            "the Status menu."
+        )
+    return "ATC update published recorded."
+
+
+@require_POST
+def delegation_report_update_add(request, public_id):
+    """Record a BR03 update on a report, the ATC publication included (HTMX).
+
+    Creating a row that carries any ATC detail emits the ``atc-update-published``
+    event the report's *Close – House approved* transition is guarded by, so this
+    is the screen that unblocks closing a report without an administrator (see
+    :class:`~pwms.models.DelegationReportUpdate`).
+    """
+    report = get_object_or_404(DelegationReport, public_id=public_id)
+    require(request.user, report, EDIT)
+    form = DelegationReportUpdateForm(request.POST, report=report)
+    if not form.is_valid():
+        return _updates_response(request, report, form=form)
+    update = form.save(commit=False)
+    update.delegation_report = report
+    update.recorded_by = request.user
+    update.save()
+    return _updates_response(
+        request, report, success=_update_recorded_message(report, update)
+    )
+
+
 def _can_answer_referral(user, referral, instance):
     """
     Whether ``user`` may record the answer to ``referral``.
@@ -845,10 +932,10 @@ def delegation_report_detail(request, public_id):
     require(request.user, report, VIEW)
     context = {
         "report": report,
-        "updates": report.updates.select_related("resulting_state", "recorded_by"),
         "transitions": report.get_available_transitions(),
     }
     context.update(_participants_context(request, report))
+    context.update(_updates_context(request, report))
     context.update(_workflow_detail_context(request, report))
     context.update(_attachment_context(request, report))
     return render(request, "pwms/delegation-report-detail.html", context)

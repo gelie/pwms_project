@@ -30,16 +30,19 @@
     <div class="workflow-hero-text">
       <h1 class="workflow-hero-title">{{ object.title }}</h1>
       <p class="workflow-hero-sub mb-2">{% block subtitle %}{{ object.identifier }}{% endblock subtitle %}</p>
-      <div class="workflow-hero-badges">
-        <span class="badge badge-state">{{ object.current_state.name }}</span>
-        <span class="badge badge-muted">{{ object.get_priority_display }} priority</span>
-        {% if object.is_overdue %}
-          <span class="badge badge-danger">{{ object.overdue_identifier }}</span>
-        {% endif %}
-        {% block badges %}{% endblock badges %}
+      <div class="workflow-badges-actions">
+        <div class="workflow-hero-badges">
+          <span class="badge badge-state">{{ object.current_state.name }}</span>
+          <span class="badge badge-muted">{{ object.get_priority_display }} priority</span>
+          {% if object.is_overdue %}
+            <span class="badge badge-danger">{{ object.overdue_identifier }}</span>
+          {% endif %}
+          {% block badges %}{% endblock badges %}
+        </div>
+        <div class="workflow-hero-actions">{% block actions %}{% endblock actions %}</div>
       </div>
     </div>
-    <div class="workflow-hero-actions">{% block actions %}{% endblock actions %}</div>
+
   </div>
 
   <ul class="nav nav-tabs workflow-tabs" id="workflow-tabs" role="tablist">

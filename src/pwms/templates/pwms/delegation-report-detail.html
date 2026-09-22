@@ -74,6 +74,16 @@
       </div>
     </div>
   </section>
+
+  {% comment %}
+    The BR03 updates sit on Overview, under the facts they explain: recording the
+    ATC publication is what unblocks closing the report, so the affordance has to
+    be visible without opening Related. The status alert lives outside the swapped
+    panel so it survives the HTMX swap of #report-updates-section (see
+    pwms/partials/report_updates.html).
+  {% endcomment %}
+  <div id="report-updates-status" aria-live="polite"></div>
+  {% include "pwms/partials/report_updates.html" %}
 {% endblock overview_extra %}
 
 {% block related %}
@@ -83,54 +93,4 @@
   {% endcomment %}
   <div id="participants-status" aria-live="polite"></div>
   {% include "pwms/partials/report_participants.html" %}
-
-  <section class="workflow-card">
-    <div class="workflow-card-head">
-      <span class="d-flex align-items-center gap-2">{% lucide "clipboard-list" size=16 %} BR03 updates</span>
-      <span class="badge badge-muted">{{ updates|length }}</span>
-    </div>
-    <div class="table-responsive">
-      <table class="table table-striped table-hover align-middle mb-0">
-        <caption class="visually-hidden">Report update history</caption>
-        <thead>
-          <tr>
-            <th scope="col">Date</th>
-            <th scope="col">Resulting state</th>
-            <th scope="col">ATC details</th>
-            <th scope="col">Recorded by</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for update in updates %}
-            <tr>
-              <td>{{ update.update_date|date:"d M Y" }}</td>
-              <td>
-                {% if update.resulting_state %}
-                  <span class="badge badge-state">{{ update.resulting_state.name }}</span>
-                {% else %}
-                  —
-                {% endif %}
-              </td>
-              <td>
-                {% if update.has_atc_details %}
-                  {{ update.atc_reference|default:"—" }}
-                  {% if update.atc_page_number %}· p. {{ update.atc_page_number }}{% endif %}
-                  {% if update.atc_document_url %}
-                    · <a href="{{ update.atc_document_url }}" rel="noopener" target="_blank">document</a>
-                  {% endif %}
-                {% else %}
-                  —
-                {% endif %}
-              </td>
-              <td>{{ update.recorded_by.display_name|default:"—" }}</td>
-            </tr>
-          {% empty %}
-            <tr>
-              <td colspan="4" class="text-center workflow-muted py-4">No updates recorded.</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </section>
 {% endblock related %}

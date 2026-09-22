@@ -369,7 +369,9 @@ alongside event guards; extend via the `TRANSITION_CONDITION_HANDLERS` registry.
 ✅ **Typed detail tables shipped** — `DelegationReportUpdate` (BR03 ATC update
 history; `report.record_update(...)` emits `atc-update-published` when ATC
 details are present) and `WorkflowReferral` (below). The legacy single-set
-`atc_*` fields are now read-only "latest" properties.
+`atc_*` fields are now read-only "latest" properties. Since the update history is
+recorded from the report's Overview tab, the seeded close guard is satisfied by the
+owning office rather than by an administrator.
 
 🔜 **Calendar view** — the legacy `update_event_statuses` command tracked
 scheduled/ongoing/completed *calendar* items (title, start/end); if a

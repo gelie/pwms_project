@@ -1590,6 +1590,29 @@ class WorkflowEvent(models.Model):
         )
         return f"{label} - {self.event_type.name} @ {self.occurred_at}"
 
+    # -- payload accessors ---------------------------------------------------
+    # The payload is JSON, so it need not carry any particular key: seed_demo_data
+    # records document events with no payload at all. Reading a key straight out of
+    # it in a template raises ``VariableDoesNotExist`` when that read is a *filter
+    # argument* -- ``event.document_url|default:event.payload.web_url`` -- because
+    # Django guards the filter's own variable but resolves its arguments through
+    # ``Variable.resolve``, which does not catch. These keep the read in Python,
+    # where a missing key is an empty string.
+    @property
+    def payload_name(self):
+        """Document name an attachment event records, "" when it has none."""
+        return (self.payload or {}).get("name", "")
+
+    @property
+    def payload_attachment_id(self):
+        """``public_id`` of the document an event names, "" when it has none."""
+        return (self.payload or {}).get("attachment_id", "")
+
+    @property
+    def payload_web_url(self):
+        """SharePoint URL of the document an event names, "" when it has none."""
+        return (self.payload or {}).get("web_url", "")
+
     def save(self, *args, **kwargs):
         if not self._state.adding:
             raise ValidationError(
@@ -2032,25 +2055,24 @@ class DelegationReport(AbstractLegislativeWorkflow):
         null=True,
         blank=True,
         editable=False,
-        help_text="System-generated unique reference number (BR02.6).",
+        help_text="System-generated unique reference number.",
     )
     detail_url_name = "delegation_report_detail"
     engagement_name = models.CharField(
         max_length=255,
         blank=True,
-        help_text="Name of the international engagement / forum (BR02.3.3).",
+        help_text="Name of the international engagement / forum.",
     )
     engagement_start_date = models.DateField(
         null=True,
         blank=True,
-        help_text="Engagement start date; may not be a future date (BR02.3.4).",
+        help_text="Engagement start date; may not be a future date.",
     )
     engagement_end_date = models.DateField(
         null=True,
         blank=True,
         help_text=(
-            "Engagement end date; may not be before the start date or in the "
-            "future (BR02.3.5)."
+            "Engagement end date; may not be before the start date or in the future."
         ),
     )
     location_city = models.ForeignKey(
@@ -2059,7 +2081,7 @@ class DelegationReport(AbstractLegislativeWorkflow):
         null=True,
         blank=True,
         related_name="delegation_reports",
-        help_text="Engagement location – city (BR02.3.6).",
+        help_text="Engagement location – city.",
     )
     location_country = models.ForeignKey(
         "Country",
@@ -2067,13 +2089,13 @@ class DelegationReport(AbstractLegislativeWorkflow):
         null=True,
         blank=True,
         related_name="delegation_reports",
-        help_text="Engagement location – country (BR02.3.6).",
+        help_text="Engagement location – country.",
     )
     notes = models.TextField(
         blank=True,
         help_text=(
             "Additional notes / follow-up action by Presiding Officer(s) or "
-            "Parliamentarian(s) (BR02.3.13)."
+            "Parliamentarian(s)."
         ),
     )
 
@@ -2081,7 +2103,7 @@ class DelegationReport(AbstractLegislativeWorkflow):
     report_document_url = models.URLField(
         max_length=2048,
         blank=True,
-        help_text="SharePoint link to the delegation report document (BR02.3.14).",
+        help_text="SharePoint link to the delegation report document.",
     )
 
     class Meta:
@@ -2099,20 +2121,19 @@ class DelegationReport(AbstractLegislativeWorkflow):
         errors = {}
         if self.engagement_start_date and self.engagement_start_date > today:
             errors["engagement_start_date"] = (
-                "The engagement start date may not be a future date (BR02.3.4)."
+                "The engagement start date may not be a future date."
             )
         if self.engagement_end_date:
             if self.engagement_end_date > today:
                 errors["engagement_end_date"] = (
-                    "The engagement end date may not be a future date (BR02.3.5)."
+                    "The engagement end date may not be a future date."
                 )
             elif (
                 self.engagement_start_date
                 and self.engagement_end_date < self.engagement_start_date
             ):
                 errors["engagement_end_date"] = (
-                    "The engagement end date may not be before the start date "
-                    "(BR02.3.5)."
+                    "The engagement end date may not be before the start date."
                 )
         if errors:
             raise ValidationError(errors)
@@ -2342,7 +2363,7 @@ class DelegationReportUpdate(BaseModel):
         help_text="Report this update belongs to.",
     )
     update_date = models.DateField(
-        default=timezone.localdate, help_text="Date of the update (BR03.5.2)."
+        default=timezone.localdate, help_text="Date of the update."
     )
     resulting_state = models.ForeignKey(
         "State",
@@ -2350,21 +2371,21 @@ class DelegationReportUpdate(BaseModel):
         null=True,
         blank=True,
         related_name="delegation_report_updates",
-        help_text="Report status (update type) after this update (BR03.5.1).",
+        help_text="Report status (update type) after this update.",
     )
     atc_reference = models.CharField(
-        max_length=255, blank=True, help_text="ATC reference (BR03.5.3)."
+        max_length=255, blank=True, help_text="ATC reference."
     )
     atc_publication_date = models.DateField(
-        null=True, blank=True, help_text="ATC publication date (BR03.5.3)."
+        null=True, blank=True, help_text="ATC publication date."
     )
     atc_page_number = models.CharField(
-        max_length=50, blank=True, help_text="ATC page number (BR03.5.3)."
+        max_length=50, blank=True, help_text="ATC page number."
     )
     atc_document_url = models.URLField(
         max_length=2048,
         blank=True,
-        help_text="SharePoint link to the ATC / update document (BR03.5.5).",
+        help_text="SharePoint link to the ATC / update document.",
     )
     notes = models.TextField(blank=True)
     recorded_by = models.ForeignKey(
@@ -2432,7 +2453,7 @@ class InternationalResolution(AbstractLegislativeWorkflow):
         blank=True,
         help_text=(
             "Resolution as concluded, captured from the delegation report "
-            "recommendations (BR02.3.9)."
+            "recommendations."
         ),
     )
     adoption_date = models.DateField(null=True, blank=True)
@@ -2494,18 +2515,18 @@ class InternationalAgreement(AbstractLegislativeWorkflow):
         null=True,
         blank=True,
         editable=False,
-        help_text="System-generated unique reference number (BR02).",
+        help_text="System-generated unique reference number.",
     )
     agreement_type = models.CharField(
         max_length=20,
         choices=AGREEMENT_TYPE_CHOICES,
         blank=True,
-        help_text="Constitutional basis of the agreement (BR02).",
+        help_text="Constitutional basis of the agreement.",
     )
     submitting_department = models.CharField(
         max_length=255,
         blank=True,
-        help_text="Government department that submitted the agreement (BR02).",
+        help_text="Government department that submitted the agreement.",
     )
     responsible_minister = models.ForeignKey(
         "User",
@@ -2514,8 +2535,7 @@ class InternationalAgreement(AbstractLegislativeWorkflow):
         blank=True,
         related_name="responsible_agreements",
         help_text=(
-            "Responsible Member of the Executive (Minister) submitting the "
-            "agreement (BR02)."
+            "Responsible Member of the Executive (Minister) submitting the agreement."
         ),
     )
     responsible_minister_name = models.CharField(
@@ -2523,43 +2543,41 @@ class InternationalAgreement(AbstractLegislativeWorkflow):
         blank=True,
         help_text=(
             "Minister as recorded on the tabled document - for a former "
-            "office holder or one without a PWMS account (BR02)."
+            "office holder or one without a PWMS account."
         ),
     )
     atc_tabling_date = models.DateField(
         null=True,
         blank=True,
-        help_text="Date the agreement was tabled in the ATC (BR02).",
+        help_text="Date the agreement was tabled in the ATC.",
     )
     atc_reference = models.CharField(
         max_length=255,
         blank=True,
-        help_text=(
-            "Reference details of the ATC and any other relevant documents (BR02)."
-        ),
+        help_text=("Reference details of the ATC and any other relevant documents."),
     )
     referral_committees = models.ManyToManyField(
         "Group",
         blank=True,
         related_name="international_agreements_referred",
-        help_text="Committee(s) to which the agreement is referred (BR02).",
+        help_text="Committee(s) to which the agreement is referred.",
     )
     notes = models.TextField(
         blank=True,
         help_text=(
             "Additional notes / follow-up action by Presiding Officer(s) or "
-            "Parliamentarian(s) (BR02)."
+            "Parliamentarian(s)."
         ),
     )
     agreement_document_url = models.URLField(
         max_length=2048,
         blank=True,
-        help_text="SharePoint link to the uploaded agreement document (BR02).",
+        help_text="SharePoint link to the uploaded agreement document.",
     )
     explanatory_memorandum_url = models.URLField(
         max_length=2048,
         blank=True,
-        help_text="SharePoint link to the explanatory memorandum (BR02).",
+        help_text="SharePoint link to the explanatory memorandum.",
     )
 
     class Meta:

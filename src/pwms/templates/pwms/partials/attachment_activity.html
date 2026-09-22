@@ -10,6 +10,11 @@ after the ``Attachment`` row is gone.
 Rendered inside the ``#attachment-list`` fragment, so it refreshes with the table
 after every attach/detach.
 
+The payload fields are read through ``WorkflowEvent``'s ``payload_*`` accessors
+rather than out of the JSON dict directly: a payload can be empty (see
+``seed_demo_data``), and a missing key read as a filter argument raises rather
+than rendering empty.
+
 Context: attachment_events.
 {% endcomment %}
 {% if attachment_events %}
@@ -18,7 +23,7 @@ Context: attachment_events.
     {% for event in attachment_events %}
       <li class="d-flex flex-wrap align-items-center gap-2 border-bottom py-1">
         <span class="badge text-bg-secondary">{{ event.event_type.name }}</span>
-        <span>{{ event.payload.name|default:"—" }}</span>
+        <span>{{ event.payload_name|default:"—" }}</span>
         <span class="text-body-secondary">
           {% if event.actor %}
             {{ event.actor.get_full_name|default:event.actor.get_username }}
@@ -34,12 +39,12 @@ Context: attachment_events.
           detached document has no row left to resolve from, so its event's
           snapshot URL is the best the trail can offer.
         {% endcomment %}
-        {% if event.payload.attachment_id in live_attachment_ids %}
-          <a href="{% url "pwms:attachment_open" event.payload.attachment_id %}"
+        {% if event.payload_attachment_id in live_attachment_ids %}
+          <a href="{% url "pwms:attachment_open" event.payload_attachment_id %}"
              target="_blank"
              rel="noopener">open</a>
         {% else %}
-          {% with document_url=event.document_url|default:event.payload.web_url %}
+          {% with document_url=event.document_url|default:event.payload_web_url %}
             {% if document_url %}
               <a href="{{ document_url }}" target="_blank" rel="noopener">open</a>
             {% endif %}

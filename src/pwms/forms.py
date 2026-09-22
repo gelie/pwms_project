@@ -36,6 +36,7 @@ from .models import (
     BillVersion,
     DelegationParticipant,
     DelegationReport,
+    DelegationReportUpdate,
     Group,
     InternationalAgreement,
     InternationalResolution,
@@ -432,6 +433,56 @@ DelegationParticipantFormSet = inlineformset_factory(
     extra=0,
     can_delete=True,
 )
+
+
+class DelegationReportUpdateForm(forms.ModelForm):
+    """Record one BR03 update on a delegation report, the ATC publication included.
+
+    Creating a row that carries any ATC detail emits the ``atc-update-published``
+    event the report's close transition requires (see
+    :class:`~pwms.models.DelegationReportUpdate`), so this is the screen that
+    unblocks closing a report. The report itself is supplied by the view, which is
+    also what scopes ``resulting_state`` to the report's own workflow type.
+    """
+
+    class Meta:
+        model = DelegationReportUpdate
+        fields = [
+            "update_date",
+            "resulting_state",
+            "atc_reference",
+            "atc_publication_date",
+            "atc_page_number",
+            "atc_document_url",
+            "notes",
+        ]
+        widgets = {
+            "update_date": DatePickerInput(attrs={"class": "form-control"}),
+            "resulting_state": forms.Select(attrs={"class": "form-select"}),
+            "atc_reference": forms.TextInput(
+                attrs={"class": "form-control", "placeholder": "ATC reference"}
+            ),
+            "atc_publication_date": DatePickerInput(attrs={"class": "form-control"}),
+            "atc_page_number": forms.TextInput(
+                attrs={"class": "form-control", "placeholder": "Page number"}
+            ),
+            "atc_document_url": forms.TextInput(
+                attrs={"class": "form-control", "placeholder": "https://…"}
+            ),
+            "notes": forms.Textarea(attrs={"class": "form-control", "rows": 2}),
+        }
+
+    def __init__(self, *args, report=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        # A report's own type owns the states an update may leave it in, exactly as
+        # the report's own form limits its ``current_state``.
+        states = State.objects.none()
+        if report is not None and report.workflow_type_id:
+            states = report.workflow_type.states.all().order_by("order", "name")
+        self.fields["resulting_state"].queryset = states
+        if report is not None and not self.is_bound:
+            # An update usually leaves the report where it is, so guess its status.
+            self.initial.setdefault("resulting_state", report.current_state_id)
 
 
 class InternationalResolutionForm(WorkflowInstanceFormMixin, forms.ModelForm):

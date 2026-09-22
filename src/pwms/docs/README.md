@@ -15,6 +15,27 @@ order, or used as reference while developing.
 8. [SharePoint Sync](./SharePoint%20Sync.md) — the `populate_sites` command, the local `Sharepoint*` tables, and document attachments/versioning.
 9. [Roadmap & Planned Integrations](./Roadmap%20&%20Planned%20Integrations.md) — email, notifications, SharePoint and other plans.
 
+## User-facing documents
+
+These are written for end users rather than developers, and are the only ones
+meant to be read by people who will not be reading the code.
+
+| Document | Contents |
+| --- | --- |
+| [User Manual Introduction](./User%20Manual%20Introduction.md) | *Systems Overview* and *The Purpose* — PWMS in plain language, for the front of a user manual |
+| [Training Manual](./Training%20Manual.md) | The complete IRPD training course: learning objectives and outcomes, fourteen modules, practical exercises, an assessment and the administrator prerequisites |
+| [Quick Reference Card](./Quick%20Reference%20Card.html) ([PDF](./Quick%20Reference%20Card.pdf)) | A printable one-page A4 wall card for the section: the three lifecycles, creating records, transitions, referrals, documents, reports, alerts and who to escalate to |
+
+### Regenerating the quick-reference card
+
+The card's source is the HTML file; the PDF beside it is **generated, not
+hand-edited**. After changing the HTML, rebuild the PDF with WeasyPrint (already a
+project dependency) and confirm it is still a single A4 page before committing:
+
+```bash
+.venv/bin/python -c "from weasyprint import HTML; d = HTML(filename='src/pwms/docs/Quick Reference Card.html').render(); print('pages:', len(d.pages)); d.write_pdf('src/pwms/docs/Quick Reference Card.pdf')"
+```
+
 ## Conventions used in these documents
 
 - Diagrams use Mermaid and render on GitHub, VS Code and most Markdown viewers.

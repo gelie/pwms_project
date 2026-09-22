@@ -13,7 +13,7 @@ from urllib.parse import urlencode
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from .management.commands.populate_sites import Command
@@ -1410,3 +1410,52 @@ class DocumentEventBackfillTests(TestCase):
 
         self.assertEqual(self._events().count(), 1)
         self.assertFalse(self._events().get().payload.get("backfilled"))
+
+
+class AttachmentActivityRenderingTests(TestCase):
+    """The document-activity panel copes with whatever a payload holds.
+
+    ``seed_demo_data`` records document events with no payload at all (``payload
+    or {}``), so the panel must not read a key straight out of that dict: with
+    ``DEBUG`` on, Django does not swallow a failed lookup inside ``{% if %}`` /
+    ``{% with %}``, and the whole detail page answers 500 instead of rendering.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.owner = User.objects.create_user(username="activity-owner", password="pw")
+        report_type = WorkflowType.objects.get(name="Delegation Report")
+        cls.report = DelegationReport.objects.create(
+            workflow_type=report_type,
+            current_state=report_type.get_initial_state(),
+            title="Activity render report",
+            owner=cls.owner,
+        )
+        cls.event_type = EventType.objects.get(slug="document-attached")
+
+    def setUp(self):
+        self.client.force_login(self.owner)
+
+    def _detail_url(self):
+        return reverse(
+            "pwms:delegation_report_detail",
+            kwargs={"public_id": self.report.public_id},
+        )
+
+    def test_a_document_event_without_a_payload_still_renders(self):
+        self.report.record_event(self.event_type, actor=self.owner)
+
+        with override_settings(DEBUG=True):
+            response = self.client.get(self._detail_url())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Document activity")
+
+    def test_a_document_event_without_a_payload_offers_no_open_link(self):
+        """It cannot name the document, so the trail offers no link at all."""
+        self.report.record_event(self.event_type, actor=self.owner)
+
+        with override_settings(DEBUG=True):
+            response = self.client.get(self._detail_url())
+
+        self.assertNotContains(response, "open</a>")

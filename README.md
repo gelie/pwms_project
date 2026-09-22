@@ -97,6 +97,9 @@ The self-documentation lives in [`pwms/docs/`](src/pwms/docs/):
 | [Management Commands](src/pwms/docs/Management%20Commands.md) | Every `manage.py` command and its purpose |
 | [SharePoint Sync](src/pwms/docs/SharePoint%20Sync.md) | `populate_sites`, the local `Sharepoint*` tables and document attachments |
 | [Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md) | Email, notifications, SharePoint, exports and what remains |
+| [User Manual Introduction](src/pwms/docs/User%20Manual%20Introduction.md) | *Systems Overview* and *The Purpose* in plain language |
+| [Training Manual](src/pwms/docs/Training%20Manual.md) | The IRPD training course: objectives and outcomes, modules, exercises, assessment |
+| [Quick Reference Card](src/pwms/docs/Quick%20Reference%20Card.pdf) | Printable one-page A4 wall card for the section ([HTML source](src/pwms/docs/Quick%20Reference%20Card.html)) |
 
 ---
 
