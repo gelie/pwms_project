@@ -14,7 +14,9 @@ Rendered standalone as the HTMX response to an add, an edit or a delete, and
 included by ``pwms/workflow-detail.html`` for the first paint (every workflow
 detail page gets this panel through that block's default). The response root is
 ``#notes-section`` and callers swap it with ``outerHTML``; the status alert lives
-outside it (in the tab pane) so it survives that swap.
+outside it (in the tab pane) so it survives that swap. The tab's own Notes counter
+is refreshed out-of-band when the fragment is rendered for an HTMX request, since
+it is in the tab bar rather than the panel.
 
 Context (from ``pwms.views._notes_context``): note_rows, record_notes,
 can_edit_notes, notes_form, target_content_type, target_object_id; plus
@@ -119,6 +121,11 @@ notes_status ({level, message}) when a note was just added, edited or deleted.
     {% endfor %}
   </ul>
 </section>
+{% if request.htmx %}
+  {# Out-of-band: the Notes counter in the tab bar lives outside #notes-section. #}
+  <span class="workflow-tab-count" id="tab-notes-count" hx-swap-oob="true">{{ note_rows|length }}</span>
+{% endif %}
+{% include "pwms/partials/tab_counters.html" %}
 {% if notes_status %}
   <div id="notes-status" hx-swap-oob="true">
     <div class="alert alert-{{ notes_status.level }} py-2 mb-3" role="alert">{{ notes_status.message }}</div>

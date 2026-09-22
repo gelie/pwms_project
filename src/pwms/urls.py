@@ -68,6 +68,13 @@ urlpatterns = [
         views.delegation_report_participant_delete,
         name="delegation_report_participant_delete",
     ),
+    # Adopted resolutions are captured from the report too; the detail page adds
+    # one at a time, creating an international resolution nested under the report.
+    path(
+        "workflows/delegation-reports/<uuid:public_id>/resolutions/add/",
+        views.delegation_report_resolution_add,
+        name="delegation_report_resolution_add",
+    ),
     # BR03 updates (the ATC publication among them) are rows of the report too;
     # the detail page records one at a time from the Related tab.
     path(

@@ -1,0 +1,103 @@
+{% comment %}
+The resolutions adopted at the engagement on a delegation report: the ones the
+report captured, and the form that captures another (BR02.3.9).
+
+Each resolution is an InternationalResolution of its own, nested under the report
+through ``WorkflowRelationship`` rather than owned by it (see
+``pwms.views._create_child_resolution``), so the table links out to the resolution
+and reads the fields that instance carries. This card is the report's one listing
+of its resolutions: the Related tab drops the Hierarchy card entirely for a report
+(see the ``hierarchy`` override in ``pwms/delegation-report-detail.html``), since a
+report can never have a parent.
+
+Rendered standalone as the HTMX response to an add, and included by
+``pwms/delegation-report-detail.html``. The response root and the include target
+are both ``#resolutions-section``; callers swap it with ``outerHTML``, and the
+status alert lives outside it in the tab pane so it survives that swap.
+
+Context (from ``pwms.views._resolutions_context``): report, resolutions,
+can_add_resolutions, resolution_form; plus resolutions_status ({level, message})
+when one was just captured.
+{% endcomment %}
+<section class="workflow-card" id="resolutions-section">
+  <div class="workflow-card-head">
+    <span class="d-flex align-items-center gap-2">{% lucide "file-text" size=16 %} Resolutions adopted
+    <span class="badge badge-muted">{{ resolutions|length }}</span></span>
+    {% if can_add_resolutions %}
+      <button class="btn btn-outline-primary btn-sm"
+              type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#resolution-form"
+              aria-expanded="false"
+              aria-controls="resolution-form">Add Resolution</button>
+    {% endif %}
+  </div>
+  {% if can_add_resolutions %}
+    <div id="resolution-form"
+         class="collapse{% if resolution_form.errors %} show{% endif %} border-bottom p-3">
+      <form method="post"
+            hx-post="{% url "pwms:delegation_report_resolution_add" report.public_id %}"
+            hx-target="#resolutions-section"
+            hx-swap="outerHTML">
+        {% csrf_token %}
+        <p class="small workflow-muted">
+          Optional. Each resolution is created as an international resolution and linked to this report.
+        </p>
+        <div class="row g-3">
+          {% include "pwms/_form_field.html" with field=resolution_form.title wrapper_class="col-12" %}
+          {% include "pwms/_form_field.html" with field=resolution_form.resolution_number wrapper_class="col-12 col-md-4" %}
+          {% include "pwms/_form_field.html" with field=resolution_form.adoption_date wrapper_class="col-12 col-md-4" %}
+          <div class="d-flex gap-2 mt-3 col-12 col-md-4 align-items-end">
+            <button class="btn btn-primary" type="submit">Add resolution</button>
+            <button class="btn btn-link"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#resolution-form">Cancel</button>
+          </div>
+        </div>
+
+      </form>
+    </div>
+  {% endif %}
+  <div class="table-responsive">
+    <table class="table table-striped table-hover align-middle mb-0">
+      <caption class="visually-hidden">Resolutions adopted at the engagement</caption>
+      <thead>
+        <tr>
+          <th scope="col">Number</th>
+          <th scope="col">Title</th>
+          <th scope="col">Adopted</th>
+          <th scope="col">State</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in resolutions %}
+          <tr>
+            <td>
+              {% if row.url %}
+                <a href="{{ row.url }}">{{ row.object.resolution_number|default:"—" }}</a>
+              {% else %}
+                {{ row.object.resolution_number|default:"—" }}
+              {% endif %}
+            </td>
+            <td>{{ row.object.title }}</td>
+            <td>{{ row.object.adoption_date|date:"d M Y"|default:"—" }}</td>
+            <td>
+              <span class="badge badge-state">{{ row.object.current_state.name }}</span>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="text-center workflow-muted py-4">No resolutions recorded.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% include "pwms/partials/tab_counters.html" %}
+{% if resolutions_status %}
+  <div id="resolutions-status" hx-swap-oob="true">
+    <div class="alert alert-{{ resolutions_status.level }} py-2 mb-3" role="alert">{{ resolutions_status.message }}</div>
+  </div>
+{% endif %}

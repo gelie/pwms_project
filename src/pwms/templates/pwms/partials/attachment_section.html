@@ -14,7 +14,7 @@ can_attach.
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
   <h2 class="workflow-card-title mb-0">
     {% lucide "paperclip" size=16 %} Attachments
-    <span class="badge badge-muted">{{ attachments|length }}</span>
+    <span class="badge badge-muted" id="attachment-count">{{ attachments|length }}</span>
   </h2>
   {% if can_attach %}
     <button type="button"

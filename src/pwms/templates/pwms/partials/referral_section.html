@@ -6,7 +6,9 @@ withdraw forms.
 Rendered standalone as the HTMX response to a create/respond/recall, and
 included by ``pwms/workflow-detail.html`` for the first paint. The response root
 is ``#referral-section`` and callers swap it with ``outerHTML``; the status
-alert lives outside it (in the tab pane) so it survives that swap.
+alert lives outside it (in the tab pane) so it survives that swap. The tab's own
+Referrals counter is refreshed out-of-band when the fragment is rendered for an
+HTMX request, since it is in the tab bar rather than the panel.
 
 Context (from ``pwms.views._referral_context``): referral_rows, can_refer,
 referral_form; plus referral_status ({level, message}) when a change was made.
@@ -191,6 +193,11 @@ referral_form; plus referral_status ({level, message}) when a change was made.
     </table>
   </div>
 </section>
+{% if request.htmx %}
+  {# Out-of-band: the Referrals counter in the tab bar lives outside #referral-section. #}
+  <span class="workflow-tab-count" id="tab-referrals-count" hx-swap-oob="true">{{ referral_rows|length }}</span>
+{% endif %}
+{% include "pwms/partials/tab_counters.html" %}
 {% if referral_status %}
   <div id="referral-status" hx-swap-oob="true">
     <div class="alert alert-{{ referral_status.level }} py-2 mb-3" role="alert">{{ referral_status.message }}</div>

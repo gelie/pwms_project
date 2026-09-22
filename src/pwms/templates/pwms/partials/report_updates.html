@@ -107,6 +107,7 @@ update_form; plus updates_status ({level, message}) when one was just recorded.
     </table>
   </div>
 </section>
+{% include "pwms/partials/tab_counters.html" %}
 {% if updates_status %}
   <div id="report-updates-status" hx-swap-oob="true">
     <div class="alert alert-{{ updates_status.level }} py-2 mb-3" role="alert">{{ updates_status.message }}</div>
