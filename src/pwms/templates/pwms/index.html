@@ -28,7 +28,7 @@
     <section class="mb-4">
       <h2 class="h4">Where to go</h2>
       <div class="row g-3">
-        <div class="col-12 col-md-4">
+        <div class="col-12 col-md-3">
           <a class="card h-100" href="{% url "pwms:dashboard" %}">
             <div class="card-header d-flex align-items-center justify-content-between gap-2">
               <span class="d-flex align-items-center gap-2">{% lucide "layout-dashboard" size=16 %} Dashboard</span>
@@ -42,7 +42,7 @@
             </div>
           </a>
         </div>
-        <div class="col-12 col-md-4">
+        <div class="col-12 col-md-3">
           <a class="card h-100" href="{% url "pwms:workflows" %}">
             <div class="card-header d-flex align-items-center justify-content-between gap-2">
               <span class="d-flex align-items-center gap-2">{% lucide "clipboard-list" size=16 %} Workflow register</span>
@@ -56,7 +56,7 @@
             </div>
           </a>
         </div>
-        <div class="col-12 col-md-4">
+        <div class="col-12 col-md-3">
           <a class="card h-100" href="{% url "pwms:my_groups" %}">
             <div class="card-header d-flex align-items-center justify-content-between gap-2">
               <span class="d-flex align-items-center gap-2">{% lucide "users" size=16 %} My groups</span>
@@ -66,6 +66,19 @@
               <p class="text-muted mb-0">
                 The committees and units you belong to, and the roles you hold in
                 them — what your access is built from.
+              </p>
+            </div>
+          </a>
+        </div>
+        <div class="col-12 col-md-3">
+          <a class="card h-100" href="{% url "pwms:reports" %}">
+            <div class="card-header d-flex align-items-center justify-content-between gap-2">
+              <span class="d-flex align-items-center gap-2">{% lucide "summary" size=16 %} Reports</span>
+              {% lucide "arrow-right" size=16 %}
+            </div>
+            <div class="card-body">
+              <p class="text-muted mb-0">
+                Summarized reports of your workflow activities and progress.
               </p>
             </div>
           </a>
