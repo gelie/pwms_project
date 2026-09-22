@@ -29,7 +29,7 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 SECRET_KEY = config("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = config("DEBUG", default=False, cast=bool)
 
 ALLOWED_HOSTS = [
     "workflows-dev.parliament.gov.za",
@@ -207,11 +207,22 @@ DJANGO_FLATPICKR = {
 # Alert email is *queued*, not sent inline, so `manage.py process_tasks` (the
 # django-background-tasks worker configured below) has to be running for
 # anything to go out. That worker is also what retries a transient failure.
-MAILERS = {
-    "default": {
-        "BACKEND": "django.core.mail.backends.console.EmailBackend",
-    },
-}
+
+if DEBUG:
+    MAILERS = {
+        "default": {
+            "BACKEND": "django.core.mail.backends.console.EmailBackend",
+        },
+    }
+else:
+    EMAIL_BACKEND = config(
+        "EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend"
+    )
+    EMAIL_HOST = config("EMAIL_HOST", default="localhost")
+    DEFAULT_FROM_EMAIL = config(
+        "DEFAULT_FROM_EMAIL", default="noreply@parliament.gov.za"
+    )
+
 
 # Sender for outbound alerts, and the base URL used to make the links in those
 # alerts absolute (the in-app bell uses site-relative paths). Both default to
