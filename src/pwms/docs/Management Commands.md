@@ -71,6 +71,7 @@ pointing at them) survive.
 | Command | Purpose | Status |
 | --- | --- | --- |
 | `import_groups` | import group names from a CSV/text list as `Group` records under a parent group | ✅ live |
+| `compare_org_hierarchy` | diff PWMS's group hierarchy against the tree Oracle's supervisor chain implies | ✅ live — see below |
 
 Key options: `--parent NAME_OR_SLUG` (required) is the group the names hang
 under; `--type GROUP_TYPE` (required) must be one of `Group.GROUP_TYPE_CHOICES`
@@ -79,6 +80,43 @@ section's first line is a heading and the rest are names — and `--section NAME
 imports a single section only. Names are whitespace-normalised and matched on
 the `(name, parent)` natural key, so re-running is safe. `--dry-run` previews the
 changes.
+
+### Organisation hierarchy
+
+`sync_groups_oracle` builds the group tree from Oracle's `(CHILD_ORG_NAME,
+PARENT_ORG_NAME)` pair, which relates a **cost centre** to its **org unit** — not
+an org unit to its parent. The unit-to-unit containment therefore never arrived,
+so every org unit hung directly off `Administration` and a division's sections
+were indistinguishable from unrelated divisions.
+
+The containment is recoverable from the `EMPLOYEEID` / `SUPERVISORID` chain — a
+unit's parent is the unit its manager reports into — but only weakly, because a
+reporting line is not always an org line. `compare_org_hierarchy` derives that
+tree and diffs it against what PWMS stores, **read-only**, so the change can be
+reviewed before anything moves:
+
+```bash
+python manage.py compare_org_hierarchy --prefix IRP
+```
+
+| Option | Effect |
+| --- | --- |
+| `--prefix TEXT` | only units whose name starts with `TEXT` |
+| `--all` | list every unit in scope, not just the differences |
+| `--json` | machine-readable output |
+| `--strict` | exit non-zero when any unit differs or is missing |
+| `--verbose` | log each inferred edge |
+
+`sync_groups_oracle --infer-org-parents` applies the inferred tree. Because a
+single outward report is as likely a functional reporting line as real
+containment, only edges corroborated by `--infer-min-votes` of a unit's people
+(default `2`) are used; the rest are left where they were, and the command logs
+how many weakly-evidenced edges it dropped. `--dry-run` previews the result.
+
+| Option | Effect |
+| --- | --- |
+| `--infer-org-parents` | nest each org unit under the unit its manager reports into |
+| `--infer-min-votes N` | reports required to corroborate an edge (default 2) |
 
 ## Committee scraping
 

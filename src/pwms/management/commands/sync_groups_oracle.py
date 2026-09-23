@@ -15,81 +15,19 @@ from time import perf_counter
 
 from django.core.management.base import CommandError
 from django.db import IntegrityError, transaction
+
 from pwms.management.commands.sync_base import OracleSyncBase
+from pwms.membership.org_hierarchy import (
+    infer_unit_parents,
+    person_from_row,
+    restore_acronym_case,
+    unit_parent_map,
+)
 from pwms.models import Group
 
-# Acronyms / abbreviations that must stay uppercase in organisational unit
-# names. ``OracleSyncBase.strip_group_code_prefix`` only preserves a smaller
-# set, so we restore these after sanitising. Kept in sync with the acronym
-# list used by ``sync_roles_oracle``.
-_ACRONYMS = {
-    "BO",
-    "BP1",
-    "BP2",
-    "CAE",
-    "CBS",
-    "CCSC",
-    "CEO",
-    "CFO",
-    "CIO",
-    "CIS",
-    "CISO",
-    "CS",
-    "DS",
-    "ECM",
-    "ERP",
-    "FMO",
-    "HC",
-    "HR",
-    "ICT",
-    "IP",
-    "IR",
-    "IRP",
-    "ISS",
-    "IT",
-    "KIS",
-    "LOGB",
-    "LR",
-    "LS",
-    "LSO",
-    "LSS",
-    "MIS",
-    "MP",
-    "MR",
-    "MPs",
-    "MSR",
-    "MSS",
-    "NA",
-    "NCOP",
-    "OM",
-    "OISD",
-    "OSTP",
-    "PA",
-    "PBO",
-    "PCS",
-    "PCSD",
-    "PDO",
-    "PISC",
-    "POSA",
-    "PMO",
-    "PP",
-    "PPS",
-    "PM",
-    "PMU",
-    "RM",
-    "RMI",
-    "RS",
-    "SC",
-    "SCM",
-    "SMG",
-    "SS",
-    "TAO",
-    "TM",
-}
-
-# Lower-cased lookup so mixed-case input still resolves to the canonical form
-# (e.g. "CBS", "Cbs" and "cbs" all become "CBS").
-_ACRONYM_BY_LOWER = {name.lower(): name for name in _ACRONYMS}
+# Acronyms / abbreviations that must stay uppercase now live with the org-name
+# helpers in ``pwms.membership.org_hierarchy`` (shared with the hierarchy diff
+# command); ``sync_roles_oracle`` keeps its own copy for role names.
 
 
 class Command(OracleSyncBase):
@@ -104,11 +42,33 @@ class Command(OracleSyncBase):
                 "new_groups": 0,
                 "updated_groups": 0,
                 "duplicate_names": 0,
+                "org_parents_inferred": 0,
             }
         )
 
     def add_arguments(self, parser):
         self.add_common_arguments(parser)
+        parser.add_argument(
+            "--infer-org-parents",
+            action="store_true",
+            help=(
+                "Nest each org unit under the unit its manager reports into "
+                "(derived from the Oracle supervisor chain) instead of leaving "
+                "every unit directly under Administration. Preview the change "
+                "with 'manage.py compare_org_hierarchy' first."
+            ),
+        )
+        parser.add_argument(
+            "--infer-min-votes",
+            type=int,
+            default=2,
+            help=(
+                "With --infer-org-parents, require this many of a unit's people "
+                "to report into the same unit before using it as the parent. A "
+                "single report is often a functional line, not containment "
+                "(default: 2)."
+            ),
+        )
 
     def handle(self, *args, **options):
         """Main command handler."""
@@ -121,6 +81,8 @@ class Command(OracleSyncBase):
                 handler.setLevel(10)
 
         dry_run = options["dry_run"]
+        infer_org_parents = options["infer_org_parents"]
+        infer_min_votes = options["infer_min_votes"]
 
         if dry_run:
             self.stdout.write(
@@ -134,7 +96,7 @@ class Command(OracleSyncBase):
 
         try:
             self.connect_to_oracle()
-            self.sync_groups(dry_run)
+            self.sync_groups(dry_run, infer_org_parents, infer_min_votes)
 
             if self.stats["errors"] == 0:
                 self.stdout.write(
@@ -157,8 +119,18 @@ class Command(OracleSyncBase):
             self.stats["end_time"] = perf_counter()
             self.print_summary()
 
-    def sync_groups(self, dry_run: bool):
-        """Fetch and sync organizational groups from Oracle."""
+    def sync_groups(
+        self,
+        dry_run: bool,
+        infer_org_parents: bool = False,
+        infer_min_votes: int = 2,
+    ):
+        """Fetch and sync organizational groups from Oracle.
+
+        With ``infer_org_parents`` the org units are nested using the Oracle
+        supervisor chain instead of being left flat under ``Administration``;
+        see :mod:`pwms.membership.org_hierarchy`.
+        """
         self.logger.info("🏛️  Fetching organizational groups from Oracle...")
 
         groups_data = self.fetch_oracle_groups()
@@ -168,11 +140,17 @@ class Command(OracleSyncBase):
             f"📊 Fetched {len(groups_data)} unique organizational unit relationships"
         )
 
+        unit_parents = (
+            self._infer_org_parents(infer_min_votes) if infer_org_parents else None
+        )
+
         parliament_group = self.ensure_parliament_root(dry_run)
         main_groups = self.create_main_groups(parliament_group, dry_run)
         administration = main_groups.get("administration")
 
-        self.create_organizational_groups(groups_data, administration, dry_run)
+        self.create_organizational_groups(
+            groups_data, administration, dry_run, unit_parents
+        )
 
         self.logger.info("✅ Group synchronization completed")
 
@@ -354,6 +332,7 @@ class Command(OracleSyncBase):
         groups_data: set[tuple[str, str]],
         administration: Group,
         dry_run: bool,
+        unit_parents: dict[str, str] | None = None,
     ):
         """Build the staff organisational tree under ``administration``.
 
@@ -367,6 +346,10 @@ class Command(OracleSyncBase):
         * deeper chains are honoured (a unit may itself live under another)
         * the whole forest is anchored under the ``Administration`` group
 
+        When ``unit_parents`` is supplied (from ``--infer-org-parents``) an org
+        unit's edge-derived parent is replaced by the unit its manager reports
+        into, so sections nest under their division instead of sitting flat.
+
         Existence is checked against the model's natural key ``(name, parent)``
         before anything is inserted, so re-runs are idempotent. Units left
         orphaned by earlier sync runs (parent ``None``) are adopted and
@@ -378,12 +361,8 @@ class Command(OracleSyncBase):
         all_names: set[str] = set()
 
         for raw_child, raw_parent in groups_data:
-            child = self._restore_acronym_case(
-                self.strip_group_code_prefix(raw_child or "")
-            )
-            parent = self._restore_acronym_case(
-                self.strip_group_code_prefix(raw_parent or "")
-            )
+            child = self._normalize_org_name(raw_child)
+            parent = self._normalize_org_name(raw_parent)
             if not child and not parent:
                 continue
 
@@ -418,6 +397,11 @@ class Command(OracleSyncBase):
                     f"⚠️  Org unit '{child}' reported under multiple parents "
                     f"({', '.join(ordered)}); keeping '{ordered[0]}'"
                 )
+
+        if unit_parents:
+            self.stats["org_parents_inferred"] += self._apply_inferred_parents(
+                canonical_parent, unit_parents, all_names
+            )
 
         self._administration = administration
         self._org_all_names = all_names
@@ -654,6 +638,66 @@ class Command(OracleSyncBase):
 
         return None
 
+    def _apply_inferred_parents(
+        self,
+        canonical_parent: dict[str, str],
+        unit_parents: dict[str, str],
+        all_names: set[str],
+    ) -> int:
+        """Replace edge-derived parents with the supervisor-chain ones.
+
+        Only names the Oracle edges already know about are touched, and only
+        when the inferred parent is one of them, so an inference can never
+        invent a node or re-parent a cost centre.
+        """
+        applied = 0
+        for unit, parent in unit_parents.items():
+            if unit not in all_names or parent not in all_names or parent == unit:
+                continue
+            if canonical_parent.get(unit) == parent:
+                continue
+            canonical_parent[unit] = parent
+            applied += 1
+            self.logger.info(
+                f"🧭 Org parent for '{unit}' from supervisor chain: '{parent}'"
+            )
+        return applied
+
+    def _infer_org_parents(self, min_votes: int = 2) -> dict[str, str]:
+        """Unit -> parent, derived from the Oracle employee/supervisor chain.
+
+        Only edges corroborated by at least ``min_votes`` of a unit's people are
+        returned, so a lone functional reporting line cannot re-parent a unit.
+        """
+        self.logger.info("🧭 Inferring org parents from the supervisor chain...")
+        people = self.fetch_oracle_people()
+        self.logger.info(f"📊 Fetched {len(people)} employee row(s)")
+        inferences = infer_unit_parents(people, self._normalize_org_name)
+        parents = unit_parent_map(inferences, min_votes=min_votes)
+        dropped = sum(
+            1 for inf in inferences.values() if inf.parent and inf.unit not in parents
+        )
+        self.logger.info(
+            f"🧭 Inferred a parent for {len(parents)} org unit(s); "
+            f"dropped {dropped} weakly-evidenced edge(s)"
+        )
+        return parents
+
+    def fetch_oracle_people(self) -> list:
+        """Employee / supervisor rows used to derive the organisational tree."""
+        query = """
+            SELECT EMPLOYEEID, SUPERVISORID, CHILD_ORG_NAME, PARENT_ORG_NAME
+            FROM APPS.XXPER_PEOPLE_INTERFACE
+            WHERE CURRENT_EMPLOYEE_FLAG = 'Y'
+            AND ASSIGNMENT_STATUS = 'Active Assignment'
+        """
+        self.oracle_cursor.execute(query)
+        return [person_from_row(row) for row in self.oracle_cursor.fetchall()]
+
+    def _normalize_org_name(self, raw: str | None) -> str:
+        """Canonical PWMS group name for a raw Oracle unit / cost-centre name."""
+        return self._restore_acronym_case(self.strip_group_code_prefix(raw or ""))
+
     def _is_org_managed(self, group: Group, current_parent: Group | None) -> bool:
         """Whether a DB group may safely be moved by this org sync."""
         if current_parent is None:
@@ -669,27 +713,11 @@ class Command(OracleSyncBase):
     def _restore_acronym_case(name: str) -> str:
         """Uppercase known acronyms that title-casing would have mangled.
 
-        ``strip_group_code_prefix`` title-cases every word and only preserves
-        a small acronym set (ICT, HR, ...). Words such as "CBS", "CAE",
-        "FMO" therefore come back as "Cbs", "Cae", "Fmo". This re-uppercases
-        any token whose lower-cased form matches a known acronym, ignoring any
-        surrounding punctuation (so "Cbs:" becomes "CBS:"), while leaving all
-        other casing untouched.
+        Thin wrapper over
+        :func:`pwms.membership.org_hierarchy.restore_acronym_case`, so the group
+        sync and the hierarchy diff share one acronym table.
         """
-        words = (name or "").split()
-        restored = []
-        for word in words:
-            core = word.strip("():;,./-'\"")
-            replacement = _ACRONYM_BY_LOWER.get(core.lower())
-            if replacement is None:
-                restored.append(word)
-                continue
-            # Preserve punctuation that surrounded the acronym token.
-            start = word.find(core)
-            lead = word[:start]
-            trail = word[start + len(core) :]
-            restored.append(f"{lead}{replacement}{trail}")
-        return " ".join(restored)
+        return restore_acronym_case(name)
 
     def print_summary(self):
         """Print summary of group sync operation."""
@@ -709,6 +737,9 @@ class Command(OracleSyncBase):
         self.stdout.write(f"   Groups updated: {self.stats['updated_groups']}")
         self.stdout.write(
             f"   Duplicate names detected: {self.stats['duplicate_names']}"
+        )
+        self.stdout.write(
+            f"   Org parents inferred: {self.stats['org_parents_inferred']}"
         )
 
         if self.stats["errors"] > 0:
