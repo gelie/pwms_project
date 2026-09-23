@@ -1,3 +1,4 @@
+import json
 import tempfile
 from datetime import date, timedelta
 from importlib import import_module
@@ -2924,6 +2925,146 @@ class SyncTypeGroupAccessCommandTests(TestCase):
     def test_unknown_workflow_type_raises(self):
         with self.assertRaises(CommandError):
             call_command("sync_type_group_access", "--workflow-type", "Nope")
+
+
+class AuditWorkflowAccessCommandTests(TestCase):
+    """The audit command explains the three RBAC gates in one report.
+
+    Every call is scoped to this class's own type: the data migrations seed the
+    real workflow types, whose group (the Oracle-synced IRPD unit) does not exist
+    in a test database, so an unscoped run would rightly flag those too.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.owner_group = Group.objects.create(
+            name="Audit Owning Unit", group_type="division"
+        )
+        cls.other_group = Group.objects.create(
+            name="Audit Other Unit", group_type="division"
+        )
+        cls.role = Role.objects.create(name="Audit Creator")
+        cls.wt = WorkflowType.objects.create(name="Audit Type", group=cls.owner_group)
+        cls.wt.create_roles.add(cls.role)
+        cls.state = State.objects.create(
+            workflow_type=cls.wt, name="Open", is_initial=True
+        )
+        cls.owner = User.objects.create_user(username="audit-owner", password="pw")
+        GroupMembership.objects.create(
+            user=cls.owner, group=cls.owner_group, role=cls.role
+        )
+        cls.resolution = InternationalResolution.objects.create(
+            workflow_type=cls.wt,
+            current_state=cls.state,
+            resolution_number="IR-AUDIT-1",
+            title="Audit me",
+            owner=cls.owner,
+        )
+
+    def _run(self, *args, out=None):
+        """Run the command scoped to this class's type, capturing its output."""
+        out = out if out is not None else StringIO()
+        call_command(
+            "audit_workflow_access",
+            "--workflow-type",
+            "Audit Type",
+            *args,
+            stdout=out,
+        )
+        return out
+
+    def test_reports_a_correctly_configured_user_can_create(self):
+        out = self._run("--user", "audit-owner")
+        text = out.getvalue()
+        self.assertIn("Audit Type", text)
+        self.assertIn("active member of 'Audit Owning Unit'", text)
+        self.assertIn("groups   : active in 'Audit Owning Unit'", text)
+
+    def test_flags_a_create_role_no_active_member_of_the_group_holds(self):
+        # The role is declared, but the group has nobody active holding it.
+        GroupMembership.objects.filter(user=self.owner, role=self.role).delete()
+        out = StringIO()
+        with self.assertRaises(CommandError):
+            self._run(out=out)
+        self.assertIn("has no active member", out.getvalue())
+
+    def test_explains_a_user_holding_the_role_in_the_wrong_group(self):
+        # The classic trap: the role is right, the group is not.
+        User = get_user_model()
+        sbrown = User.objects.create_user(username="audit-sbrown", password="pw")
+        GroupMembership.objects.create(
+            user=sbrown, group=self.other_group, role=self.role
+        )
+
+        text = self._run("--user", "audit-sbrown").getvalue()
+        self.assertIn("does not belong to 'Audit Owning Unit'", text)
+        self.assertIn("holds a create role elsewhere", text)
+        self.assertIn("Audit Creator in 'Audit Other Unit'", text)
+        self.assertIn("groups   : active in 'Audit Other Unit'", text)
+        self.assertIn("cannot create 'Audit Type'", text)
+
+    def test_strict_turns_the_warning_into_a_failure(self):
+        User = get_user_model()
+        sbrown = User.objects.create_user(username="audit-sbrown", password="pw")
+        GroupMembership.objects.create(
+            user=sbrown, group=self.other_group, role=self.role
+        )
+
+        # Not strict: the wrong-group holder is only a warning.
+        self._run("--user", "audit-sbrown")
+        with self.assertRaises(CommandError):
+            self._run("--user", "audit-sbrown", "--strict")
+
+    def test_inactive_membership_denies_creation(self):
+        # A colleague keeps the role alive, so the failure is the user's alone.
+        User = get_user_model()
+        colleague = User.objects.create_user(username="audit-colleague", password="pw")
+        GroupMembership.objects.create(
+            user=colleague, group=self.owner_group, role=self.role
+        )
+        GroupMembership.objects.filter(user=self.owner, role=self.role).update(
+            is_active=False
+        )
+
+        text = self._run("--user", "audit-owner").getvalue()
+        self.assertIn(
+            "membership in 'Audit Owning Unit' (Audit Creator) is not active", text
+        )
+
+    def test_warns_when_a_creator_cannot_see_existing_records(self):
+        # Gate 3: the owner may create, but their group lost the record grant.
+        WorkflowGroupAccess.objects.filter(
+            content_type=ContentType.objects.get_for_model(InternationalResolution),
+            object_id=self.resolution.pk,
+        ).delete()
+
+        text = self._run("--user", "audit-owner").getvalue()
+        self.assertIn("cannot see all of its existing records", text)
+        self.assertIn("sync_type_group_access", text)
+
+    def test_json_output_is_machine_readable(self):
+        out = self._run("--user", "audit-owner", "--json")
+        payload = json.loads(out.getvalue())
+        self.assertEqual(payload["user"], "audit-owner")
+        self.assertEqual(payload["errors"], 0)
+        entry = payload["types"][0]
+        self.assertEqual(entry["name"], "Audit Type")
+        self.assertTrue(entry["user"]["can_create"])
+        self.assertEqual(entry["create_roles"][0]["active_members"], 1)
+
+    def test_scopes_to_one_workflow_type(self):
+        out = self._run()
+        self.assertIn("Audit Type", out.getvalue())
+        self.assertNotIn("International Resolution", out.getvalue())
+
+    def test_unknown_workflow_type_raises(self):
+        with self.assertRaises(CommandError):
+            call_command("audit_workflow_access", "--workflow-type", "Nope")
+
+    def test_unknown_user_raises(self):
+        with self.assertRaises(CommandError):
+            self._run("--user", "nobody")
 
 
 class OwnerGroupEditGrantMigrationTests(TestCase):

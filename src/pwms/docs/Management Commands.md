@@ -205,6 +205,7 @@ share takes it out of the queue immediately.
 | --- | --- | --- |
 | `fix_missing_group_access` | create `WorkflowGroupAccess` for instances missing it — **superseded by `sync_type_group_access`** | legacy |
 | `sync_type_group_access` | backfill `WorkflowGroupAccess` (owning group + viewer groups) from each instance's `WorkflowType` | ✅ live |
+| `audit_workflow_access` | explain why a user can (or cannot) create or open a workflow type, and flag create roles no active member of the group holds | ✅ live — see below |
 | `show_workflow_hierarchy` | print the parent/child tree of workflow instances | ✅ live — see below |
 | `seed_demo_data` | empty the four workflow registers and reseed them with presentation-ready mock records | ✅ live — see below |
 | `validate_memberships` | integrity-check group memberships | pending repoint |
@@ -232,6 +233,38 @@ to preview either behaviour.
 | `--workflow-type NAME_OR_SLUG` | restrict the backfill to one workflow type |
 | `--update-existing` | also re-apply the type's `owner_can_*` policy to the owning group's existing row, instead of only creating missing rows |
 | `--dry-run` | report what would be created or changed without writing anything |
+
+### Access diagnostics
+
+`audit_workflow_access` explains the three gates that decide access to a
+`WorkflowType` in one report: whether the type is **enabled** and has an **owning
+group**; whether the user holds an **active** `GroupMembership` in that *exact*
+group with one of its `create_roles` (`WorkflowType.can_create`); and whether the
+user's group has a `WorkflowGroupAccess` row on the **instance**
+(`AbstractLegislativeWorkflow.can`). It is **read-only**.
+
+A `create_role` grants only the second gate, and only to people who hold that role
+in the type's own group — roles are global records, so a role that "belongs to the
+group" (what the admin form checks) is not the same as *this user* holding it
+there. The command flags the two configurations that silently deny everyone: an
+enabled type with no owning group, and a `create_role` that no active member of
+the group holds (reporting whether other groups hold it instead).
+
+| Option | Effect |
+| --- | --- |
+| `--user USERNAME` | diagnose one user: `can_create` per type with the reason, the groups they are active in, and whether their group sees the existing records |
+| `--workflow-type NAME_OR_SLUG` | audit one workflow type |
+| `--json` | emit the report as JSON |
+| `--strict` | exit non-zero on warnings as well as errors |
+
+Exit status is non-zero when structural errors are found, so it can gate a
+deployment or a pre-flight check; `--strict` widens that to warnings (a user who
+cannot create a type that declares create roles, or who can create but cannot see
+its existing records). `sync_type_group_access` is the repair for the third gate.
+
+```bash
+python manage.py audit_workflow_access --user sbrown
+```
 
 ### Hierarchy inspection
 
