@@ -160,14 +160,60 @@ Then open:
 ## Running tests
 
 ```bash
-.venv/bin/python manage.py test pwms.tests pwms.tests_api pwms.tests_attachments \
-  pwms.tests_authentication pwms.tests_detail pwms.tests_executive \
-  pwms.tests_ninja pwms.tests_notifications pwms.tests_reports
+make test          # the full CI suite (needs PostgreSQL)
+make coverage      # same, under coverage with a report
+make lint          # ruff check + format check
+make check         # everything CI runs, in order: lint -> migrations -> tests
 ```
 
-Run from the repo root; `pwms.*` test modules are importable via the editable
-install. See
-[Technical Stack](src/pwms/docs/Technical%20Stack.md#testing).
+The equivalent raw command, run from the repo root (`pwms.*` modules are
+importable via the editable install):
+
+```bash
+.venv/bin/python manage.py test \
+  pwms.tests pwms.tests_api pwms.tests_attachments pwms.tests_authentication \
+  pwms.tests_detail pwms.tests_detail_actions pwms.tests_executive \
+  pwms.tests_messages pwms.tests_ninja pwms.tests_notifications \
+  pwms.tests_referral_access pwms.tests_referrals pwms.tests_reports \
+  pwms.tests_transitions
+```
+
+See [Technical Stack](src/pwms/docs/Technical%20Stack.md#testing).
+
+---
+
+## Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on every push and
+pull request, in order of cost:
+
+1. **Lint** — `ruff check` and `ruff format --check`.
+2. **Migrations** — `makemigrations --check --dry-run` (models must not have
+   drifted from the migrations) then `migrate` against the service database.
+3. **Tests** — the 14-module suite above (623 tests) against a PostgreSQL
+   service, under `coverage` (configuration in `pyproject.toml`).
+
+> **Two gates currently report without failing the build**, because both flag
+> *pre-existing* conditions that would otherwise make CI red on day one:
+> `ruff check` (~104 outstanding findings) and `makemigrations --check`
+> (26 `AlterField` operations regenerated under Django 6.1). Each step carries a
+> `continue-on-error: true` and a comment saying so. Clear the underlying
+> condition, then flip that flag to `false` to turn it into a hard gate.
+
+`python-ldap` (via `django-auth-ldap`) ships no wheels, so every CI job installs
+`libldap2-dev libsasl2-dev python3-dev build-essential` before `uv sync`. The
+same packages are needed on any machine that builds the environment from
+scratch.
+
+### Pre-commit hooks
+
+```bash
+uv run pre-commit install   # then ruff runs on every commit
+```
+
+[`.pre-commit-config.yaml`](.pre-commit-config.yaml) mirrors the CI lint job plus
+basic hygiene checks (large files, private keys, merge conflicts). Tests are left
+to CI, where PostgreSQL is available.
 
 ---
 

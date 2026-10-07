@@ -1,0 +1,35 @@
+# Pre-commit hooks. Install once with:
+#
+#     uv run pre-commit install
+#
+# then ruff runs on every commit. CI runs the same checks (see
+# .github/workflows/ci.yml), so a clean local commit is a clean CI run.
+#
+# Kept deliberately short: lint + hygiene only. Tests belong in CI where the
+# PostgreSQL service exists, not in a hook that would make every commit slow.
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: ["--maxkb=1000"]
+      - id: check-merge-conflict
+      - id: detect-private-key
+      # Secrets live in .env, which is git-ignored; this catches an accidental
+      # paste of a key or password into tracked code.
+      - id: check-case-conflict
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.7
+    hooks:
+      # Lint mirroring `uv run ruff check src/pwms`. Findings are auto-fixable
+      # ones only for now (the codebase still carries pre-existing warnings CI
+      # reports but does not fail on); pass --fix to apply safe fixes.
+      - id: ruff
+        args: ["--fix"]
+      - id: ruff-format
