@@ -59,6 +59,7 @@ from .models import (
     WorkflowType,
 )
 from .models.workflows import OVERDUE_IDENTIFIER
+from .navigation import CREATE_URL_NAMES, creatable_workflow_types
 from .services.permissions import (
     COMMENT,
     DELETE,
@@ -2939,6 +2940,59 @@ class SyncTypeGroupAccessCommandTests(TestCase):
             call_command("sync_type_group_access", "--workflow-type", "Nope")
 
 
+class CreatableWorkflowMenuTests(TestCase):
+    """The "Create a workflow" menu matches a type by name, not by its slug.
+
+    ``AutoSlugField`` writes a workflow type's slug once, on creation, so a type
+    that is renamed — or re-created while an older row still holds the slug —
+    keeps a diverged slug. A menu keyed on the slug silently dropped that type; it
+    is now keyed on the name the create view itself gates on
+    (``WorkflowInstanceFormMixin.initial_workflow_type``).
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.group = Group.objects.create(name="Bill Owning Unit", group_type="division")
+        cls.role = Role.objects.create(name="Bill Creator")
+        cls.user = User.objects.create_user(username="bill-creator", password="pw")
+        GroupMembership.objects.create(user=cls.user, group=cls.group, role=cls.role)
+        cls.bill_type = WorkflowType.objects.get(name="Bill")
+        cls.bill_type.group = cls.group
+        cls.bill_type.create_roles.add(cls.role)
+        # The collision that hid the type: it is named "Bill" but its slug is not
+        # "bill" (an older, renamed type still held the slug when this one was
+        # created, so the uniquifier suffixed it).
+        cls.bill_type.slug = "bill-1"
+        cls.bill_type.save(update_fields=["slug", "group"])
+
+    def test_menu_lists_a_registered_type_whose_slug_diverged(self):
+        entries = {e["name"]: e["url"] for e in creatable_workflow_types(self.user)}
+        self.assertEqual(entries.get("Bill"), reverse("pwms:bill_create"))
+
+    def test_menu_omits_a_type_with_no_registered_create_view(self):
+        unregistered = WorkflowType.objects.create(
+            name="Unregistered Type", group=self.group
+        )
+        unregistered.create_roles.add(self.role)
+
+        names = [e["name"] for e in creatable_workflow_types(self.user)]
+        self.assertNotIn("Unregistered Type", names)
+
+    def test_registry_keys_are_the_type_names_the_create_views_pin(self):
+        # The registry is derived from the forms, so its keys are exactly the
+        # names those create views bind their instances to — no drift possible.
+        self.assertEqual(
+            set(CREATE_URL_NAMES),
+            {
+                "Delegation Report",
+                "International Resolution",
+                "International Agreement",
+                "Bill",
+            },
+        )
+
+
 class AuditWorkflowAccessCommandTests(TestCase):
     """The audit command explains the three RBAC gates in one report.
 
@@ -3054,6 +3108,17 @@ class AuditWorkflowAccessCommandTests(TestCase):
         text = self._run("--user", "audit-owner").getvalue()
         self.assertIn("cannot see all of its existing records", text)
         self.assertIn("sync_type_group_access", text)
+
+    def test_warns_when_a_createable_type_has_no_registered_create_view(self):
+        # "Audit Type" is enabled with create roles but, being test-only, its name
+        # is not in pwms.navigation.CREATE_VIEWS, so it never reaches the menu.
+        text = self._run("--user", "audit-owner").getvalue()
+        self.assertIn("no registered create view", text)
+        self.assertIn("Create-a-workflow menu", text)
+
+    def test_strict_turns_the_missing_create_view_into_a_failure(self):
+        with self.assertRaises(CommandError):
+            self._run("--user", "audit-owner", "--strict")
 
     def test_json_output_is_machine_readable(self):
         out = self._run("--user", "audit-owner", "--json")

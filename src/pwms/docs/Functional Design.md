@@ -228,6 +228,11 @@ Creation is gated at the **type** level instead of per instance: a
 that group) allowed to create instances — `WorkflowType.can_create(user)` and
 `creatable_by(user)`. The instance `can()` chain above continues to govern
 view / edit / delete / share / comment / manage / transition on existing rows.
+The "Create a workflow" menu is the same gate made visible: it lists the types
+the user may create that are registered in `pwms.navigation.CREATE_VIEWS`,
+matched by **type name** — the identity the create view itself binds to — never
+by the auto-generated `slug`, so a renamed or re-created type cannot silently
+vanish from the menu.
 
 A type may also declare **viewer groups** (`viewer_groups`): read-only
 stakeholders with an interest in every instance but no active role in producing

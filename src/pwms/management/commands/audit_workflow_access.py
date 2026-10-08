@@ -15,9 +15,11 @@ the type's *own* group:
 
 This read-only command answers "why does <user> have no access?" in one place and
 flags configurations that silently deny everyone: an enabled type with no owning
-group, or a ``create_role`` that no active member of the group holds. It is a
-preventive check, not a repair tool — use ``sync_type_group_access`` to backfill
-missing instance rows.
+group, a ``create_role`` that no active member of the group holds, or a type with
+create roles whose **name** is not registered in ``pwms.navigation.CREATE_VIEWS``
+(so it never appears in the "Create a workflow" menu). It is a preventive check,
+not a repair tool — use ``sync_type_group_access`` to backfill missing instance
+rows.
 
 Usage:
     python manage.py audit_workflow_access
@@ -43,6 +45,7 @@ from pwms.models import (
     WorkflowGroupAccess,
     WorkflowType,
 )
+from pwms.navigation import create_url_name
 
 
 def concrete_workflow_models():
@@ -136,6 +139,7 @@ class Command(BaseCommand):
         entry = {
             "name": workflow_type.name,
             "slug": workflow_type.slug,
+            "create_url_name": create_url_name(workflow_type),
             "enabled": workflow_type.enabled,
             "group": (workflow_type.group.name if workflow_type.group_id else None),
             "create_roles": [],
@@ -206,6 +210,12 @@ class Command(BaseCommand):
         ):
             entry["warnings"].append(
                 f"owning group '{group.name}' has no active members at all"
+            )
+        if workflow_type.enabled and roles and create_url_name(workflow_type) is None:
+            entry["warnings"].append(
+                f"'{workflow_type.name}' has create roles but no registered "
+                "create view: it never appears in the Create-a-workflow menu. "
+                "Register it in pwms.navigation.CREATE_VIEWS."
             )
 
         if user is not None:
@@ -358,6 +368,11 @@ class Command(BaseCommand):
             status = "enabled" if entry["enabled"] else "DISABLED"
             self.stdout.write(f"\n{entry['name']}  [{status}]")
             self.stdout.write(f"  owning group : {entry['group'] or '(none)'}")
+            view = entry["create_url_name"]
+            self.stdout.write(
+                "  create view  : "
+                + (view if view else self.style.ERROR("(none registered)"))
+            )
 
             if entry["create_roles"]:
                 self.stdout.write("  create roles :")
