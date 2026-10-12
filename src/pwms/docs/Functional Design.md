@@ -228,6 +228,11 @@ Creation is gated at the **type** level instead of per instance: a
 that group) allowed to create instances — `WorkflowType.can_create(user)` and
 `creatable_by(user)`. The instance `can()` chain above continues to govern
 view / edit / delete / share / comment / manage / transition on existing rows.
+The "Create a workflow" menu is the same gate made visible: it lists the types
+the user may create that are registered in `pwms.navigation.CREATE_VIEWS`,
+matched by **type name** — the identity the create view itself binds to — never
+by the auto-generated `slug`, so a renamed or re-created type cannot silently
+vanish from the menu.
 
 A type may also declare **viewer groups** (`viewer_groups`): read-only
 stakeholders with an interest in every instance but no active role in producing
@@ -464,9 +469,12 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
   - **Toolbar** — *Document* (the instrument as a PDF or standalone web page)
     and *Status* (the transitions available from the current state, each opening
     a confirmation page that records the transition's comment).
-  - **Related** — the hierarchy plus each type's own tables: participants (added
-    inline, and removed *softly*, so former delegates stay listed, muted,
-    alongside who removed them and when) and bill versions.
+  - **Related** — each type's own tables. On a report: the resolutions captured at
+    the engagement (added from the card itself, so a missed one is never a
+    problem) and the participants (added inline, and removed *softly*, so former
+    delegates stay listed, muted, alongside who removed them and when). On the
+    other instruments, the hierarchy — a report drops that card entirely, since a
+    report can never have a parent — and a bill lists its versions.
   - **Notes** — a per-instrument note log (`WorkflowNote`) whose entries can be
     edited inline, plus the type's own `notes` text and progress fields where it
     has them.

@@ -71,6 +71,7 @@ pointing at them) survive.
 | Command | Purpose | Status |
 | --- | --- | --- |
 | `import_groups` | import group names from a CSV/text list as `Group` records under a parent group | ✅ live |
+| `compare_org_hierarchy` | diff PWMS's group hierarchy against the tree Oracle's supervisor chain implies | ✅ live — see below |
 
 Key options: `--parent NAME_OR_SLUG` (required) is the group the names hang
 under; `--type GROUP_TYPE` (required) must be one of `Group.GROUP_TYPE_CHOICES`
@@ -79,6 +80,43 @@ section's first line is a heading and the rest are names — and `--section NAME
 imports a single section only. Names are whitespace-normalised and matched on
 the `(name, parent)` natural key, so re-running is safe. `--dry-run` previews the
 changes.
+
+### Organisation hierarchy
+
+`sync_groups_oracle` builds the group tree from Oracle's `(CHILD_ORG_NAME,
+PARENT_ORG_NAME)` pair, which relates a **cost centre** to its **org unit** — not
+an org unit to its parent. The unit-to-unit containment therefore never arrived,
+so every org unit hung directly off `Administration` and a division's sections
+were indistinguishable from unrelated divisions.
+
+The containment is recoverable from the `EMPLOYEEID` / `SUPERVISORID` chain — a
+unit's parent is the unit its manager reports into — but only weakly, because a
+reporting line is not always an org line. `compare_org_hierarchy` derives that
+tree and diffs it against what PWMS stores, **read-only**, so the change can be
+reviewed before anything moves:
+
+```bash
+python manage.py compare_org_hierarchy --prefix IRP
+```
+
+| Option | Effect |
+| --- | --- |
+| `--prefix TEXT` | only units whose name starts with `TEXT` |
+| `--all` | list every unit in scope, not just the differences |
+| `--json` | machine-readable output |
+| `--strict` | exit non-zero when any unit differs or is missing |
+| `--verbose` | log each inferred edge |
+
+`sync_groups_oracle --infer-org-parents` applies the inferred tree. Because a
+single outward report is as likely a functional reporting line as real
+containment, only edges corroborated by `--infer-min-votes` of a unit's people
+(default `2`) are used; the rest are left where they were, and the command logs
+how many weakly-evidenced edges it dropped. `--dry-run` previews the result.
+
+| Option | Effect |
+| --- | --- |
+| `--infer-org-parents` | nest each org unit under the unit its manager reports into |
+| `--infer-min-votes N` | reports required to corroborate an edge (default 2) |
 
 ## Committee scraping
 
@@ -205,6 +243,7 @@ share takes it out of the queue immediately.
 | --- | --- | --- |
 | `fix_missing_group_access` | create `WorkflowGroupAccess` for instances missing it — **superseded by `sync_type_group_access`** | legacy |
 | `sync_type_group_access` | backfill `WorkflowGroupAccess` (owning group + viewer groups) from each instance's `WorkflowType` | ✅ live |
+| `audit_workflow_access` | explain why a user can (or cannot) create or open a workflow type, and flag create roles no active member of the group holds | ✅ live — see below |
 | `show_workflow_hierarchy` | print the parent/child tree of workflow instances | ✅ live — see below |
 | `seed_demo_data` | empty the four workflow registers and reseed them with presentation-ready mock records | ✅ live — see below |
 | `validate_memberships` | integrity-check group memberships | pending repoint |
@@ -232,6 +271,38 @@ to preview either behaviour.
 | `--workflow-type NAME_OR_SLUG` | restrict the backfill to one workflow type |
 | `--update-existing` | also re-apply the type's `owner_can_*` policy to the owning group's existing row, instead of only creating missing rows |
 | `--dry-run` | report what would be created or changed without writing anything |
+
+### Access diagnostics
+
+`audit_workflow_access` explains the three gates that decide access to a
+`WorkflowType` in one report: whether the type is **enabled** and has an **owning
+group**; whether the user holds an **active** `GroupMembership` in that *exact*
+group with one of its `create_roles` (`WorkflowType.can_create`); and whether the
+user's group has a `WorkflowGroupAccess` row on the **instance**
+(`AbstractLegislativeWorkflow.can`). It is **read-only**.
+
+A `create_role` grants only the second gate, and only to people who hold that role
+in the type's own group — roles are global records, so a role that "belongs to the
+group" (what the admin form checks) is not the same as *this user* holding it
+there. The command flags the two configurations that silently deny everyone: an
+enabled type with no owning group, and a `create_role` that no active member of
+the group holds (reporting whether other groups hold it instead).
+
+| Option | Effect |
+| --- | --- |
+| `--user USERNAME` | diagnose one user: `can_create` per type with the reason, the groups they are active in, and whether their group sees the existing records |
+| `--workflow-type NAME_OR_SLUG` | audit one workflow type |
+| `--json` | emit the report as JSON |
+| `--strict` | exit non-zero on warnings as well as errors |
+
+Exit status is non-zero when structural errors are found, so it can gate a
+deployment or a pre-flight check; `--strict` widens that to warnings (a user who
+cannot create a type that declares create roles, or who can create but cannot see
+its existing records). `sync_type_group_access` is the repair for the third gate.
+
+```bash
+python manage.py audit_workflow_access --user sbrown
+```
 
 ### Hierarchy inspection
 
@@ -279,6 +350,33 @@ a section member sees only the registers their group owns.
 
 ```bash
 python manage.py seed_demo_data --force
+```
+
+### Acceptance-test workbook
+
+`build_uat_workbook` builds the results workbook the section fills in when it
+accepts the system — **from the printable UAT form, not from a second handwritten
+list**. `src/pwms/docs/UAT Form.html` is the single source of truth for the
+scenarios: the command reads its scenario tables, severity scale, result key,
+expected-behaviour list and acceptance criteria, and writes `UAT Form.xlsx`
+beside it. The scenario rows are never edited in the workbook; change the form
+and re-run the command.
+
+The workbook is laid out for a section rather than one person. `Results` is a
+matrix — one row per scenario, one column per tester (eight of them) — so several
+testers work in the same file, and each row carries *Failed by*, *Blocked by*,
+*Tested* and a triage *Status* as live formulas. `Summary` counts that matrix and
+the defect log, and states whether the form's own acceptance criteria (§15) are
+met, so the section can see whether it is ready to sign without counting by hand.
+
+| Option | Effect |
+| --- | --- |
+| `--form PATH` | the form to read (default: `<docs>/UAT Form.html`) |
+| `--output PATH` | the workbook to write (default: `<docs>/UAT Form.xlsx`) |
+| `--docs-dir PATH` | the directory holding the form, and receiving the workbook |
+
+```bash
+python manage.py build_uat_workbook
 ```
 
 ## Background tasks (the queue worker)

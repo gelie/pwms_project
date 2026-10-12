@@ -1,3 +1,4 @@
+import json
 import tempfile
 from datetime import date, timedelta
 from importlib import import_module
@@ -16,11 +17,23 @@ from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.db import IntegrityError, transaction
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.urls import reverse
 from django.utils import timezone
 from django_flatpickr.widgets import DatePickerInput, DateTimePickerInput
 
+from .management.commands.compare_org_hierarchy import (
+    Command as CompareOrgHierarchyCommand,
+)
+from .management.commands.sync_groups_oracle import (
+    Command as SyncGroupsOracleCommand,
+)
+from .membership.org_hierarchy import (
+    compare_with_stored,
+    infer_unit_parents,
+    person_from_row,
+    unit_parent_map,
+)
 from .models import (
     Bill,
     BillVersion,
@@ -46,6 +59,7 @@ from .models import (
     WorkflowType,
 )
 from .models.workflows import OVERDUE_IDENTIFIER
+from .navigation import CREATE_URL_NAMES, creatable_workflow_types
 from .services.permissions import (
     COMMENT,
     DELETE,
@@ -2926,6 +2940,433 @@ class SyncTypeGroupAccessCommandTests(TestCase):
             call_command("sync_type_group_access", "--workflow-type", "Nope")
 
 
+class CreatableWorkflowMenuTests(TestCase):
+    """The "Create a workflow" menu matches a type by name, not by its slug.
+
+    ``AutoSlugField`` writes a workflow type's slug once, on creation, so a type
+    that is renamed — or re-created while an older row still holds the slug —
+    keeps a diverged slug. A menu keyed on the slug silently dropped that type; it
+    is now keyed on the name the create view itself gates on
+    (``WorkflowInstanceFormMixin.initial_workflow_type``).
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.group = Group.objects.create(name="Bill Owning Unit", group_type="division")
+        cls.role = Role.objects.create(name="Bill Creator")
+        cls.user = User.objects.create_user(username="bill-creator", password="pw")
+        GroupMembership.objects.create(user=cls.user, group=cls.group, role=cls.role)
+        cls.bill_type = WorkflowType.objects.get(name="Bill")
+        cls.bill_type.group = cls.group
+        cls.bill_type.create_roles.add(cls.role)
+        # The collision that hid the type: it is named "Bill" but its slug is not
+        # "bill" (an older, renamed type still held the slug when this one was
+        # created, so the uniquifier suffixed it).
+        cls.bill_type.slug = "bill-1"
+        cls.bill_type.save(update_fields=["slug", "group"])
+
+    def test_menu_lists_a_registered_type_whose_slug_diverged(self):
+        entries = {e["name"]: e["url"] for e in creatable_workflow_types(self.user)}
+        self.assertEqual(entries.get("Bill"), reverse("pwms:bill_create"))
+
+    def test_menu_omits_a_type_with_no_registered_create_view(self):
+        unregistered = WorkflowType.objects.create(
+            name="Unregistered Type", group=self.group
+        )
+        unregistered.create_roles.add(self.role)
+
+        names = [e["name"] for e in creatable_workflow_types(self.user)]
+        self.assertNotIn("Unregistered Type", names)
+
+    def test_registry_keys_are_the_type_names_the_create_views_pin(self):
+        # The registry is derived from the forms, so its keys are exactly the
+        # names those create views bind their instances to — no drift possible.
+        self.assertEqual(
+            set(CREATE_URL_NAMES),
+            {
+                "Delegation Report",
+                "International Resolution",
+                "International Agreement",
+                "Bill",
+            },
+        )
+
+
+class AuditWorkflowAccessCommandTests(TestCase):
+    """The audit command explains the three RBAC gates in one report.
+
+    Every call is scoped to this class's own type: the data migrations seed the
+    real workflow types, whose group (the Oracle-synced IRPD unit) does not exist
+    in a test database, so an unscoped run would rightly flag those too.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.owner_group = Group.objects.create(
+            name="Audit Owning Unit", group_type="division"
+        )
+        cls.other_group = Group.objects.create(
+            name="Audit Other Unit", group_type="division"
+        )
+        cls.role = Role.objects.create(name="Audit Creator")
+        cls.wt = WorkflowType.objects.create(name="Audit Type", group=cls.owner_group)
+        cls.wt.create_roles.add(cls.role)
+        cls.state = State.objects.create(
+            workflow_type=cls.wt, name="Open", is_initial=True
+        )
+        cls.owner = User.objects.create_user(username="audit-owner", password="pw")
+        GroupMembership.objects.create(
+            user=cls.owner, group=cls.owner_group, role=cls.role
+        )
+        cls.resolution = InternationalResolution.objects.create(
+            workflow_type=cls.wt,
+            current_state=cls.state,
+            resolution_number="IR-AUDIT-1",
+            title="Audit me",
+            owner=cls.owner,
+        )
+
+    def _run(self, *args, out=None):
+        """Run the command scoped to this class's type, capturing its output."""
+        out = out if out is not None else StringIO()
+        call_command(
+            "audit_workflow_access",
+            "--workflow-type",
+            "Audit Type",
+            *args,
+            stdout=out,
+        )
+        return out
+
+    def test_reports_a_correctly_configured_user_can_create(self):
+        out = self._run("--user", "audit-owner")
+        text = out.getvalue()
+        self.assertIn("Audit Type", text)
+        self.assertIn("active member of 'Audit Owning Unit'", text)
+        self.assertIn("groups   : active in 'Audit Owning Unit'", text)
+
+    def test_flags_a_create_role_no_active_member_of_the_group_holds(self):
+        # The role is declared, but the group has nobody active holding it.
+        GroupMembership.objects.filter(user=self.owner, role=self.role).delete()
+        out = StringIO()
+        with self.assertRaises(CommandError):
+            self._run(out=out)
+        self.assertIn("has no active member", out.getvalue())
+
+    def test_explains_a_user_holding_the_role_in_the_wrong_group(self):
+        # The classic trap: the role is right, the group is not.
+        User = get_user_model()
+        sbrown = User.objects.create_user(username="audit-sbrown", password="pw")
+        GroupMembership.objects.create(
+            user=sbrown, group=self.other_group, role=self.role
+        )
+
+        text = self._run("--user", "audit-sbrown").getvalue()
+        self.assertIn("does not belong to 'Audit Owning Unit'", text)
+        self.assertIn("holds a create role elsewhere", text)
+        self.assertIn("Audit Creator in 'Audit Other Unit'", text)
+        self.assertIn("groups   : active in 'Audit Other Unit'", text)
+        self.assertIn("cannot create 'Audit Type'", text)
+
+    def test_strict_turns_the_warning_into_a_failure(self):
+        User = get_user_model()
+        sbrown = User.objects.create_user(username="audit-sbrown", password="pw")
+        GroupMembership.objects.create(
+            user=sbrown, group=self.other_group, role=self.role
+        )
+
+        # Not strict: the wrong-group holder is only a warning.
+        self._run("--user", "audit-sbrown")
+        with self.assertRaises(CommandError):
+            self._run("--user", "audit-sbrown", "--strict")
+
+    def test_inactive_membership_denies_creation(self):
+        # A colleague keeps the role alive, so the failure is the user's alone.
+        User = get_user_model()
+        colleague = User.objects.create_user(username="audit-colleague", password="pw")
+        GroupMembership.objects.create(
+            user=colleague, group=self.owner_group, role=self.role
+        )
+        GroupMembership.objects.filter(user=self.owner, role=self.role).update(
+            is_active=False
+        )
+
+        text = self._run("--user", "audit-owner").getvalue()
+        self.assertIn(
+            "membership in 'Audit Owning Unit' (Audit Creator) is not active", text
+        )
+
+    def test_warns_when_a_creator_cannot_see_existing_records(self):
+        # Gate 3: the owner may create, but their group lost the record grant.
+        WorkflowGroupAccess.objects.filter(
+            content_type=ContentType.objects.get_for_model(InternationalResolution),
+            object_id=self.resolution.pk,
+        ).delete()
+
+        text = self._run("--user", "audit-owner").getvalue()
+        self.assertIn("cannot see all of its existing records", text)
+        self.assertIn("sync_type_group_access", text)
+
+    def test_warns_when_a_createable_type_has_no_registered_create_view(self):
+        # "Audit Type" is enabled with create roles but, being test-only, its name
+        # is not in pwms.navigation.CREATE_VIEWS, so it never reaches the menu.
+        text = self._run("--user", "audit-owner").getvalue()
+        self.assertIn("no registered create view", text)
+        self.assertIn("Create-a-workflow menu", text)
+
+    def test_strict_turns_the_missing_create_view_into_a_failure(self):
+        with self.assertRaises(CommandError):
+            self._run("--user", "audit-owner", "--strict")
+
+    def test_json_output_is_machine_readable(self):
+        out = self._run("--user", "audit-owner", "--json")
+        payload = json.loads(out.getvalue())
+        self.assertEqual(payload["user"], "audit-owner")
+        self.assertEqual(payload["errors"], 0)
+        entry = payload["types"][0]
+        self.assertEqual(entry["name"], "Audit Type")
+        self.assertTrue(entry["user"]["can_create"])
+        self.assertEqual(entry["create_roles"][0]["active_members"], 1)
+
+    def test_scopes_to_one_workflow_type(self):
+        out = self._run()
+        self.assertIn("Audit Type", out.getvalue())
+        self.assertNotIn("International Resolution", out.getvalue())
+
+    def test_unknown_workflow_type_raises(self):
+        with self.assertRaises(CommandError):
+            call_command("audit_workflow_access", "--workflow-type", "Nope")
+
+    def test_unknown_user_raises(self):
+        with self.assertRaises(CommandError):
+            self._run("--user", "nobody")
+
+
+# The IRP subtree as the ERP's "Organization Hierarchy" screen reports it: the
+# manager chain plus each person's organisational unit (PARENT_ORG_NAME). Lets
+# the supervisor-derived tree be checked against real data without Oracle.
+IRP_DIVISION = "IRP: Office Of The IR And P Division Manager"
+IRP_MR_SECTION = "IRP: Multilateral Relations (MR) Section"
+IRP_PA_SECTION = "IRP: IR Policy Analysis (PA)"
+IRP_OM_SECTION = "IRP: IRP Operations Management (OM) Section"
+IRP_PCS_SECTION = "IRP: Protocol And Ceremonial Services (P And CS) Section"
+
+#: (employee_id, supervisor_id, cost centre, organisational unit)
+IRP_ORACLE_ROWS = (
+    ("E1", "", IRP_DIVISION, IRP_DIVISION),  # Division Manager, no supervisor
+    ("E2", "E1", IRP_DIVISION, IRP_DIVISION),
+    ("E3", "E1", IRP_DIVISION, IRP_DIVISION),
+    ("E4", "E1", IRP_DIVISION, IRP_DIVISION),
+    ("E5", "E1", IRP_DIVISION, IRP_DIVISION),  # sbrown
+    ("E6", "E1", IRP_MR_SECTION, IRP_MR_SECTION),  # Section Manager
+    ("E7", "E1", IRP_MR_SECTION, IRP_MR_SECTION),
+    ("E8", "E6", IRP_MR_SECTION, IRP_MR_SECTION),
+    ("E9", "E6", IRP_MR_SECTION, IRP_MR_SECTION),
+    ("E10", "E6", IRP_MR_SECTION, IRP_MR_SECTION),
+    ("E11", "E6", IRP_MR_SECTION, IRP_MR_SECTION),
+    ("E12", "E6", IRP_MR_SECTION, IRP_MR_SECTION),
+    ("E13", "E1", IRP_PA_SECTION, IRP_PA_SECTION),
+    ("E14", "E1", IRP_PA_SECTION, IRP_PA_SECTION),
+    ("E15", "E1", IRP_PA_SECTION, IRP_PA_SECTION),
+    ("E16", "E6", IRP_PA_SECTION, IRP_PA_SECTION),  # functional line to MR
+    ("E17", "E1", IRP_OM_SECTION, IRP_OM_SECTION),
+    ("E18", "E6", IRP_OM_SECTION, IRP_OM_SECTION),  # functional line to MR
+    ("E19", "E6", IRP_PCS_SECTION, IRP_PCS_SECTION),  # lone member
+)
+
+
+def _irp_people():
+    return [person_from_row(row) for row in IRP_ORACLE_ROWS]
+
+
+class OrgHierarchyInferenceTests(SimpleTestCase):
+    """The unit tree the supervisor chain implies matches the ERP's IRP chart."""
+
+    def _infer(self):
+        return infer_unit_parents(_irp_people(), lambda name: name)
+
+    def test_sections_nest_under_the_unit_their_manager_reports_into(self):
+        inferences = self._infer()
+        # Each section manager reports to the division manager.
+        self.assertEqual(inferences[IRP_MR_SECTION].parent, IRP_DIVISION)
+        self.assertEqual(inferences[IRP_PA_SECTION].parent, IRP_DIVISION)
+        self.assertEqual(inferences[IRP_OM_SECTION].parent, IRP_DIVISION)
+        # The division manager reports outside this data: a root, not a section.
+        self.assertIsNone(inferences[IRP_DIVISION].parent)
+
+    def test_span_of_control_breaks_a_tie_between_two_supervisors(self):
+        # OM has one report into the division and one into the section; the
+        # division manager supervises more people, so the division wins.
+        om = self._infer()[IRP_OM_SECTION]
+        self.assertEqual(om.votes, {IRP_DIVISION: 1, IRP_MR_SECTION: 1})
+        self.assertEqual(om.parent, IRP_DIVISION)
+        self.assertFalse(om.tied)
+
+    def test_a_lone_functional_reporting_line_is_flagged_low_confidence(self):
+        pcs = self._infer()[IRP_PCS_SECTION]
+        self.assertEqual(pcs.parent, IRP_MR_SECTION)
+        self.assertTrue(pcs.low_confidence)
+
+    def test_normalisation_is_applied_to_every_unit_name(self):
+        seen = []
+        infer_unit_parents(_irp_people(), lambda name: seen.append(name) or name)
+        self.assertIn(IRP_MR_SECTION, seen)
+        self.assertIn(IRP_DIVISION, seen)
+
+    def test_compare_reports_mismatch_missing_and_match(self):
+        inferences = self._infer()
+        stored = {IRP_DIVISION: "Administration", IRP_MR_SECTION: "Administration"}
+        rows = {row.unit: row for row in compare_with_stored(inferences, stored)}
+        # Stored flat under Administration; Oracle implies the division.
+        self.assertEqual(rows[IRP_MR_SECTION].status, "differs")
+        self.assertIsNone(rows[IRP_MR_SECTION].stored_parent)
+        self.assertEqual(rows[IRP_MR_SECTION].inferred_parent, IRP_DIVISION)
+        # A top-level unit stored under Administration is a match, not a gap.
+        self.assertEqual(rows[IRP_DIVISION].status, "match")
+        # No PWMS group for the PA section yet.
+        self.assertEqual(rows[IRP_PA_SECTION].status, "missing")
+
+    def test_compare_prefix_limits_the_scope(self):
+        rows = compare_with_stored(self._infer(), {}, prefix="IRP: Multilateral")
+        self.assertEqual({row.unit for row in rows}, {IRP_MR_SECTION})
+
+    def test_compare_matches_names_that_differ_only_by_acronym_case(self):
+        # The live tree holds "...The Ir And P..." (stored before "IR" joined the
+        # acronym table); the sync normalises to "...The IR And P...". Same unit.
+        stored = {"IRP: Office Of The Ir And P Division Manager": "Administration"}
+        rows = {row.unit: row for row in compare_with_stored(self._infer(), stored)}
+        self.assertEqual(rows[IRP_DIVISION].status, "match")
+
+    def test_unit_parent_map_drops_single_report_edges(self):
+        # Acting on a one-report edge is what nests a division under a foreign
+        # unit on real data, so the map keeps only corroborated edges by default.
+        inferences = self._infer()
+        self.assertEqual(
+            unit_parent_map(inferences, min_votes=2),
+            {IRP_MR_SECTION: IRP_DIVISION, IRP_PA_SECTION: IRP_DIVISION},
+        )
+        self.assertEqual(
+            set(unit_parent_map(inferences, min_votes=1)),
+            {IRP_MR_SECTION, IRP_PA_SECTION, IRP_OM_SECTION, IRP_PCS_SECTION},
+        )
+
+
+class CompareOrgHierarchyCommandTests(TestCase):
+    """``compare_org_hierarchy`` diffs stored parents against Oracle's implied ones."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.administration = Group.objects.create(
+            name="Administration", group_type="administration"
+        )
+        cls.division = Group.objects.create(
+            name=IRP_DIVISION, group_type="division", parent=cls.administration
+        )
+        # The MR section is stored flat under Administration: the bug.
+        cls.mr = Group.objects.create(
+            name=IRP_MR_SECTION, group_type="division", parent=cls.administration
+        )
+
+    def _run(self, *args):
+        out = StringIO()
+        with (
+            mock.patch.object(CompareOrgHierarchyCommand, "validate_environment"),
+            mock.patch.object(CompareOrgHierarchyCommand, "connect_to_oracle"),
+            mock.patch.object(
+                CompareOrgHierarchyCommand, "fetch_people", return_value=_irp_people()
+            ),
+        ):
+            call_command("compare_org_hierarchy", *args, stdout=out)
+        return out
+
+    def test_reports_the_section_that_should_sit_under_the_division(self):
+        payload = json.loads(self._run("--json").getvalue())
+        rows = {row["unit"]: row for row in payload["rows"]}
+        self.assertEqual(rows[IRP_MR_SECTION]["status"], "differs")
+        self.assertEqual(rows[IRP_MR_SECTION]["inferred_parent"], IRP_DIVISION)
+        self.assertIsNone(rows[IRP_MR_SECTION]["stored_parent"])
+        self.assertEqual(rows[IRP_PA_SECTION]["status"], "missing")
+        self.assertEqual(payload["summary"]["differs"], 1)
+
+    def test_prefix_limits_the_scope(self):
+        payload = json.loads(
+            self._run("--prefix", "IRP: Multilateral", "--json").getvalue()
+        )
+        self.assertEqual({row["unit"] for row in payload["rows"]}, {IRP_MR_SECTION})
+
+    def test_text_output_names_both_trees(self):
+        text = self._run("--prefix", "IRP: Multilateral").getvalue()
+        self.assertIn(IRP_MR_SECTION, text)
+        self.assertIn(IRP_DIVISION, text)
+
+    def test_strict_exits_non_zero_on_a_difference(self):
+        with self.assertRaises(CommandError):
+            self._run("--strict")
+
+
+class SyncGroupsInferParentsTests(TestCase):
+    """``--infer-org-parents`` nests org units under their manager's unit."""
+
+    def _edges(self):
+        return {
+            (
+                "18101-IRP: International Relations and Protocol: Man and Gen",
+                IRP_DIVISION,
+            ),
+            ("18301-IRP: MR: Man and Gen", IRP_MR_SECTION),
+            ("18201-IRP: PA: Man and Gen", IRP_PA_SECTION),
+            ("18401-IRP: OM: Man and Gen", IRP_OM_SECTION),
+            ("16051-IRP: P and CS: Man and Gen", IRP_PCS_SECTION),
+        }
+
+    def _run(self, infer):
+        command = SyncGroupsOracleCommand()
+        with (
+            mock.patch.object(
+                SyncGroupsOracleCommand,
+                "fetch_oracle_groups",
+                return_value=self._edges(),
+            ),
+            mock.patch.object(
+                SyncGroupsOracleCommand,
+                "fetch_oracle_people",
+                return_value=_irp_people(),
+            ),
+        ):
+            command.sync_groups(dry_run=False, infer_org_parents=infer)
+
+    def _parent_of(self, name):
+        return Group.objects.get(name=name).parent.name
+
+    def test_default_leaves_units_flat_under_administration(self):
+        self._run(infer=False)
+        self.assertEqual(self._parent_of(IRP_MR_SECTION), "Administration")
+
+    def test_flag_nests_a_corroborated_section_under_its_division(self):
+        self._run(infer=True)
+        self.assertEqual(self._parent_of(IRP_MR_SECTION), IRP_DIVISION)
+        self.assertEqual(self._parent_of(IRP_PA_SECTION), IRP_DIVISION)
+
+    def test_flag_leaves_a_single_report_edge_alone(self):
+        # OM's only outward line goes to the section manager: too weak to act on,
+        # so it stays where the default run would put it.
+        self._run(infer=True)
+        self.assertEqual(self._parent_of(IRP_OM_SECTION), "Administration")
+        self.assertEqual(self._parent_of(IRP_PCS_SECTION), "Administration")
+
+    def test_flag_reparents_a_unit_an_earlier_run_left_flat(self):
+        self._run(infer=False)
+        self.assertEqual(self._parent_of(IRP_MR_SECTION), "Administration")
+        self._run(infer=True)
+        self.assertEqual(self._parent_of(IRP_MR_SECTION), IRP_DIVISION)
+
+    def test_cost_centres_stay_under_their_own_unit(self):
+        self._run(infer=True)
+        self.assertEqual(self._parent_of("IRP: MR: Man And Gen"), IRP_MR_SECTION)
+
+
 class OwnerGroupEditGrantMigrationTests(TestCase):
     """Migration 0037 backfills the edit right onto already-materialised grants."""
 
@@ -3977,3 +4418,132 @@ class GroupListFilterTests(TestCase):
         response = self.client.get(reverse("pwms:all_groups"), {"q": "nothing matches"})
         self.assertContains(response, "No groups match your filters.")
         self.assertNotContains(response, "No groups found.")
+
+
+class BuildUatWorkbookCommandTests(TestCase):
+    """The UAT results workbook is generated from the printable acceptance form.
+
+    The form's HTML is the source of truth for the scenarios, so these tests assert
+    the workbook *mirrors* it rather than pinning a scenario count: adding a
+    scenario to the form must not break the build.
+    """
+
+    @staticmethod
+    def _sheet_rows(sheet, *, first_row):
+        """The non-empty rows of a five-column sheet, from ``first_row`` down."""
+        rows = []
+        for row in range(first_row, sheet.max_row + 1):
+            values = [
+                sheet.cell(row=row, column=column).value for column in range(1, 6)
+            ]
+            if values[0]:
+                rows.append(values)
+        return rows
+
+    def _build(self, **options):
+        """Run the command, writing the workbook into a temporary directory."""
+        from openpyxl import load_workbook
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        output = Path(tmp.name) / "UAT Form.xlsx"
+        out = StringIO()
+        call_command("build_uat_workbook", output=str(output), stdout=out, **options)
+        return load_workbook(output), out.getvalue()
+
+    def test_it_builds_the_sheets_and_opens_on_results(self):
+        workbook, _ = self._build()
+
+        self.assertEqual(
+            workbook.sheetnames,
+            [
+                "Instructions",
+                "Scenarios",
+                "Results",
+                "Defect log",
+                "Summary",
+                "Expected behaviour",
+                "Sign-off",
+            ],
+        )
+        # The section works in the matrix, so that is the sheet presented.
+        self.assertEqual(workbook.active.title, "Results")
+
+    def test_the_matrix_carries_every_scenario_the_form_defines(self):
+        workbook, _ = self._build()
+        scenarios = self._sheet_rows(workbook["Scenarios"], first_row=4)
+        results = self._sheet_rows(workbook["Results"], first_row=10)
+
+        self.assertTrue(scenarios, "the form should define at least one scenario")
+        self.assertEqual(len(results), len(scenarios))
+        # Same scenarios, in the same order, with the same critical marks.
+        self.assertEqual(
+            [(row[0], row[2]) for row in results],
+            [(row[0], row[2]) for row in scenarios],
+        )
+        # The reference sheet carries the steps and the acceptance criteria.
+        for row in scenarios:
+            self.assertTrue(row[3] and row[4])
+
+    def test_the_tester_cells_offer_only_the_four_results(self):
+        workbook, _ = self._build()
+        sheet = workbook["Results"]
+        validation = next(
+            candidate
+            for candidate in sheet.data_validations.dataValidation
+            if candidate.formula1 == '"P,F,B,N"'
+        )
+
+        self.assertTrue(validation.allow_blank)
+        # It covers the tester columns of every scenario row, and the working
+        # columns stay put while a tester scrolls to their own column.
+        self.assertTrue(str(validation.sqref).startswith("H10:"))
+        self.assertEqual(sheet.freeze_panes, "H10")
+
+    def test_the_verdict_counts_the_rows_that_actually_hold_the_conditions(self):
+        """The verdict reads its conditions by reference, not by layout arithmetic.
+
+        Regression: it used to be built by subtracting from its own row number,
+        which pointed at blank and heading rows rather than the counts.
+        """
+        import re
+
+        workbook, _ = self._build()
+        sheet = workbook["Summary"]
+        verdict_row = next(
+            row
+            for row in range(1, sheet.max_row + 1)
+            if isinstance(sheet.cell(row=row, column=3).value, str)
+            and "ACCEPTANCE CRITERIA MET" in sheet.cell(row=row, column=3).value
+        )
+        verdict = sheet.cell(row=verdict_row, column=3).value
+        referenced = re.findall(r"C(\d+)", verdict)
+
+        # The three critical counts, plus the open S1 and S2 counts.
+        self.assertGreaterEqual(len(referenced), 5)
+        conditions = [sheet.cell(row=int(row), column=3).value for row in referenced]
+        for condition in conditions:
+            self.assertIn("COUNTIF", condition)
+        self.assertGreaterEqual(
+            sum("'Defect log'" in condition for condition in conditions), 2
+        )
+
+    def test_it_reads_the_result_key_and_the_severities_from_the_form(self):
+        workbook, _ = self._build()
+        sheet = workbook["Instructions"]
+        text = "\n".join(
+            str(sheet.cell(row=row, column=column).value or "")
+            for row in range(1, sheet.max_row + 1)
+            for column in (2, 3)
+        )
+
+        self.assertIn("Pass: as expected", text)
+        self.assertIn("S1 — Blocking", text)
+
+    def test_a_missing_form_is_reported(self):
+        with self.assertRaises(CommandError):
+            call_command(
+                "build_uat_workbook",
+                form="does-not-exist.html",
+                stdout=StringIO(),
+            )

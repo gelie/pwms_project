@@ -173,6 +173,15 @@ create in. `group` is nullable in the database because the seeded types exist
 before their group does, but it is **required in the admin**; the role/group
 pairing is enforced by `WorkflowTypeAdminForm`.
 
+A type appears in the site's "Create a workflow" menu only when its **name** is
+registered in `pwms.navigation.CREATE_VIEWS` (paired with the form carrying
+`initial_workflow_type` and the create-view URL name). The menu matches on name,
+never on the auto-generated `slug`: `AutoSlugField` writes the slug once, so a
+type that is renamed — or re-created while an older row still holds the slug —
+keeps a diverged slug, and a slug-keyed menu used to drop it silently.
+`manage.py audit_workflow_access` now warns about an enabled type that has create
+roles but no registered create view.
+
 Type-level **viewer groups** (`viewer_groups`) are read-only stakeholders —
 groups with an interest in every instance of the type but no active role in
 producing it. On creation each instance materialises its `WorkflowGroupAccess`
@@ -721,6 +730,12 @@ Indexed on `(recipient, read_at)` (the bell's unread count) and
 - **Integer PK is the GFK target** (`object_id` stores `pwms_internationalresolution.id`).
 - **New concrete workflow model checklist:** subclass the abstract base, run
   `makemigrations`, register with `auditlog` in `apps.py`, add an audit API view.
+- **Registering a creatable workflow type:** add its create view to
+  `pwms.navigation.CREATE_VIEWS`. The menu and the view both key off the type
+  **name** (from the form's `initial_workflow_type`), never the auto-generated
+  `slug`, so a renamed or re-created type cannot be silently dropped from the
+  menu. `manage.py audit_workflow_access` flags a create-role-bearing type whose
+  name is not registered.
 
 ---
 

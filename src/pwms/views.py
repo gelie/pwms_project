@@ -1872,9 +1872,6 @@ def workflow_transition(request, public_id):
     return _transition_page(request, instance, transition, unmet=unmet)
 
 
-# =======
-@login_not_required
-# >>>>>>> Stashed changes
 def about(request):
     """About page (sign-in required)."""
     return render(request, "pwms/about.html")

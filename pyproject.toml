@@ -52,6 +52,7 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "coverage>=7.6",
     "ruff>=0.16.7",
 ]
 
@@ -60,6 +61,28 @@ dev = [
 # so lint/format results do not shift when ruff changes its own defaults.
 target-version = "py314"
 line-length = 88
+
+[tool.coverage.run]
+# `coverage run --source=pwms` in CI; these settings only steer the report.
+branch = true
+omit = [
+    "*/migrations/*",
+    "*/tests*.py",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+# Do not fail CI on coverage yet — this is a baseline measurement, not a gate.
+# When the number is trusted, add `fail_under = <n>` here and CI will enforce it.
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+]
 
 [tool.ruff.lint]
 ignore = [
