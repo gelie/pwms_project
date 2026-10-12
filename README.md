@@ -14,8 +14,8 @@ ContentType-linked RBAC layer, and everything that happens to an instrument is
 > Active Directory sign-in with a local fallback, in-app alerts and queued email
 > dispatch, SharePoint document attachments (with version history), a
 > permission-scoped report builder (preview, exports, per-instrument documents,
-> sharing, scheduled delivery), the DRF audit API, OpenAPI docs, and a
-> django-ninja evaluation spike are in place.
+> sharing, scheduled delivery), the DRF API (expiring token authentication plus
+> user / membership / workflow endpoints) and OpenAPI docs are in place.
 > Remaining work is tracked in
 > [Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md).
 
@@ -44,7 +44,9 @@ ContentType-linked RBAC layer, and everything that happens to an instrument is
   and scheduled delivery.
 - **Authentication** — Active Directory (LDAP) sign-in that falls back to the
   local database, so the app boots and signs in without a directory.
-- **REST API** (DRF) for audit history + **OpenAPI / Swagger / ReDoc** docs.
+- **REST API** (DRF) with token authentication and endpoints for users,
+  memberships, the workflow registry and every workflow register, plus
+  **OpenAPI / Swagger / ReDoc** docs.
 - **Admin, background jobs, management commands** for sync (Oracle/legacy), scraping, notifications and diagram generation.
 
 ---
@@ -65,7 +67,7 @@ pwms_project/                     # repo root — run manage.py from here
     ├── templates/                # server-rendered UI (Bootstrap 5 + HTMX) — auto-discovered
     ├── static/                   # CSS / JS / images — auto-discovered
     ├── models/                   # User, Group, Role, workflows, RBAC, SharePoint, notifications, reports
-    ├── api/                      # DRF + django-ninja endpoints
+    ├── api/                      # DRF API (token auth, resources, audit, OpenAPI)
     ├── notifications/            # alerts, audience rules, email dispatch
     ├── reporting/                # report builder, exports, instrument documents, sharing
     ├── membership/               # sync services (e.g. MembershipSyncService)
@@ -127,6 +129,10 @@ IDNO_HMAC_KEY=change-me-too
 # keys are required. IDNO_ENC_KEY must be a Fernet key — generate one with:
 #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 IDNO_ENC_KEY=change-me-too
+# API tokens expire after this many days (default 30; 0 disables expiry).
+TOKEN_TTL_DAYS=30
+# Anonymous rate limit for POST /api/auth/token/, per client IP (default 20/min).
+TOKEN_THROTTLE_RATE=20/min
 EOF
 
 # 3. Create the schema
@@ -173,7 +179,7 @@ importable via the editable install):
 .venv/bin/python manage.py test \
   pwms.tests pwms.tests_api pwms.tests_attachments pwms.tests_authentication \
   pwms.tests_detail pwms.tests_detail_actions pwms.tests_executive \
-  pwms.tests_messages pwms.tests_ninja pwms.tests_notifications \
+  pwms.tests_messages pwms.tests_notifications \
   pwms.tests_referral_access pwms.tests_referrals pwms.tests_reports \
   pwms.tests_transitions
 ```
@@ -190,7 +196,7 @@ pull request, in order of cost:
 1. **Lint** — `ruff check` and `ruff format --check`.
 2. **Migrations** — `makemigrations --check --dry-run` (models must not have
    drifted from the migrations) then `migrate` against the service database.
-3. **Tests** — the 14-module suite above (623 tests) against a PostgreSQL
+3. **Tests** — the 13-module suite above (656 tests) against a PostgreSQL
    service, under `coverage` (configuration in `pyproject.toml`).
 
 > **Two gates currently report without failing the build**, because both flag

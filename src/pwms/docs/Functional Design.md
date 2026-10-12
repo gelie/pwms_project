@@ -507,9 +507,10 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
   shared view ([§8](#8-reporting-exports--sharing)).
 - **Django Admin** for administration (users, groups, roles, memberships,
   workflow definitions, the SharePoint mirror, and notifications — read-only).
-- **REST API (DRF)** exposing audit history; browsable, plus Swagger/ReDoc docs.
-- **django-ninja spike** under `/ninja/` compares an alternative implementation —
-  see [API Reference](./API%20Reference.md).
+- **REST API (DRF)** with token authentication and resource endpoints (users,
+  memberships, the workflow registry and every workflow register), plus audit
+  history; browsable, with Swagger/ReDoc docs — see
+  [API Reference](./API%20Reference.md).
 
 ---
 

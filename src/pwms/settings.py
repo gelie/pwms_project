@@ -8,6 +8,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
+from datetime import timedelta
 from pathlib import Path
 
 import ldap
@@ -51,6 +52,7 @@ INSTALLED_APPS = [
     "auditlog",
     "background_task",
     "rest_framework",
+    "rest_framework.authtoken",
     "drf_spectacular",
     "chartjs",
     "django_flatpickr",
@@ -78,28 +80,66 @@ MIDDLEWARE = [
 ]
 
 # Django REST Framework
+#
+# Token auth is available for machine clients (``Authorization: Token <key>``),
+# alongside the browsable-API session cookie and HTTP Basic for one-off calls.
+# All three hand back the same ``request.user``, so the resource RBAC is the same
+# however the caller signed in.
+#
+# ``SessionAuthentication`` stays first deliberately: DRF derives the anonymous
+# challenge from the first authenticator, and this project's contract is that an
+# unauthenticated API request is ``403`` (with an HTML login page on the
+# browsable API) rather than a bare ``401``. Reordering this list changes that.
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.SessionAuthentication",
+        "pwms.api.authentication.ExpiringTokenAuthentication",
         "rest_framework.authentication.BasicAuthentication",
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
     ],
+    # List endpoints page by default so a whole register can never be pulled in
+    # one response. Override per view with ``pagination_class = None``.
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 50,
+    # Named rate limits that individual views opt into. There is deliberately no
+    # DEFAULT_THROTTLE_CLASSES: only the token endpoint sets ``throttle_classes``
+    # (see pwms.api.throttles), so declaring a scope here does not throttle the
+    # rest of the API.
+    "DEFAULT_THROTTLE_RATES": {
+        "token": config("TOKEN_THROTTLE_RATE", default="20/min"),
+    },
     # OpenAPI schema generation (drf-spectacular)
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
+# API token lifetime. DRF's ``authtoken`` tokens never expire on their own, so
+# ``pwms.api.authentication.ExpiringTokenAuthentication`` enforces an absolute TTL
+# measured from the token's ``created`` column (see that module). ``0`` disables
+# expiry and keeps the stock non-expiring behaviour; ``manage.py purge_tokens``
+# deletes the rows that have passed it.
+TOKEN_TTL_DAYS = config("TOKEN_TTL_DAYS", default=30, cast=int)
+TOKEN_TTL = timedelta(days=TOKEN_TTL_DAYS) if TOKEN_TTL_DAYS > 0 else None
+
 # drf-spectacular (OpenAPI 3 + Swagger UI / ReDoc)
 SPECTACULAR_SETTINGS = {
-    "TITLE": "PWMS Workflow Audit API",
+    "TITLE": "PWMS Workflow API",
     "DESCRIPTION": (
-        "API for parliamentary workflow instances: auditlog CRUD history and "
-        "domain TransitionLog events."
+        "REST API for parliamentary workflow management: users, groups, roles "
+        "and memberships; the workflow registry (types, states, transitions); "
+        "the concrete workflow instances (delegation reports, international "
+        "resolutions and agreements, bills); and the auditlog CRUD history and "
+        "domain TransitionLog events behind them.\n\n"
+        "Authenticate with ``Authorization: Token <key>`` — obtain a key from "
+        "``POST /api/auth/token/``."
     ),
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
+    # Token auth is the documented default; the session/basic classes are still
+    # accepted, but listing them here keeps the OpenAPI security block focused.
+    "SECURITY": [{"tokenAuth": []}],
 }
 
 ROOT_URLCONF = "pwms.root_urls"

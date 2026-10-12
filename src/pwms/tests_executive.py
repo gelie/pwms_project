@@ -481,3 +481,141 @@ class OracleSyncIdentityGuardTests(TestCase):
         user.refresh_from_db()
         self.assertTrue(user.is_active)
         self.assertEqual(self.command.stats["disabled_users"], 1)
+
+
+class OracleSyncSupervisorTests(TestCase):
+    """The ERP ``EMPLOYEEID`` is stored and the ``SUPERVISORID`` chain is linked."""
+
+    def setUp(self):
+        self.command = Command()
+        self.command._membership_sync = MembershipSyncService(
+            group_cache={},
+            role_cache={},
+            strip_group_code_prefix=self.command.strip_group_code_prefix,
+            normalize_role_name=self.command.normalize_role_name,
+        )
+
+    @staticmethod
+    def _row(employee_id, supervisor_id, *, username, idno="", employeetype="Staff"):
+        """A full 15-column fetcher row (EMPLOYEEID / SUPERVISORID appended last)."""
+        return (
+            "Mr",
+            "Smith",
+            "Sam",
+            "",
+            f"{username}@parliament.gov.za",
+            idno,
+            "Male",
+            "Administrative Officer",
+            employeetype,
+            "",
+            username,
+            "",
+            "",
+            employee_id,
+            supervisor_id,
+        )
+
+    def test_employee_id_is_stored_on_create(self):
+        self.command.process_single_user(
+            idno="9001015800085",
+            oracle_user=self._row("E2", "E1", username="newbie", idno="9001015800085"),
+            existing_users={},
+            existing_users_by_username={},
+            existing_memberships={},
+            force_update=True,
+        )
+        self.assertEqual(User.objects.get(username="newbie").employee_id, "E2")
+
+    def test_employee_id_is_backfilled_on_update(self):
+        user = User.objects.create_user(username="existing", password="pw")
+        self.assertIsNone(user.employee_id)
+
+        self.command.process_single_user(
+            idno="8001015800085",
+            oracle_user=self._row(
+                "E7", "E1", username="existing", idno="8001015800085"
+            ),
+            existing_users={},
+            existing_users_by_username={"existing": user},
+            existing_memberships={},
+            force_update=False,
+        )
+
+        user.refresh_from_db()
+        self.assertEqual(user.employee_id, "E7")
+
+    def test_supervisors_are_linked_from_the_chain(self):
+        manager = User.objects.create(username="mgr", employee_id="E1")
+        report = User.objects.create(username="rep", employee_id="E2")
+        feed = {
+            "mgr": self._row("E1", "", username="mgr"),
+            "rep": self._row("E2", "E1", username="rep"),
+        }
+
+        self.command.assign_supervisors(feed)
+
+        report.refresh_from_db()
+        self.assertEqual(report.supervisor_id, manager.pk)
+        self.assertEqual(self.command.stats["supervisors_linked"], 1)
+
+    def test_unresolved_manager_is_left_untouched(self):
+        other = User.objects.create(username="other")
+        report = User.objects.create(username="rep", employee_id="E2", supervisor=other)
+        feed = {"rep": self._row("E2", "E9", username="rep")}
+
+        self.command.assign_supervisors(feed)
+
+        report.refresh_from_db()
+        # E9 is absent from the feed, so the existing line survives.
+        self.assertEqual(report.supervisor_id, other.pk)
+        self.assertEqual(self.command.stats["supervisors_linked"], 0)
+        self.assertEqual(self.command.stats["supervisors_unresolved"], 1)
+
+    def test_dry_run_reports_without_writing(self):
+        User.objects.create(username="mgr", employee_id="E1")
+        report = User.objects.create(username="rep", employee_id="E2")
+        feed = {
+            "mgr": self._row("E1", "", username="mgr"),
+            "rep": self._row("E2", "E1", username="rep"),
+        }
+
+        self.command.assign_supervisors(feed, dry_run=True)
+
+        report.refresh_from_db()
+        self.assertIsNone(report.supervisor_id)
+        self.assertEqual(self.command.stats["supervisors_linked"], 1)
+
+    def test_dry_run_previews_links_without_writing(self):
+        """A dry run resolves the chain from this run's users, not the DB."""
+        manager = User.objects.create_user(username="mgr", password="pw")
+        report = User.objects.create_user(username="rep", password="pw")
+        by_username = {"mgr": manager, "rep": report}
+
+        for row, idno in (
+            (self._row("E1", "", username="mgr", idno="1"), "1"),
+            (self._row("E2", "E1", username="rep", idno="2"), "2"),
+        ):
+            self.command.process_single_user(
+                idno=idno,
+                oracle_user=row,
+                existing_users={},
+                existing_users_by_username=by_username,
+                existing_memberships={},
+                force_update=False,
+                dry_run=True,
+            )
+
+        feed = {
+            "mgr": self._row("E1", "", username="mgr"),
+            "rep": self._row("E2", "E1", username="rep"),
+        }
+        self.command.assign_supervisors(feed, dry_run=True)
+
+        report.refresh_from_db()
+        manager.refresh_from_db()
+        self.assertIsNone(report.supervisor_id)  # dry run wrote nothing...
+        self.assertIsNone(manager.employee_id)
+        self.assertEqual(
+            self.command.stats["supervisors_linked"], 1
+        )  # ...but previewed

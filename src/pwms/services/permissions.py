@@ -3,7 +3,7 @@
 Answers one question — *may ``user`` perform ``action`` on ``resource``?* — for a
 fixed set of capabilities: view, edit, delete, share, comment, manage (plus
 transition, which only applies to workflow instances). The same call sites can be
-used from Django views (templates and ``require``) and from DRF/ninja endpoints.
+used from Django views (templates and ``require``) and from DRF API endpoints.
 
 Resolution is resource-type aware:
 

@@ -196,7 +196,6 @@ jobs:
             pwms.tests_detail_actions \
             pwms.tests_executive \
             pwms.tests_messages \
-            pwms.tests_ninja \
             pwms.tests_notifications \
             pwms.tests_referral_access \
             pwms.tests_referrals \

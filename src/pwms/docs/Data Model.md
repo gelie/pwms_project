@@ -94,6 +94,7 @@ Django user with parliamentary profile fields:
 | `title`, `middle_name`, `gender`, `phone`, `bio`, `avatar` | profile |
 | `employee_type` | staff / member / graduate |
 | `identity_source` | `erp` (owned by `sync_users_oracle`) or `local` (owned by PWMS — e.g. Ministers appointed from outside the ERP) |
+| `employee_id` | ERP `EMPLOYEEID` (unique, nullable); `SUPERVISORID` resolves to a User through it |
 | `positiondesc`, `supervisor` (self FK) | reporting |
 | `department` (FK `Group`) | home department |
 | `date_of_birth`, `date_joined_parliament`, `termination_date` | lifecycle |

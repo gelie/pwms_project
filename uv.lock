@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.14"
 
 [[package]]
@@ -581,19 +581,6 @@ wheels = [
 ]
 
 [[package]]
-name = "django-ninja"
-version = "1.7.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "django" },
-    { name = "pydantic" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/25/f7/410af3b53845f04c94a9dabe5934117d9546b6f5ce4028cff5b74deb933c/django_ninja-1.7.0.tar.gz", hash = "sha256:7a0ce06c978a42a808d9a9d7ba1cda383df8eea90040cfc232ad10b7d9024e0d", size = 2341450, upload-time = "2026-08-30T17:49:19.718Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/54/d6/f4f939b912c696b6fc19e15ed3b2b37ac7cb09600373e83211f44adaf6d5/django_ninja-1.7.0-py3-none-any.whl", hash = "sha256:f1a0f762c9810dabcb040fcff76c6e2f5d0cdb51b4a597799ee06b5df8481f3f", size = 2376156, upload-time = "2026-08-30T17:49:17.552Z" },
-]
-
-[[package]]
 name = "djangorestframework"
 version = "3.18.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1027,7 +1014,6 @@ dependencies = [
     { name = "django-flatpickr" },
     { name = "django-htmx" },
     { name = "django-mptt" },
-    { name = "django-ninja" },
     { name = "djangorestframework" },
     { name = "djlint" },
     { name = "drf-spectacular" },
@@ -1069,7 +1055,6 @@ requires-dist = [
     { name = "django-flatpickr", specifier = ">=2.1.0" },
     { name = "django-htmx", specifier = ">=1.29.0" },
     { name = "django-mptt", specifier = ">=0.18.0" },
-    { name = "django-ninja", specifier = ">=1.7.0" },
     { name = "djangorestframework", specifier = ">=3.18.1" },
     { name = "djlint", specifier = ">=1.46.1" },
     { name = "drf-spectacular", specifier = ">=0.30.0" },
