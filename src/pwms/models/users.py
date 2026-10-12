@@ -68,6 +68,19 @@ class User(AbstractUser, BaseModel):
             "must not be deactivated when Oracle does not know them."
         ),
     )
+    employee_id = models.CharField(
+        max_length=30,
+        blank=True,
+        null=True,
+        unique=True,
+        help_text=_(
+            "ERP (Oracle) employee identifier, from "
+            "XXPER_PEOPLE_INTERFACE.EMPLOYEEID. Owned by sync_users_oracle. The "
+            "ERP's SUPERVISORID chain is another employee's EMPLOYEEID, so it "
+            "resolves to a User through this column - which lets a manager who "
+            "has left the payroll still be linked."
+        ),
+    )
     positiondesc = models.CharField(max_length=100, blank=True)
     supervisor = models.ForeignKey(
         "self", on_delete=models.SET_NULL, null=True, blank=True

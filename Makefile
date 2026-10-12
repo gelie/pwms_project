@@ -39,7 +39,6 @@ test: ## Run the full suite (needs PostgreSQL, see README quickstart)
 		pwms.tests_detail_actions \
 		pwms.tests_executive \
 		pwms.tests_messages \
-		pwms.tests_ninja \
 		pwms.tests_notifications \
 		pwms.tests_referral_access \
 		pwms.tests_referrals \
@@ -56,7 +55,6 @@ coverage: ## Run the suite under coverage and print a report
 		pwms.tests_detail_actions \
 		pwms.tests_executive \
 		pwms.tests_messages \
-		pwms.tests_ninja \
 		pwms.tests_notifications \
 		pwms.tests_referral_access \
 		pwms.tests_referrals \

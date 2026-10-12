@@ -22,7 +22,6 @@ dependencies = [
     "django-flatpickr>=2.1.0",
     "django-htmx>=1.29.0",
     "django-mptt>=0.18.0",
-    "django-ninja>=1.7.0",
     "djangorestframework>=3.18.1",
     "djlint>=1.46.1",
     "drf-spectacular>=0.30.0",

@@ -38,6 +38,19 @@ All commands live in `pwms/management/commands/` and run as:
 > `presidency` / `ministry`) are never ended by the sync — losing an ERP payroll
 > record does not end a political appointment.
 
+> **Reporting line.** `User.supervisor` is populated from the ERP
+> `EMPLOYEEID` / `SUPERVISORID` chain: `EMPLOYEEID` is stored on
+> `User.employee_id`, and a second pass — after every user has been upserted,
+> since a report is often processed before its manager exists — links each user
+> to the manager whose `EMPLOYEEID` matches their `SUPERVISORID`. The link is
+> resolved from the users handled in the same run (falling back to the database
+> for a manager synced on an earlier run), so a `--dry-run` previews the links
+> even though it writes nothing. A manager
+> absent from the feed, or whose id is not stored, leaves the line **untouched**
+> rather than clearing it. Disable with `--skip-supervisors`.
+> (`User.department` and `User.positiondesc` are still not written — the group
+> membership maintained by `MembershipSyncService` is the link the sync keeps.)
+
 ## SharePoint (Graph) sync
 
 | Command | Purpose | Status |
@@ -246,7 +259,21 @@ share takes it out of the queue immediately.
 | `audit_workflow_access` | explain why a user can (or cannot) create or open a workflow type, and flag create roles no active member of the group holds | ✅ live — see below |
 | `show_workflow_hierarchy` | print the parent/child tree of workflow instances | ✅ live — see below |
 | `seed_demo_data` | empty the four workflow registers and reseed them with presentation-ready mock records | ✅ live — see below |
+| `purge_tokens` | delete API tokens that have passed their TTL (`settings.TOKEN_TTL`) | ✅ live — see below |
 | `validate_memberships` | integrity-check group memberships | pending repoint |
+
+### API tokens
+
+API tokens expire on an absolute TTL (`settings.TOKEN_TTL_DAYS`, default 30;
+`0` disables it). `pwms.api.authentication.ExpiringTokenAuthentication` enforces
+the cut-off at authentication time, so `purge_tokens` only reclaims the dead rows
+— safe to run any time, and a good fit for a systemd timer alongside
+`check_referral_deadlines`. `--dry-run` lists what would go; `--days N` applies a
+different TTL for one run.
+
+```bash
+python manage.py purge_tokens --dry-run
+```
 
 ### Type-level group access
 

@@ -14,6 +14,9 @@ Key optimizations:
   appointed from outside the ERP, scraper placeholders, admin accounts): the
   sync never creates, updates or deactivates them, and it never ends their
   executive memberships
+- Links each user to their manager from the Oracle ``EMPLOYEEID`` / ``SUPERVISORID``
+  chain (``User.supervisor``) in a second pass, once every user exists; disable
+  with ``--skip-supervisors``
 
 Usage:
     python manage.py sync_users_oracle
@@ -50,11 +53,16 @@ class Command(OracleSyncBase):
                 "preserved_executive_memberships": 0,
                 "skipped_local_users": 0,
                 "fixed_passwords": 0,
+                "supervisors_linked": 0,
+                "supervisors_unresolved": 0,
             }
         )
         self._group_cache = {}
         self._role_cache = {}
         self._membership_sync: MembershipSyncService | None = None
+        #: EMPLOYEEID -> User for every row handled this run; lets the supervisor
+        #: pass resolve the chain in a dry run, where nothing is written.
+        self._employee_users: dict[str, User] = {}
 
     def add_arguments(self, parser):
         self.add_common_arguments(parser)
@@ -74,6 +82,14 @@ class Command(OracleSyncBase):
             action="store_true",
             help="Skip deactivation of users not found in Oracle",
         )
+        parser.add_argument(
+            "--skip-supervisors",
+            action="store_true",
+            help=(
+                "Do not link users to their manager from the Oracle "
+                "EMPLOYEEID / SUPERVISORID chain"
+            ),
+        )
 
     def handle(self, *args, **options):
         """Main command handler."""
@@ -89,6 +105,7 @@ class Command(OracleSyncBase):
         batch_size = options["batch_size"]
         force_update = options["force_update"]
         skip_deactivation = options["skip_deactivation"]
+        skip_supervisors = options["skip_supervisors"]
 
         if dry_run:
             self.stdout.write(
@@ -102,7 +119,13 @@ class Command(OracleSyncBase):
 
         try:
             self.connect_to_oracle()
-            self.sync_users(dry_run, batch_size, force_update, skip_deactivation)
+            self.sync_users(
+                dry_run,
+                batch_size,
+                force_update,
+                skip_deactivation,
+                skip_supervisors,
+            )
 
             if self.stats["errors"] == 0:
                 self.stdout.write(
@@ -131,6 +154,7 @@ class Command(OracleSyncBase):
         batch_size: int,
         force_update: bool,
         skip_deactivation: bool,
+        skip_supervisors: bool,
     ):
         """Main sync logic with performance optimizations."""
         self.logger.info("🔄 Starting user synchronization...")
@@ -181,6 +205,11 @@ class Command(OracleSyncBase):
                 dry_run,
             )
 
+        if not skip_supervisors:
+            self.assign_supervisors(oracle_users, dry_run)
+        else:
+            self.logger.info("⏭️  Skipping reporting-line assignment as requested")
+
         if not skip_deactivation:
             self.deactivate_missing_users(oracle_users, existing_users, dry_run)
         else:
@@ -194,7 +223,8 @@ class Command(OracleSyncBase):
 
         query = """
             SELECT TITLE, LASTNAME, FIRSTNAME, MIDDLENAMES, EMAIL, IDNO, SEX,
-                   POSITIONDESC, EMPLOYEETYPE, PARTYCODE, USERNAME, CHILD_ORG_NAME, PARENT_ORG_NAME
+                   POSITIONDESC, EMPLOYEETYPE, PARTYCODE, USERNAME, CHILD_ORG_NAME,
+                   PARENT_ORG_NAME, EMPLOYEEID, SUPERVISORID
             FROM APPS.XXPER_PEOPLE_INTERFACE
             WHERE CURRENT_EMPLOYEE_FLAG = 'Y'
             AND ASSIGNMENT_STATUS = 'Active Assignment'
@@ -333,6 +363,10 @@ class Command(OracleSyncBase):
         dry_run: bool = False,
     ):
         """Process a single user from Oracle data."""
+        # Pad so a row from the test double (or an older query) that stops at
+        # PARENT_ORG_NAME still unpacks; EMPLOYEEID / SUPERVISORID trail it.
+        values = list(oracle_user or [])
+        values += [""] * max(0, 15 - len(values))
         (
             title,
             lastname,
@@ -347,7 +381,12 @@ class Command(OracleSyncBase):
             username,
             child_org_name,
             parent_org_name,
-        ) = oracle_user
+            employee_id,
+            _supervisor_id,
+        ) = values[:15]
+        # Strip to match _row_value() (which trims the supervisor chain), so a
+        # VARCHAR the ERP pads with spaces still compares equal.
+        employee_id = (employee_id or "").strip() or None
 
         name_data = self.normalize_name_fields(oracle_user)
         is_mp = employeetype == "Member"
@@ -389,6 +428,8 @@ class Command(OracleSyncBase):
                 )
             if user.is_mp != is_mp:
                 changes.append(f"is_mp: {user.is_mp} -> {is_mp}")
+            if user.employee_id != employee_id:
+                changes.append(f"employee_id: {user.employee_id} -> {employee_id}")
 
             if changes or force_update:
                 if not dry_run:
@@ -404,6 +445,7 @@ class Command(OracleSyncBase):
                     user.is_mp = is_mp
                     user.is_active = True
                     user.set_idno(idno or "")
+                    user.employee_id = employee_id
                     user.save()
 
                     if self.fix_bad_password_hash(user):
@@ -436,6 +478,7 @@ class Command(OracleSyncBase):
                     gender=sex.lower() if sex else "",
                     is_mp=is_mp,
                     is_active=True,
+                    employee_id=employee_id,
                 )
                 user.set_idno(idno or "")
                 user.save(update_fields=["idno_encrypted", "idno_hmac"])
@@ -456,6 +499,7 @@ class Command(OracleSyncBase):
                     gender=sex.lower() if sex else "",
                     is_mp=is_mp,
                     is_active=True,
+                    employee_id=employee_id,
                 )
                 user.id = -1
 
@@ -467,6 +511,12 @@ class Command(OracleSyncBase):
             self.handle_group_memberships(
                 user, oracle_user, existing_memberships, dry_run
             )
+
+        if employee_id:
+            # Remember EMPLOYEEID -> User for this run so the supervisor pass can
+            # resolve the chain even in a dry run (where the column is not
+            # written) and without depending on processing order.
+            self._employee_users[employee_id] = user
 
     def handle_group_memberships(
         self,
@@ -576,6 +626,86 @@ class Command(OracleSyncBase):
                 f"executive memberships preserved: {preserved_count}"
             )
 
+    #: Positions of EMPLOYEEID / SUPERVISORID in a fetcher row (appended last).
+    EMPLOYEE_ID_INDEX = 13
+    SUPERVISOR_ID_INDEX = 14
+
+    @staticmethod
+    def _row_value(row, index: int) -> str:
+        """A row cell as a trimmed string, tolerating a short or NULL row."""
+        if not row or index >= len(row):
+            return ""
+        value = row[index]
+        if value is None:
+            return ""
+        return value.strip() if isinstance(value, str) else str(value)
+
+    def assign_supervisors(self, oracle_users: dict[str, tuple], dry_run: bool = False):
+        """Link each user to their manager from the Oracle SUPERVISORID chain.
+
+        ``SUPERVISORID`` is the manager's ``EMPLOYEEID``, and both travel on the
+        same rows, so the link is resolved *after* every user has been upserted -
+        a report is routinely processed before the manager it points at exists.
+        Matching goes through :attr:`User.employee_id`, so a manager who has since
+        left the payroll (and is therefore absent from this feed) is still linked.
+
+        A report whose manager is missing from the feed, or whose ``EMPLOYEEID``
+        is not stored, is left **untouched** rather than cleared, so a resolved
+        line is never silently dropped.
+        """
+        supervisor_of: dict[str, str] = {}
+        for row in oracle_users.values():
+            employee_id = self._row_value(row, self.EMPLOYEE_ID_INDEX)
+            supervisor_id = self._row_value(row, self.SUPERVISOR_ID_INDEX)
+            if employee_id and supervisor_id and employee_id != supervisor_id:
+                supervisor_of[employee_id] = supervisor_id
+
+        if not supervisor_of:
+            self.logger.info("ℹ️  No supervisor links present in the Oracle feed")
+            return
+
+        wanted = set(supervisor_of) | set(supervisor_of.values())
+        # This run's users first - that is what makes a dry run able to preview
+        # the links, since nothing has been written to ``employee_id`` yet. Then
+        # the database, for a manager absent from the feed but synced before.
+        by_employee = dict(self._employee_users)
+        missing = wanted - set(by_employee)
+        if missing:
+            for user in User.objects.filter(employee_id__in=missing):
+                by_employee[user.employee_id] = user
+
+        stored_ids = User.objects.exclude(employee_id__isnull=True).count()
+        self.logger.info(
+            f"🔗 Supervisor pass: {len(supervisor_of)} link(s) in the feed; "
+            f"{len(self._employee_users)} employee id(s) recorded this run, "
+            f"{stored_ids} store an employee_id in the database"
+        )
+
+        matched = changed = unresolved = 0
+        updates = []
+        for employee_id, supervisor_id in supervisor_of.items():
+            report = by_employee.get(employee_id)
+            manager = by_employee.get(supervisor_id)
+            if report is None or manager is None or report is manager:
+                unresolved += 1
+                continue
+            matched += 1
+            if report.supervisor_id != manager.pk:
+                changed += 1
+                if not dry_run:
+                    report.supervisor = manager
+                    updates.append(report)
+
+        if updates:
+            User.objects.bulk_update(updates, ["supervisor"])
+
+        self.stats["supervisors_linked"] += changed
+        self.stats["supervisors_unresolved"] += unresolved
+        self.logger.info(
+            f"{'[DRY RUN] ' if dry_run else ''}Reporting line: {matched} resolved "
+            f"({changed} updated), {unresolved} unresolved"
+        )
+
     def normalize_name_fields(self, user_data: tuple) -> dict[str, str]:
         """Normalize and clean name fields from Oracle data."""
         title, lastname, firstname, middlenames = user_data[0:4]
@@ -658,6 +788,15 @@ class Command(OracleSyncBase):
         self.stdout.write(
             "   Preserved executive memberships: "
             f"{self.stats['preserved_executive_memberships']}"
+        )
+
+        self.stdout.write("\n🪜 REPORTING LINE:")
+        self.stdout.write(
+            f"   Supervisors linked / updated: {self.stats['supervisors_linked']}"
+        )
+        self.stdout.write(
+            "   Unresolved (report or manager not matched): "
+            f"{self.stats['supervisors_unresolved']}"
         )
 
         self.stdout.write("\n🔐 PASSWORD FIXES:")

@@ -26,7 +26,6 @@
 | `django-flatpickr` | date-time pickers in templates/forms |
 | `djangorestframework` (DRF) | REST API layer |
 | `drf-spectacular` | OpenAPI 3 schema + Swagger UI + ReDoc |
-| `django-ninja` | **evaluation spike only** — prototype endpoints under `/ninja/` (see API Reference / System Design) |
 | `django-filter` | (declared) query filtering for DRF-style views |
 | `django-extensions` | (declared; not currently enabled) dev tooling |
 
@@ -70,8 +69,15 @@
   `SHAREPOINT_TENANT_ID` (from `CLIENT_ID` / `CLIENT_SECRET` / `TENANT_ID`), with
   the token URL and `.default` scope derived — see
   [SharePoint Sync](./SharePoint%20Sync.md).
-- `REST_FRAMEWORK`: Session + Basic authentication, `IsAuthenticated` default,
-  `drf_spectacular.openapi.AutoSchema`.
+- `REST_FRAMEWORK`: session, **expiring token**
+  (`pwms.api.authentication.ExpiringTokenAuthentication`) and basic
+  authentication, `IsAuthenticated` default, page-number pagination,
+  `drf_spectacular.openapi.AutoSchema`. `TOKEN_TTL_DAYS` (default 30; `0`
+  disables) sets the absolute API-token lifetime, and `manage.py purge_tokens`
+  deletes the expired rows. `POST /api/auth/token/` is the one throttled endpoint
+  (`pwms.api.throttles.TokenEndpointThrottle`, IP-scoped, `TOKEN_THROTTLE_RATE`
+  default `20/min`); there is no `DEFAULT_THROTTLE_CLASSES`, so the rest of the
+  API is unthrottled.
 - `SPECTACULAR_SETTINGS`: OpenAPI title/version for the generated schema.
 - `auditlog.middleware.AuditlogMiddleware` runs after auth so changes are attributed to the logged-in user.
 - Logging: console/file handler writing to the configured `LOG_DIR` (`pwms.log`).
@@ -87,7 +93,8 @@
   `User.set_idno`), the optional LDAP set (`AUTH_LDAP_SERVER_URI`,
   `AUTH_LDAP_BIND_DN`, `AUTH_LDAP_BIND_PASSWORD`, `AUTH_LDAP_BASE_DN`,
   `AUTH_LDAP_START_TLS`), and the optional alerting pair `DEFAULT_FROM_EMAIL`
-  and `PWMS_BASE_URL`.
+  and `PWMS_BASE_URL`, and `TOKEN_TTL_DAYS` (API token lifetime in days;
+  default 30, `0` disables expiry).
 
 > The app is enabled via a single `AppConfig` (`pwms.apps.PwmsConfig`) whose
 > `ready()` registers the concrete workflow model with `auditlog`. It is the only
@@ -109,7 +116,7 @@
 ## Testing
 
 - Test modules: `pwms/tests.py` (auditing, workflow CRUD, lookups),
-  `pwms/tests_api.py` (DRF API), `pwms/tests_ninja.py` (ninja spike),
+  `pwms/tests_api.py` (DRF API + token auth),
   `pwms/tests_notifications.py` (alerts + email dispatch),
   `pwms/tests_attachments.py` (SharePoint attachments & versioning),
   `pwms/tests_reports.py` (report builder, exports, sharing, scheduling),
@@ -123,7 +130,7 @@
 ```bash
 .venv/bin/python manage.py test pwms.tests pwms.tests_api pwms.tests_attachments \
   pwms.tests_authentication pwms.tests_detail pwms.tests_executive \
-  pwms.tests_ninja pwms.tests_notifications pwms.tests_reports
+  pwms.tests_notifications pwms.tests_reports
 ```
 
 - Tests run on a throwaway test database (PostgreSQL test DB).

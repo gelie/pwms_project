@@ -27,8 +27,6 @@ from drf_spectacular.views import (
 )
 from rest_framework.permissions import AllowAny
 
-from pwms.api.ninja import api as ninja_api
-
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("", RedirectView.as_view(url="pwms/", permanent=False)),
@@ -37,8 +35,6 @@ urlpatterns = [
     path("api/", include("pwms.api.urls")),
     # DRF browsable-API login/logout endpoints
     path("api/auth/", include("rest_framework.urls")),
-    # django-ninja spike (same audit endpoint, FastAPI-style) - compare/remove
-    path("ninja/", ninja_api.urls),
     # OpenAPI schema + interactive docs (schema/UI are public; data stays auth'd)
     path(
         "api/schema/",
