@@ -1,6 +1,7 @@
 from django.contrib.auth import authenticate, get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
+from django.http import Http404
 from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiTypes,
@@ -325,10 +326,37 @@ class ResourceViewSet(viewsets.ModelViewSet):
 class UserViewSet(ResourceViewSet):
     """PWMS users, plus ``/api/users/me/`` for the caller's own record."""
 
+    #: Users are addressed by ``username`` (``/api/users/gelie/``) rather than
+    #: the public UUID: a caller almost always holds the ERP username, and a
+    #: direct lookup saves the search-then-fetch round trip the UUID forces.
+    #: ``[^/]+`` (not DRF's ``[^/.]+``) so a dotted ``firstname.lastname``
+    #: username stays addressable. ``me`` is a list action and is matched first.
+    lookup_field = "username"
+    lookup_url_kwarg = "username"
+    lookup_value_regex = "[^/]+"
+
     queryset = User.objects.select_related("department", "supervisor").all()
     serializer_class = UserSerializer
     search_fields = ["username", "first_name", "last_name", "email", "positiondesc"]
     ordering_fields = ["last_name", "first_name", "username", "date_joined"]
+
+    def get_object(self):
+        """Look a user up by ``username`` case-insensitively.
+
+        The ERP sync stores usernames lower-cased, but callers type them as they
+        know them (mixed case from AD, an email, a name), so the match ignores
+        case. An exact match still wins if a case variant exists as its own row.
+        """
+        queryset = self.filter_queryset(self.get_queryset())
+        username = self.kwargs.get(self.lookup_url_kwarg or self.lookup_field)
+        obj = (
+            queryset.filter(username=username).first()
+            or queryset.filter(username__iexact=username).first()
+        )
+        if obj is None:
+            raise Http404
+        self.check_object_permissions(self.request, obj)
+        return obj
 
     def get_serializer_class(self):
         # Detail and /me carry the reporting line (nested supervisor + immediate

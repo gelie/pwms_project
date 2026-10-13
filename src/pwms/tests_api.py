@@ -414,10 +414,25 @@ class ResourceApiTests(TestCase):
         self.assertIn("results", payload)
         self.assertTrue(any(u["username"] == "res-user" for u in payload["results"]))
 
-    def test_user_detail_is_looked_up_by_public_id(self):
-        resp = self._client(self.user).get(f"/api/users/{self.user.public_id}/")
+    def test_user_detail_is_looked_up_by_username(self):
+        resp = self._client(self.user).get("/api/users/res-user/")
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["username"], "res-user")
+
+    def test_dotted_username_is_addressable(self):
+        get_user_model().objects.create_user(username="z.mkhize", password="pw")
+        resp = self._client(self.user).get("/api/users/z.mkhize/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["username"], "z.mkhize")
+
+    def test_username_lookup_is_case_insensitive(self):
+        resp = self._client(self.user).get("/api/users/RES-USER/")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["username"], "res-user")
+
+    def test_unknown_username_is_a_404(self):
+        resp = self._client(self.user).get("/api/users/nobody-here/")
+        self.assertEqual(resp.status_code, 404)
 
     def test_me_returns_the_caller(self):
         resp = self._client(self.user).get("/api/users/me/")
@@ -425,7 +440,7 @@ class ResourceApiTests(TestCase):
         self.assertEqual(resp.json()["username"], "res-user")
 
     def test_user_payload_never_leaks_secrets(self):
-        resp = self._client(self.user).get(f"/api/users/{self.user.public_id}/")
+        resp = self._client(self.user).get("/api/users/res-user/")
         for forbidden in ("password", "idno_encrypted", "idno_hmac"):
             self.assertNotIn(forbidden, resp.json())
 
@@ -990,14 +1005,14 @@ class UserHierarchyApiTests(TestCase):
         return client
 
     def test_detail_nests_the_manager(self):
-        resp = self._client(self.unrelated).get(f"/api/users/{self.adams.public_id}/")
+        resp = self._client(self.unrelated).get("/api/users/hier-adams/")
         self.assertEqual(resp.status_code, 200)
         manager = resp.json()["supervisor"]
         self.assertEqual(manager["username"], "hier-manager")
         self.assertEqual(manager["full_name"], "Mary Manager")
 
     def test_detail_lists_immediate_subordinates_ordered_by_surname(self):
-        resp = self._client(self.unrelated).get(f"/api/users/{self.manager.public_id}/")
+        resp = self._client(self.unrelated).get("/api/users/hier-manager/")
         self.assertEqual(resp.status_code, 200)
         payload = resp.json()
         self.assertIsNone(payload["supervisor"])

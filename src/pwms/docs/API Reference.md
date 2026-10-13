@@ -103,7 +103,7 @@ keys never appear in a URL. Lists are paginated (`count` / `next` / `previous` /
 
 | Resource | Collection | Detail |
 | --- | --- | --- |
-| Users | `/api/users/` | `/api/users/{public_id}/` |
+| Users | `/api/users/` | `/api/users/{username}/` |
 | Current user | `/api/users/me/` | — |
 | Groups | `/api/groups/` | `/api/groups/{public_id}/` |
 | Roles | `/api/roles/` | `/api/roles/{public_id}/` |
@@ -119,9 +119,15 @@ keys never appear in a URL. Lists are paginated (`count` / `next` / `previous` /
 Each collection is a standard `GET` (list) / `POST` (create); each detail URL is
 `GET` (retrieve) / `PUT` / `PATCH` (update) / `DELETE`.
 
+**Users are addressed by `username`** (e.g. `/api/users/gelie/`) rather than the
+`public_id`: a caller usually holds the ERP username already, so a direct lookup
+saves the search-then-fetch round trip. The match is **case-insensitive**, and dots
+in a username (the ERP's `firstname.lastname`) are fine. Every other resource
+stays on `public_id`.
+
 ### User reporting line
 
-`GET /api/users/{public_id}/` and `GET /api/users/me/` add the reporting line to
+`GET /api/users/{username}/` and `GET /api/users/me/` add the reporting line to
 the user:
 
 - `supervisor` — the user's manager, as a nested user summary (or `null`);
