@@ -129,7 +129,7 @@ pwms_project/                     # repo root (git) — run manage.py from here
 | `/pwms/*-search/` | HTMX search fragments (users, groups, reports, countries, cities) | session |
 | `/api/` | DRF API root (token endpoints, resource index, audit routes) | session/token/basic |
 | `/api/auth/token/` (+ `refresh/` , `revoke/`) | obtain / rotate / revoke an API token | – (obtain) / token |
-| `/api/{users,groups,roles,memberships}/…` | identity & structure resources (CRUD) | session/token/basic + RBAC |
+| `/api/{users,groups,roles,memberships}/…` | identity & structure resources (CRUD; users keyed by `username`, the rest by `public_id`) | session/token/basic + RBAC |
 | `/api/groups/lookup/?name=…` | group details + member roster by (partial) name | session/token/basic + RBAC |
 | `/api/{workflow-types,states,transitions}/…` | workflow registry (CRUD) | session/token/basic + RBAC |
 | `/api/{delegation-reports,resolutions,agreements,bills}/…` | workflow instances + `transitions` / `transition` / `events` / `audit` actions | session/token/basic + RBAC |
