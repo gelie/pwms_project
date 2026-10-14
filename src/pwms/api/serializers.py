@@ -292,6 +292,39 @@ class MembershipSerializer(serializers.ModelSerializer):
         ]
 
 
+class UserMembershipSerializer(serializers.ModelSerializer):
+    """One of a user's memberships, with the group and role spelled out.
+
+    Used by ``GET /api/users/{username}/memberships/``: the user is the path, so
+    it is not repeated here, and the group is identified by its ``public_id``
+    (like every other resource) rather than a database key.
+    """
+
+    group_public_id = serializers.UUIDField(source="group.public_id", read_only=True)
+    group_name = serializers.CharField(source="group.name", read_only=True)
+    group_type = serializers.CharField(source="group.group_type", read_only=True)
+    role = serializers.CharField(source="role.name", read_only=True)
+    role_slug = serializers.CharField(source="role.slug", read_only=True)
+
+    class Meta:
+        model = GroupMembership
+        fields = [
+            "public_id",
+            "group_public_id",
+            "group_name",
+            "group_type",
+            "role",
+            "role_slug",
+            "start_date",
+            "end_date",
+            "is_active",
+            "notes",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
 class GroupMemberSerializer(serializers.ModelSerializer):
     """One member of a group: the user, their role, and the appointment window."""
 

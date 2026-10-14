@@ -1,7 +1,10 @@
+from uuid import UUID
+
 from django.contrib.auth import authenticate, get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
 from django.http import Http404
+from django.utils.dateparse import parse_date
 from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiTypes,
@@ -51,6 +54,7 @@ from .serializers import (
     TransitionLogSerializer,
     TransitionSerializer,
     UserDetailSerializer,
+    UserMembershipSerializer,
     UserSerializer,
     WorkflowEventSerializer,
     WorkflowTransitionRequestSerializer,
@@ -371,10 +375,187 @@ class UserViewSet(ResourceViewSet):
         """Return the record of the user making the request."""
         return Response(self.get_serializer(request.user).data)
 
+    @extend_schema(
+        summary="A user's group memberships",
+        description=(
+            "Every group membership held by the user (looked up by username), "
+            "newest first. Filter by whether it is current (`active`), whether it "
+            "was in force on a date (`as_of`), its start/end (`start_after`, "
+            "`start_before`, `end_after`, `end_before`) and by what it grants "
+            "(`group`, `role`, `group_type`)."
+        ),
+        parameters=[
+            OpenApiParameter(
+                "active",
+                OpenApiTypes.BOOL,
+                OpenApiParameter.QUERY,
+                description="Only current (true) or ended (false) memberships.",
+            ),
+            OpenApiParameter(
+                "as_of",
+                OpenApiTypes.DATE,
+                OpenApiParameter.QUERY,
+                description="Memberships in force on this date (YYYY-MM-DD).",
+            ),
+            OpenApiParameter(
+                "start_after",
+                OpenApiTypes.DATE,
+                OpenApiParameter.QUERY,
+                description="Memberships that started on or after this date.",
+            ),
+            OpenApiParameter(
+                "start_before",
+                OpenApiTypes.DATE,
+                OpenApiParameter.QUERY,
+                description="Memberships that started on or before this date.",
+            ),
+            OpenApiParameter(
+                "end_after",
+                OpenApiTypes.DATE,
+                OpenApiParameter.QUERY,
+                description="Memberships that ended on or after this date.",
+            ),
+            OpenApiParameter(
+                "end_before",
+                OpenApiTypes.DATE,
+                OpenApiParameter.QUERY,
+                description="Memberships that ended on or before this date.",
+            ),
+            OpenApiParameter(
+                "group",
+                OpenApiTypes.UUID,
+                OpenApiParameter.QUERY,
+                description="Only memberships of this group (its public_id).",
+            ),
+            OpenApiParameter(
+                "role",
+                OpenApiTypes.STR,
+                OpenApiParameter.QUERY,
+                description="Only memberships in this role (its slug).",
+            ),
+            OpenApiParameter(
+                "group_type",
+                OpenApiTypes.STR,
+                OpenApiParameter.QUERY,
+                description="Only memberships whose group is of this type.",
+            ),
+            OpenApiParameter(
+                "ordering",
+                OpenApiTypes.STR,
+                OpenApiParameter.QUERY,
+                description=(
+                    "start_date (default, descending), end_date, is_active, "
+                    "group__name, role__name."
+                ),
+            ),
+        ],
+        responses=UserMembershipSerializer(many=True),
+    )
+    @action(detail=True, methods=["get"])
+    def memberships(self, request, username=None):
+        user = self.get_object()
+        queryset = GroupMembership.objects.filter(user=user).select_related(
+            "group", "role"
+        )
+        queryset = self._filter_memberships(queryset, request.query_params)
+        queryset = queryset.order_by(*self._membership_ordering(request.query_params))
+
+        page = self.paginate_queryset(queryset)
+        serializer = UserMembershipSerializer(
+            page if page is not None else queryset, many=True
+        )
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    @staticmethod
+    def _membership_date(params, name):
+        """Parse an ISO-date query parameter, or raise a 400."""
+        raw = params.get(name)
+        if not raw:
+            return None
+        value = parse_date(raw)
+        if value is None:
+            raise ValidationError({name: "Expected an ISO date (YYYY-MM-DD)."})
+        return value
+
+    @classmethod
+    def _membership_ordering(cls, params):
+        """Resolve the ``ordering`` query parameter to a safe ``order_by`` tuple."""
+        allowed = {
+            "start_date",
+            "end_date",
+            "is_active",
+            "created_at",
+            "group__name",
+            "role__name",
+        }
+        raw = params.get("ordering")
+        if not raw:
+            return ("-start_date", "-id")
+        fields = []
+        for token in raw.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            if token.lstrip("-") not in allowed:
+                raise ValidationError(
+                    {"ordering": f"Order by one of: {', '.join(sorted(allowed))}."}
+                )
+            fields.append(token)
+        return tuple(fields) or ("-start_date", "-id")
+
+    def _filter_memberships(self, queryset, params):
+        """Apply the supported membership filters from the query string."""
+        raw_active = (params.get("active") or "").strip().lower()
+        if raw_active:
+            if raw_active in {"1", "true", "yes", "on"}:
+                queryset = queryset.filter(is_active=True)
+            elif raw_active in {"0", "false", "no", "off"}:
+                queryset = queryset.filter(is_active=False)
+            else:
+                raise ValidationError({"active": "Use true or false."})
+
+        as_of = self._membership_date(params, "as_of")
+        if as_of is not None:
+            queryset = queryset.filter(start_date__lte=as_of).filter(
+                Q(end_date__isnull=True) | Q(end_date__gte=as_of)
+            )
+
+        for name, lookup in (
+            ("start_after", "start_date__gte"),
+            ("start_before", "start_date__lte"),
+            ("end_after", "end_date__gte"),
+            ("end_before", "end_date__lte"),
+        ):
+            value = self._membership_date(params, name)
+            if value is not None:
+                queryset = queryset.filter(**{lookup: value})
+
+        group = (params.get("group") or "").strip()
+        if group:
+            queryset = queryset.filter(group__public_id=_parse_uuid("group", group))
+        role = (params.get("role") or "").strip()
+        if role:
+            queryset = queryset.filter(role__slug=role)
+        group_type = (params.get("group_type") or "").strip()
+        if group_type:
+            queryset = queryset.filter(group__group_type=group_type)
+
+        return queryset
+
 
 def _query_bool(value) -> bool:
     """Interpret a query-string flag (``?flag=true``) leniently."""
     return str(value).lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_uuid(name, value):
+    """Validate a UUID query parameter, or raise a 400 field error."""
+    try:
+        return UUID(value)
+    except (TypeError, ValueError):
+        raise ValidationError({name: "Expected a UUID."})
 
 
 class GroupViewSet(ResourceViewSet):

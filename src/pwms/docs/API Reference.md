@@ -140,6 +140,33 @@ create / update (managers only) for anyone setting the line by hand; the nightly
 `sync_users_oracle` also populates it from the ERP `EMPLOYEEID` / `SUPERVISORID`
 chain — see [Management Commands](./Management%20Commands.md).
 
+### User memberships
+
+`GET /api/users/{username}/memberships/` returns every group membership the user
+holds (the same rows as `/api/memberships/`, but scoped to one user and with the
+group and role spelled out). Newest first by default, paginated. All filters are
+optional:
+
+| Query param | Effect |
+| --- | --- |
+| `active` | `true` = current only, `false` = ended only |
+| `as_of` | in force on this date (`start_date ≤ as_of`, and `end_date` null or later) |
+| `start_after` / `start_before` | start-date window (inclusive) |
+| `end_after` / `end_before` | end-date window (inclusive) |
+| `group` | only memberships of this group (its `public_id`) |
+| `role` | only memberships in this role (its slug) |
+| `group_type` | only memberships whose group is of this type |
+| `ordering` | `start_date` (default, descending), `end_date`, `is_active`, `group__name`, `role__name` |
+
+```bash
+# A user's current committee/ministry appointments on a given date
+curl -s "…/api/users/gelie/memberships/?as_of=2024-06-01&group_type=committee" \
+  -H "Authorization: Token $TOKEN"
+```
+
+A malformed date, UUID or `ordering` value is a `400`; an unknown username is a
+`404`.
+
 ### Group details + members by name
 
 `GET /api/groups/lookup/` resolves a group from its name — or any part of it —

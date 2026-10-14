@@ -1,5 +1,5 @@
 import json
-from datetime import timedelta
+from datetime import date, timedelta
 from io import StringIO
 from unittest import mock
 
@@ -1033,3 +1033,145 @@ class UserHierarchyApiTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         for item in resp.json()["results"]:
             self.assertNotIn("subordinates", item)
+
+
+class UserMembershipsApiTests(TestCase):
+    """``GET /api/users/{username}/memberships/`` — a user's memberships, filtered."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.user = User.objects.create_user(username="mv-user", password="pw")
+        cls.other = User.objects.create_user(username="mv-other", password="pw")
+
+        cls.committee = Group.objects.create(
+            name="Health Committee", group_type="portfolio_committee"
+        )
+        cls.ministry = Group.objects.create(
+            name="Health Ministry", group_type="ministry"
+        )
+        cls.chair = Role.objects.create(name="Chairperson")
+        cls.member = Role.objects.create(name="Member")
+
+        cls.current = GroupMembership.objects.create(
+            user=cls.user,
+            group=cls.committee,
+            role=cls.chair,
+            start_date=date(2024, 1, 1),
+            is_active=True,
+        )
+        cls.past_2023 = GroupMembership.objects.create(
+            user=cls.user,
+            group=cls.ministry,
+            role=cls.member,
+            start_date=date(2023, 1, 1),
+            end_date=date(2023, 12, 31),
+            is_active=False,
+        )
+        cls.past_2022 = GroupMembership.objects.create(
+            user=cls.user,
+            group=cls.committee,
+            role=cls.member,
+            start_date=date(2022, 1, 1),
+            end_date=date(2022, 6, 30),
+            is_active=False,
+        )
+        # Another user's membership must never appear.
+        GroupMembership.objects.create(
+            user=cls.other,
+            group=cls.committee,
+            role=cls.member,
+            start_date=date(2024, 5, 1),
+            is_active=True,
+        )
+
+    @staticmethod
+    def _client(user):
+        client = APIClient()
+        client.force_authenticate(user=user)
+        return client
+
+    def _get(self, **params):
+        return self._client(self.user).get("/api/users/mv-user/memberships/", params)
+
+    @staticmethod
+    def _ids(response):
+        return [m["public_id"] for m in response.json()["results"]]
+
+    def test_requires_authentication(self):
+        resp = APIClient().get("/api/users/mv-user/memberships/")
+        self.assertEqual(resp.status_code, 403)
+
+    def test_lists_only_this_users_memberships_newest_first(self):
+        resp = self._get()
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(
+            self._ids(resp),
+            [
+                str(self.current.public_id),
+                str(self.past_2023.public_id),
+                str(self.past_2022.public_id),
+            ],
+        )
+        first = resp.json()["results"][0]
+        self.assertEqual(first["group_name"], "Health Committee")
+        self.assertEqual(first["group_type"], "portfolio_committee")
+        self.assertEqual(first["group_public_id"], str(self.committee.public_id))
+        self.assertEqual(first["role"], "Chairperson")
+
+    def test_filter_by_active(self):
+        self.assertEqual(
+            self._ids(self._get(active="true")), [str(self.current.public_id)]
+        )
+        self.assertEqual(len(self._ids(self._get(active="false"))), 2)
+
+    def test_filter_as_of(self):
+        self.assertEqual(
+            self._ids(self._get(as_of="2024-06-01")), [str(self.current.public_id)]
+        )
+        self.assertEqual(
+            self._ids(self._get(as_of="2022-03-01")), [str(self.past_2022.public_id)]
+        )
+
+    def test_filter_start_window(self):
+        self.assertEqual(
+            self._ids(self._get(start_after="2023-06-01")),
+            [str(self.current.public_id)],
+        )
+        self.assertEqual(
+            self._ids(self._get(start_before="2022-12-31")),
+            [str(self.past_2022.public_id)],
+        )
+
+    def test_filter_by_group(self):
+        self.assertEqual(
+            set(self._ids(self._get(group=str(self.committee.public_id)))),
+            {str(self.current.public_id), str(self.past_2022.public_id)},
+        )
+
+    def test_filter_by_role_slug_and_group_type(self):
+        self.assertEqual(
+            self._ids(self._get(role="chairperson")), [str(self.current.public_id)]
+        )
+        self.assertEqual(
+            self._ids(self._get(group_type="ministry")),
+            [str(self.past_2023.public_id)],
+        )
+
+    def test_ordering_overrides_the_default(self):
+        self.assertEqual(
+            self._ids(self._get(ordering="start_date")),
+            [
+                str(self.past_2022.public_id),
+                str(self.past_2023.public_id),
+                str(self.current.public_id),
+            ],
+        )
+        self.assertEqual(self._get(ordering="nonsense").status_code, 400)
+
+    def test_unknown_username_is_a_404(self):
+        resp = self._client(self.user).get("/api/users/nobody/memberships/")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_invalid_date_is_a_400(self):
+        self.assertEqual(self._get(as_of="not-a-date").status_code, 400)
