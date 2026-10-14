@@ -159,6 +159,26 @@ def attachment_activity(target, limit=20):
     )
 
 
+def _notify(target, action, attachment, actor):
+    """Announce a document change on targets that opt in, best effort.
+
+    Only targets exposing ``notify_document_change`` are alerted — today that is
+    a :class:`~pwms.models.Meeting`, whose convener and invitees care that an
+    agenda went up or a paper came off. The hook is called *after* ``_record``
+    wrote the domain event, so the audited fact exists before anyone is told, and
+    it is swallowed on failure: an alert must never undo a document change.
+    """
+    if target is None:
+        return
+    notifier = getattr(target, "notify_document_change", None)
+    if notifier is None:
+        return
+    try:
+        notifier(action, attachment, actor=actor)
+    except Exception:  # notification is a side effect, never the work
+        logger.exception("Meeting document notification failed")
+
+
 # --- browsing -----------------------------------------------------------------
 
 
@@ -389,6 +409,7 @@ def _store(*, obj, user, drive, folder, metadata, attachment_type):
         payload=_attachment_payload(attachment),
         document_url=attachment.sharepoint_web_url,
     )
+    _notify(obj, "attached", attachment, user)
     return attachment
 
 
@@ -411,6 +432,7 @@ def _refresh(attachment, *, metadata, drive, folder, actor):
         payload=_attachment_payload(attachment),
         document_url=attachment.sharepoint_web_url,
     )
+    _notify(attachment.content_object, "version-added", attachment, actor)
     return attachment
 
 
@@ -431,6 +453,9 @@ def detach_document(attachment, *, actor):
         payload=payload,
         document_url=document_url,
     )
+    # The attachment row is gone; the deleted instance still carries its field
+    # values in memory, which is all the notifier reads (name/type/public_id).
+    _notify(target, "detached", attachment, actor)
 
 
 def attachments_for(obj):

@@ -162,6 +162,83 @@ urlpatterns = [
         views.bill_delete,
         name="bill_delete",
     ),
+    # Meetings (the Events workflow): a calendar dashboard, the meeting CRUD, and
+    # the attendance register / minutes actions on one meeting. Literal routes
+    # (calendar, new) are declared before the <uuid> detail route.
+    path("meetings/", views.meetings, name="meetings"),
+    path(
+        "meetings/calendar/",
+        views.meeting_calendar,
+        name="meeting_calendar",
+    ),
+    path(
+        "meetings/calendar.json",
+        views.meeting_calendar_json,
+        name="meeting_calendar_json",
+    ),
+    path("meetings/export/", views.meeting_export, name="meeting_export"),
+    path("meetings/import/", views.meeting_import, name="meeting_import"),
+    path(
+        "meetings/import/template/",
+        views.meeting_import_template,
+        name="meeting_import_template",
+    ),
+    path("meetings/new/", views.meeting_create, name="meeting_create"),
+    path(
+        "meetings/<uuid:public_id>/",
+        views.meeting_detail,
+        name="meeting_detail",
+    ),
+    path(
+        "meetings/<uuid:public_id>/edit/",
+        views.meeting_update,
+        name="meeting_update",
+    ),
+    path(
+        "meetings/<uuid:public_id>/delete/",
+        views.meeting_delete,
+        name="meeting_delete",
+    ),
+    path(
+        "meetings/<uuid:public_id>/agenda/",
+        views.meeting_agenda,
+        name="meeting_agenda",
+    ),
+    path(
+        "meetings/<uuid:public_id>/agenda/edit/",
+        views.meeting_agenda_edit,
+        name="meeting_agenda_edit",
+    ),
+    path(
+        "meetings/<uuid:public_id>/attendance/add/",
+        views.meeting_attendance_add,
+        name="meeting_attendance_add",
+    ),
+    path(
+        "meetings/<uuid:public_id>/attendance/notify/",
+        views.meeting_attendance_notify,
+        name="meeting_attendance_notify",
+    ),
+    path(
+        "meetings/<uuid:public_id>/attendance/regenerate/",
+        views.meeting_attendance_regenerate,
+        name="meeting_attendance_regenerate",
+    ),
+    path(
+        "meetings/<uuid:public_id>/attendance/<uuid:attendance_id>/record/",
+        views.meeting_attendance_record,
+        name="meeting_attendance_record",
+    ),
+    path(
+        "meetings/<uuid:public_id>/attendance/<uuid:attendance_id>/remove/",
+        views.meeting_attendance_remove,
+        name="meeting_attendance_remove",
+    ),
+    path(
+        "meetings/<uuid:public_id>/minutes/",
+        views.meeting_minutes_status,
+        name="meeting_minutes_status",
+    ),
     # User search
     path("user-search/", views.user_search, name="user_search"),
     # Referrals: raise one on a workflow instance, then answer or withdraw it.

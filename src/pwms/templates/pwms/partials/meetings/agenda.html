@@ -1,0 +1,53 @@
+{% comment %}
+  The meeting agenda panel: the sanitised rich-text agenda, with an inline
+  "Edit agenda" toggle and the "Upload agenda" document action.
+
+  Rendered standalone as the HTMX response to a save or a cancel, and included by
+  ``pwms/meeting-detail.html`` for the first paint. The include target and the
+  response root are both ``#meeting-agenda``; callers swap it with ``outerHTML``.
+
+  Context (see ``pwms.views._meeting_agenda_context``): meeting, perms,
+  attachment_content_type, attachment_object_id, agenda_status (optional).
+{% endcomment %}
+<div id="meeting-agenda">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <h2 class="workflow-card-title mb-0">{% lucide "clipboard-list" size=16 %} Agenda</h2>
+    {% if perms.edit %}
+      <div class="d-flex flex-wrap gap-1">
+        <button type="button"
+                class="btn btn-sm btn-outline-secondary"
+                hx-get="{% url "pwms:meeting_agenda_edit" meeting.public_id %}"
+                hx-target="#meeting-agenda"
+                hx-swap="outerHTML">{% lucide "pencil" size=14 %} Edit agenda</button>
+        <button type="button"
+                class="btn btn-sm btn-outline-primary"
+                onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-attachments')).show()"
+                hx-get="{% url "pwms:attachment_browser" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}&default_type=agenda"
+                hx-target="#attachment-browser"
+                hx-swap="innerHTML">{% lucide "upload" size=14 %} Upload agenda</button>
+      </div>
+    {% endif %}
+  </div>
+
+  <div id="meeting-agenda-status" aria-live="polite">
+    {% if agenda_status %}
+      <div class="alert alert-{{ agenda_status.level }} py-2 mb-3" role="alert">{{ agenda_status.message }}</div>
+    {% endif %}
+  </div>
+
+  <div class="workflow-prose">
+    {% if meeting.agenda_html %}
+      {{ meeting.agenda_html }}
+    {% else %}
+      <p class="workflow-muted mb-0">
+        No agenda recorded.
+        {% if perms.edit %}
+          Use <strong>Edit agenda</strong> to type one, or <strong>Upload agenda</strong>
+          to file an agenda document.
+        {% else %}
+          Ask an editor to record one.
+        {% endif %}
+      </p>
+    {% endif %}
+  </div>
+</div>

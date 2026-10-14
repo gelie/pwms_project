@@ -1,0 +1,79 @@
+{% comment %}
+  The month layout: a Monday-first grid of dated cells, each holding its day's
+  meeting chips. The day number selects the day (an HTMX swap that refreshes the
+  day panel); a corner "+" opens the create form prefilled for that day.
+
+  Context: week_rows, weekdays, view_urls, view (see ``_meeting_calendar_context``).
+{% endcomment %}
+<div class="meeting-month">
+  <div class="meeting-month__head" aria-hidden="true">
+    {% for weekday in weekdays %}
+      <div class="meeting-month__weekday">{{ weekday }}</div>
+    {% endfor %}
+  </div>
+  <div class="meeting-month__grid">
+    {% for week in week_rows %}
+      {% for day in week %}
+        <div class="meeting-cell{% if not day.in_month %} meeting-cell--outside{% endif %}{% if day.is_today %} meeting-cell--today{% endif %}{% if day.is_selected %} meeting-cell--selected{% endif %}">
+          <div class="meeting-cell__head">
+            <a class="meeting-cell__day"
+               href="{{ day.url }}"
+               hx-get="{{ day.url }}"
+               hx-target="#meeting-calendar-region"
+               hx-select="#meeting-calendar-region"
+               hx-swap="outerHTML"
+               hx-push-url="true"
+               aria-label="Show {{ day.date|date:"j F Y" }}"
+               {% if day.is_today %}aria-current="date"{% endif %}>{{ day.date|date:"j" }}</a>
+            {% if can_create_meeting %}
+              <a class="meeting-cell__add"
+                 href="{{ day.create_url }}"
+                 title="New meeting on {{ day.date|date:"j F Y" }}"
+                 aria-label="New meeting on {{ day.date|date:"j F Y" }}">{% lucide "plus" size=13 %}</a>
+            {% endif %}
+          </div>
+          <div class="meeting-cell__events">
+            {% for meeting in day.meetings %}
+              {% include "pwms/partials/meetings/event_chip.html" with meeting=meeting %}
+            {% endfor %}
+          </div>
+        </div>
+      {% endfor %}
+    {% endfor %}
+  </div>
+</div>
+
+{% if selected_day %}
+  <section class="meeting-day-panel">
+    <h3 class="meeting-day-panel__title">
+      {% lucide "calendar-days" size=16 %}
+      {{ selected_day|date:"l, d F Y" }}
+      <a class="meeting-day-panel__link"
+         href="{% url "pwms:meetings" %}?view=day&day={{ selected_day|date:"Y-m-d" }}">Day view</a>
+    </h3>
+    <ul class="list-group list-group-flush">
+      {% for meeting in selected_meetings %}
+        <li class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2 px-0">
+          <div class="meeting-day-panel__item">
+            <span class="meeting-legend__dot" style="--event-color: {{ meeting.color }}" aria-hidden="true"></span>
+            <div class="meeting-day-panel__body">
+              <a href="{% url "pwms:meeting_detail" meeting.public_id %}"
+                 class="fw-medium text-decoration-none">{{ meeting.title }}</a>
+              <span class="d-block small text-body-secondary">
+                {{ meeting.get_meeting_type_display }}
+                · {% if meeting.all_day %}All day{% else %}{{ meeting.start_datetime|date:"H:i" }}{% if meeting.end_datetime %}–{{ meeting.end_datetime|date:"H:i" }}{% endif %}{% endif %}
+                {% if meeting.venue_display %}· {{ meeting.venue_display }}{% endif %}
+                {% if meeting.host_group %}· {{ meeting.host_group.name }}{% endif %}
+              </span>
+            </div>
+          </div>
+          {% if meeting.current_state_id %}
+            <span class="badge badge-state">{{ meeting.current_state.name }}</span>
+          {% endif %}
+        </li>
+      {% empty %}
+        <li class="list-group-item px-0 text-muted">No meetings on this day.</li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endif %}

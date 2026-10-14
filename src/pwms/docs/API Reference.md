@@ -7,7 +7,7 @@ workflow registers alongside their audit history:
 | --- | --- |
 | Identity & structure | users, groups, roles, memberships |
 | Workflow registry | workflow types, states, transitions |
-| Workflow instances | delegation reports, international resolutions, international agreements, bills |
+| Workflow instances | delegation reports, international resolutions, international agreements, bills, meetings (the Events workflow) |
 | History | per-instance auditlog CRUD trail and domain event log |
 
 A django-ninja implementation of the audit endpoint once sat alongside DRF at
@@ -115,6 +115,7 @@ keys never appear in a URL. Lists are paginated (`count` / `next` / `previous` /
 | International resolutions | `/api/resolutions/` | `/api/resolutions/{public_id}/` |
 | International agreements | `/api/agreements/` | `/api/agreements/{public_id}/` |
 | Bills | `/api/bills/` | `/api/bills/{public_id}/` |
+| Meetings | `/api/meetings/` | `/api/meetings/{public_id}/` |
 
 Each collection is a standard `GET` (list) / `POST` (create); each detail URL is
 `GET` (retrieve) / `PUT` / `PATCH` (update) / `DELETE`.
@@ -200,6 +201,37 @@ Beyond CRUD, every workflow instance (`delegation-reports`, `resolutions`,
 | POST | `/{public_id}/transition/` | Perform one; body `{"transition": "<uuid>", "comment": "…"}` → `201` with the `TransitionLog` |
 | GET | `/{public_id}/events/` | Domain `WorkflowEvent` log (append-only) |
 | GET | `/{public_id}/audit/` | `auditlog` CRUD history for the instance |
+
+### Meetings (the Events workflow)
+
+`/api/meetings/` is a workflow register like the others (same CRUD, transitions,
+events and audit actions), plus the meeting detail a calendar and an attendance
+register need:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/api/meetings/?meeting_type=&mine=1&member=&start=&end=&search=` | Filter by meeting type, the caller (`mine`), another user by `member=<username>`, a start-date window (`start` / `end`), or free text |
+| GET | `/api/meetings/mine/` | The caller's meetings **by membership**: on the attendance register, convener group, chair/secretary, owner or assignee |
+| GET | `/api/meetings/calendar/` | A date-window feed (`?start=&end=`) shaped for a calendar UI |
+| GET | `/api/meetings/{public_id}/` | The detail, with `attendance`, `attendance_summary`, `meeting_type`, scheduling fields, the on-premises `venue` / `off_site_venue` / `off_site_address` (and the read-only `venue_display`), `attendance_mode` / `attendance_mode_label`, and `calendar_state` |
+| GET | `/api/meetings/{public_id}/attendance/` | The attendance register; each row carries `source` / `source_label` (`host_group` or `invitee`) |
+| POST | `/api/meetings/{public_id}/attendance/add/` | Add an invitee; body `{"user": <pk>}` or `{"guest_name": "…", "guest_email": "…"}`, plus `capacity`, `is_required` → `201` |
+| POST | `/api/meetings/{public_id}/attendance/record/` | Record RSVP and/or attendance; body `{"attendance": "<uuid>", "rsvp_status": "accepted", "attendance_status": "present", "note": "…"}` |
+| POST | `/api/meetings/{public_id}/attendance/regenerate/` | Rebuild the register from the hosting group's active members, keeping the invitees (returns the register) |
+| POST | `/api/meetings/{public_id}/minutes/` | Advance the minutes status; body `{"status": "draft"|"filed"|"approved"}` |
+
+The web calendar dashboard (`/pwms/meetings/`, `?view=month|week|day` , `&week_start=`) and
+its JSON feed (`/pwms/meetings/calendar.json`) mirror the same permission-scoped
+query. The feed honours the calendar's week start (its `?week_start=` or
+`settings.MEETING_CALENDAR_WEEK_START`): a `?month=` window is widened to the
+whole weeks containing the month (as the grid draws them), the entries are
+ordered day-first from that week start, and the response reports the
+`week_start` it used.
+
+The web calendar also **imports and exports** meetings as CSV/XLSX
+(`/pwms/meetings/import/`, `/pwms/meetings/export/`, and
+`manage.py import_meetings`) — HTML/download routes rather than API endpoints; the
+column format is in [Meetings Import & Export](./Meetings%20Import%20%26%20Export.md).
 
 ### Audit-history routes (retained)
 

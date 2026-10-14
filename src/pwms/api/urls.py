@@ -26,6 +26,7 @@ router.register(
 )
 router.register("agreements", views.InternationalAgreementViewSet, basename="agreement")
 router.register("bills", views.BillViewSet, basename="bill")
+router.register("meetings", views.MeetingViewSet, basename="meeting")
 
 urlpatterns = [
     path("", views.api_root, name="api-root"),

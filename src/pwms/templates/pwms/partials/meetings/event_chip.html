@@ -1,0 +1,26 @@
+{% comment %}
+  One meeting as a colour-coded chip, used in the month grid, the all-day strip
+  and the day panel. The colour comes straight from ``Meeting.color`` (the theme
+  palette per meeting type) as an ``--event-color`` custom property, so the CSS
+  never hardcodes it.
+
+  ``data-meeting-*`` carries the popover content read by
+  ``static/js/meeting-calendar.js``; without JavaScript the chip is still an
+  ordinary link to the meeting.
+{% endcomment %}
+<a class="meeting-chip meeting-chip--{{ meeting.calendar_state }}"
+   href="{% url "pwms:meeting_detail" meeting.public_id %}"
+   style="--event-color: {{ meeting.color }}"
+   data-meeting-event
+   data-title="{{ meeting.title }}"
+   data-type="{{ meeting.get_meeting_type_display }}"
+   data-time="{% if meeting.all_day %}All day{% else %}{{ meeting.start_datetime|date:"H:i" }}{% if meeting.end_datetime %}–{{ meeting.end_datetime|date:"H:i" }}{% endif %}{% endif %}"
+   data-venue="{{ meeting.venue_display }}"
+   data-group="{{ meeting.host_group.name|default:"" }}"
+   data-state="{% if meeting.current_state_id %}{{ meeting.current_state.name }}{% endif %}"
+   title="{{ meeting.get_meeting_type_display }} · {{ meeting.title }}{% if not meeting.all_day %} · {{ meeting.start_datetime|date:"H:i" }}{% endif %}">
+  <span class="meeting-chip__time">
+    {% if meeting.all_day %}All day{% else %}{{ meeting.start_datetime|date:"H:i" }}{% endif %}
+  </span>
+  <span class="meeting-chip__title">{{ meeting.title }}</span>
+</a>

@@ -12,8 +12,9 @@ order, or used as reference while developing.
 5. [API Reference](./API%20Reference.md) — the endpoints and OpenAPI docs.
 6. [Search Lookups](./Search%20Lookups.md) — the HTMX search pickers (users, groups, countries, cities) and the country → city cascade.
 7. [Management Commands](./Management%20Commands.md) — the `manage.py` commands (sync, jobs, diagrams).
-8. [SharePoint Sync](./SharePoint%20Sync.md) — the `populate_sites` command, the local `Sharepoint*` tables, and document attachments/versioning.
-9. [Roadmap & Planned Integrations](./Roadmap%20&%20Planned%20Integrations.md) — email, notifications, SharePoint and other plans.
+8. [Meetings Import & Export](./Meetings%20Import%20%26%20Export.md) — the CSV/XLSX format the Meetings calendar imports and exports.
+9. [SharePoint Sync](./SharePoint%20Sync.md) — the `populate_sites` command, the local `Sharepoint*` tables, and document attachments/versioning.
+10. [Roadmap & Planned Integrations](./Roadmap%20&%20Planned%20Integrations.md) — email, notifications, SharePoint and other plans.
 
 ## User-facing documents
 
@@ -24,8 +25,8 @@ meant to be read by people who will not be reading the code.
 | --- | --- |
 | [User Manual Introduction](./User%20Manual%20Introduction.md) | *Systems Overview* and *The Purpose* — PWMS in plain language, for the front of a user manual |
 | [Introductory Lesson Plan](./Introductory%20Lesson%20Plan.md) | The 90-minute induction for the IRPD section: objectives and outcomes, a timed running order with demo scripts, hands-on tasks, an exit ticket and the trainer's preparation checklist |
-| [Training Manual](./Training%20Manual.md) | The complete IRPD training course: learning objectives and outcomes, fourteen modules, practical exercises, an assessment and the administrator prerequisites |
-| [Quick Reference Card](./Quick%20Reference%20Card.html) ([PDF](./Quick%20Reference%20Card.pdf)) | A printable one-page A4 wall card for the section: the three lifecycles, creating records, transitions, referrals, documents, reports, alerts and who to escalate to |
+| [Training Manual](./Training%20Manual.md) | The complete IRPD training course: learning objectives and outcomes, fifteen modules (including the Events calendar), practical exercises, an assessment and the administrator prerequisites |
+| [Quick Reference Card](./Quick%20Reference%20Card.html) ([PDF](./Quick%20Reference%20Card.pdf)) | A printable one-page A4 wall card for the section: the three lifecycles, creating records, transitions, referrals, documents, reports, alerts, meetings, and who to escalate to |
 | [UAT Form](./UAT%20Form.html) ([PDF](./UAT%20Form.pdf), [workbook](./UAT%20Form.xlsx)) | The user acceptance testing form: 38 IRPD scenarios with acceptance criteria (10 of them critical), a defect log, the expected-behaviour list, the acceptance decision and sign-off — plus the results workbook the section fills in, which rolls the results up |
 
 ### Regenerating the generated files
@@ -50,8 +51,8 @@ and the workbook must build from the form without error:
 - `pwms.` prefixes a Django model (e.g. `pwms.User`); un-prefixed names are
   Django or third-party (e.g. `auditlog.LogEntry`).
 - "Workflow instance" = a row of a concrete workflow model (today
-  `DelegationReport`, `InternationalResolution`, `InternationalAgreement` or
-  `Bill`).
+  `DelegationReport`, `InternationalResolution`, `InternationalAgreement`,
+  `Bill` or `Meeting`).
 - "Workflow type" / "machine" = a `WorkflowType` (the reusable state/transition definition).
 
 ## Keeping docs in sync

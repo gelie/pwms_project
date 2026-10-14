@@ -1202,7 +1202,9 @@ class State(BaseModel):
     PUBLIC_NAME_CHOICES = [
         # Generic buckets, shared by every workflow type.
         ("new", _("New")),
+        ("scheduled", _("Scheduled")),
         ("in_progress", _("In Progress")),
+        ("postponed", _("Postponed")),
         ("referred", _("Referred")),
         ("withdrawn", _("Withdrawn")),
         ("on_hold", _("On Hold")),

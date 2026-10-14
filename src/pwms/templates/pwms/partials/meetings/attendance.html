@@ -1,0 +1,221 @@
+{% comment %}
+  A meeting's attendance register: the hosting group's members (generated) plus
+  any invitees added by hand (a PWMS user outside the hosting group, or a guest
+  with no account), their RSVP and the attendance recorded during or after the
+  sitting, with who recorded it and when.
+
+  The header, the hosting-group note and the counts stay visible; the register
+  table and the add-invitee form sit behind a collapse that is **closed by
+  default**. Any panel action re-renders the fragment expanded
+  (``attendance_expanded``), so saving a change never hides the table.
+
+  Rendered standalone as the HTMX response to an add/record/remove/regenerate/
+  notify action and included by ``pwms/meeting-detail.html`` for the first paint.
+  The response root and the include target are both ``#meeting-attendance``;
+  callers swap it with ``outerHTML``.
+
+  Context (see ``pwms.views._meeting_attendance_context``): meeting,
+  attendance_rows, attendance_counts, can_edit_attendance, attendance_form,
+  attendance_expanded, attendance_status (optional: {level, message}).
+{% endcomment %}
+<div id="meeting-attendance">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <h3 class="h6 mb-0">
+      {% lucide "users" size=16 %} Attendance
+      <span class="badge badge-muted">{{ attendance_counts.invited }}</span>
+    </h3>
+    <div class="d-flex flex-wrap gap-1">
+      <button type="button"
+              class="btn btn-sm btn-outline-secondary meeting-attendance-toggle"
+              data-bs-toggle="collapse"
+              data-bs-target="#meeting-attendance-register"
+              aria-expanded="{% if attendance_expanded %}true{% else %}false{% endif %}"
+              aria-controls="meeting-attendance-register">
+        <span class="meeting-attendance-chevron">{% lucide "chevron-down" size=14 %}</span> Register
+      </button>
+      {% if can_edit_attendance %}
+        <form method="post"
+              class="m-0"
+              hx-post="{% url "pwms:meeting_attendance_regenerate" meeting.public_id %}"
+              hx-target="#meeting-attendance"
+              hx-swap="outerHTML"
+              hx-confirm="Rebuild the register from the hosting group? Invitees are kept.">
+          {% csrf_token %}
+          <button type="submit"
+                  class="btn btn-sm btn-outline-secondary"
+                  {% if not meeting.host_group_id %}disabled title="Set a hosting group first"{% endif %}>
+            {% lucide "refresh-cw" size=14 %} Regenerate
+          </button>
+        </form>
+        <form method="post"
+              class="m-0"
+              hx-post="{% url "pwms:meeting_attendance_notify" meeting.public_id %}"
+              hx-target="#meeting-attendance"
+              hx-swap="outerHTML">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-sm btn-outline-secondary">
+            {% lucide "send" size=14 %} Email summary
+          </button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <p class="small text-body-secondary mb-2">
+    {% if meeting.host_group %}
+      Host group: <strong>{{ meeting.host_group.name }}</strong>.
+    {% else %}
+      No hosting group set — add invitees by hand.
+    {% endif %}
+    {% if meeting.register_generated_at %}
+      · Register generated {{ meeting.register_generated_at|date:"d M Y H:i" }}.
+    {% endif %}
+  </p>
+
+  <div id="meeting-attendance-status" aria-live="polite">
+    {% if attendance_status %}
+      <div class="alert alert-{{ attendance_status.level }} py-2 mb-3" role="alert">{{ attendance_status.message }}</div>
+    {% endif %}
+  </div>
+
+  <div class="row g-2 mb-3 small">
+    <div class="col"><span class="text-body-secondary d-block">Host group</span><strong>{{ attendance_counts.host_group }}</strong></div>
+    <div class="col"><span class="text-body-secondary d-block">Invitees</span><strong>{{ attendance_counts.invitee }}</strong></div>
+    <div class="col"><span class="text-body-secondary d-block">Present</span><strong>{{ attendance_counts.present }}</strong></div>
+    <div class="col"><span class="text-body-secondary d-block">Absent</span><strong>{{ attendance_counts.absent }}</strong></div>
+    <div class="col"><span class="text-body-secondary d-block">Excused</span><strong>{{ attendance_counts.excused }}</strong></div>
+    <div class="col"><span class="text-body-secondary d-block">Not recorded</span><strong>{{ attendance_counts.not_recorded }}</strong></div>
+    <div class="col">
+      <span class="text-body-secondary d-block">Quorum</span>
+      {% if meeting.quorum %}
+        <strong>{{ attendance_counts.present }}/{{ meeting.quorum }}</strong>
+        {% if attendance_counts.quorum_met %}
+          <span class="badge text-bg-success">met</span>
+        {% else %}
+          <span class="badge text-bg-warning">not met</span>
+        {% endif %}
+      {% else %}
+        <strong>—</strong>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="collapse{% if attendance_expanded %} show{% endif %}" id="meeting-attendance-register">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <caption class="visually-hidden">Attendance register</caption>
+        <thead>
+          <tr>
+            <th scope="col">Person</th>
+            <th scope="col">Source</th>
+            <th scope="col">Capacity</th>
+            <th scope="col">RSVP</th>
+            <th scope="col">Attendance</th>
+            <th scope="col">Recorded</th>
+            {% if can_edit_attendance %}<th scope="col"><span class="visually-hidden">Actions</span></th>{% endif %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in attendance_rows %}
+            {% with attendance=row.attendance %}
+              <tr>
+                <td>
+                  {{ attendance.display_name }}
+                  {% if attendance.is_required %}<span class="badge badge-muted">required</span>{% endif %}
+                  {% if attendance.email %}<span class="d-block small text-body-secondary">{{ attendance.email }}</span>{% endif %}
+                </td>
+                <td>
+                  <span class="badge {% if attendance.source == "host_group" %}text-bg-secondary{% else %}text-bg-info{% endif %}">
+                    {{ attendance.get_source_display }}
+                  </span>
+                </td>
+                <td>{{ attendance.get_capacity_display }}</td>
+                <td>{{ attendance.get_rsvp_status_display }}</td>
+                <td>
+                  {% if can_edit_attendance %}
+                    <form method="post"
+                          class="m-0 d-flex flex-wrap gap-1"
+                          hx-post="{% url "pwms:meeting_attendance_record" meeting.public_id attendance.public_id %}"
+                          hx-target="#meeting-attendance"
+                          hx-swap="outerHTML">
+                      {% csrf_token %}
+                      {{ row.form.rsvp_status }}
+                      {{ row.form.attendance_status }}
+                      {{ row.form.note }}
+                      <button type="submit" class="btn btn-sm btn-outline-primary text-nowrap">Save</button>
+                    </form>
+                  {% else %}
+                    <span class="badge {% if attendance.is_present %}text-bg-success{% elif attendance.attendance_status == "absent" %}text-bg-danger{% else %}text-bg-secondary{% endif %}">
+                      {{ attendance.get_attendance_status_display }}
+                    </span>
+                  {% endif %}
+                </td>
+                <td class="small text-body-secondary">
+                  {% if attendance.recorded_at %}
+                    {{ attendance.recorded_at|date:"d M Y H:i" }}
+                    {% if attendance.recorded_by %}<span class="d-block">by {{ attendance.recorded_by.display_name }}</span>{% endif %}
+                    {% if attendance.recorded_ip %}<span class="d-block">{{ attendance.recorded_ip }}</span>{% endif %}
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                {% if can_edit_attendance %}
+                  <td class="text-end">
+                    <form method="post"
+                          class="m-0"
+                          hx-post="{% url "pwms:meeting_attendance_remove" meeting.public_id attendance.public_id %}"
+                          hx-target="#meeting-attendance"
+                          hx-swap="outerHTML"
+                          hx-confirm="Remove {{ attendance.display_name }} from the register?">
+                      {% csrf_token %}
+                      <button type="submit"
+                              class="btn btn-sm btn-outline-danger"
+                              aria-label="Remove {{ attendance.display_name }}">{% lucide "trash-2" size=14 %}</button>
+                    </form>
+                  </td>
+                {% endif %}
+              </tr>
+            {% endwith %}
+          {% empty %}
+            <tr>
+              <td colspan="{% if can_edit_attendance %}7{% else %}6{% endif %}"
+                  class="text-center text-muted py-4">Nobody is on the register yet.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if can_edit_attendance %}
+      <form method="post"
+            class="border-top pt-3 mt-2"
+            hx-post="{% url "pwms:meeting_attendance_add" meeting.public_id %}"
+            hx-target="#meeting-attendance"
+            hx-swap="outerHTML">
+        {% csrf_token %}
+        <h4 class="h6">Add an invitee</h4>
+        <p class="small text-body-secondary mb-2">
+          For someone the hosting group does not cover — a PWMS user from another
+          unit, or a guest with no account. Invitees are kept when the register is
+          regenerated.
+        </p>
+        <div class="row g-2 align-items-end">
+          {% include "pwms/_lookup_field.html" with field=attendance_form.user search_url="pwms:user_search" placeholder="Type to search users..." selected_name=attendance_form.selected_user_label wrapper_class="col-12 col-md-6" %}
+          {% include "pwms/_form_field.html" with field=attendance_form.capacity wrapper_class="col-6 col-md-3" %}
+          {% include "pwms/_form_field.html" with field=attendance_form.guest_name wrapper_class="col-6 col-md-3" %}
+          {% include "pwms/_form_field.html" with field=attendance_form.guest_email wrapper_class="col-12 col-md-6" %}
+          <div class="col-12">
+            <div class="form-check">
+              {{ attendance_form.is_required }}
+              <label class="form-check-label" for="{{ attendance_form.is_required.id_for_label }}">{{ attendance_form.is_required.label }}</label>
+            </div>
+          </div>
+          <div class="col-12">
+            <button type="submit" class="btn btn-sm btn-primary">{% lucide "user-plus" size=14 %} Add invitee</button>
+          </div>
+        </div>
+      </form>
+    {% endif %}
+  </div>
+</div>
+{% include "pwms/partials/tab_counters.html" %}

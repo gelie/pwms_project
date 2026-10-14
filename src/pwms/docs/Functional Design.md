@@ -113,8 +113,8 @@ Definitions are reusable: they are exported/imported as JSON
 ### 3.2 Instances
 
 A workflow instance (today: **DelegationReport**, **InternationalResolution** —
-which may nest inside a report — **InternationalAgreement** and **Bill**) is
-created with:
+which may nest inside a report — **InternationalAgreement**, **Bill** and
+**Meeting**, the Events workflow) is created with:
 
 - a workflow **type** and its **initial state**;
 - an **owner** and optionally an **assignee**;
@@ -505,6 +505,11 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
   ([§6](#6-alerts-notifications--email)).
 - **Reports**: the builder, exports, per-instrument documents and the read-only
   shared view ([§8](#8-reporting-exports--sharing)).
+- **Meetings calendar**: the Events workflow's main page (`/pwms/meetings/`) is a
+  colour-coded **month / week / day** calendar of the meetings the reader may
+  view, with HTMX navigation, type / *mine* / free-text filters, a configurable
+  week start, a *Next up* strip, a JSON feed, and **CSV/XLSX import and export**
+  ([Meetings Import & Export](./Meetings%20Import%20%26%20Export.md)).
 - **Django Admin** for administration (users, groups, roles, memberships,
   workflow definitions, the SharePoint mirror, and notifications — read-only).
 - **REST API (DRF)** with token authentication and resource endpoints (users,
@@ -527,7 +532,8 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
 - **Notification / deadline jobs** — referral deadline reminders and expiry
   (email delivered) and the scheduled report-share drain; delegate expirations,
   overdue alerts and event-status jobs still to be repointed to `pwms.models`.
-- **Workflow tooling** — state import, workflow-type import/export, diagrams.
+- **Workflow tooling** — state import, workflow-type import/export, the meeting
+  CSV/XLSX import (`import_meetings`), diagrams.
 - **Maintenance** — validate memberships, group-access backfill, bill versions,
   show hierarchy.
 

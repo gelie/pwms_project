@@ -39,7 +39,7 @@ from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.utils import timezone
 
-from ..models import Notification, User
+from ..models import Meeting, Notification, User
 from ..services.permissions import VIEW, resolve
 
 logger = logging.getLogger(__name__)
@@ -125,9 +125,13 @@ def stakeholders(instance, *, roles=()):
 
     The union of the type's officers, the holders of ``roles`` (a transition's
     declared subscribers and the roles allowed to act next) and the people named
-    on the record — minus anyone who cannot view it.
+    on the record — minus anyone who cannot view it. A :class:`Meeting` adds its
+    attendance register to that union, because the people invited to a sitting are
+    exactly the people who need to hear that it moved.
     """
     candidates = _officers(instance) + _role_holders(instance, roles) + _named(instance)
+    if isinstance(instance, Meeting):
+        candidates += instance.notification_audience()
     return _visible(candidates, instance)
 
 
@@ -414,8 +418,14 @@ def notify_transition(instance, transition, *, actor=None, comment=""):
     Tell the stakeholders that an instance moved state.
 
     The audience is the transition's declared subscribers plus the roles allowed
-    to act from the new state — the people whose turn it now is.
+    to act from the new state — the people whose turn it now is. A meeting
+    transition takes the meeting-specific wording and kind (see
+    :func:`notify_meeting_status`) so its alerts read as meeting news rather than
+    generic workflow traffic.
     """
+    if isinstance(instance, Meeting):
+        return notify_meeting_status(instance, transition, actor=actor, comment=comment)
+
     from_state = transition.from_state
     to_state = transition.to_state
     subject = f"{instance.title}: {from_state.name} → {to_state.name}"
@@ -442,6 +452,175 @@ def notify_transition(instance, transition, *, actor=None, comment=""):
             "transition": transition.name,
             "comment": comment,
         },
+    )
+
+
+# -- meetings (the Events workflow) -----------------------------------------
+def _meeting_when(meeting):
+    """One-line human summary of when a meeting is scheduled."""
+    if meeting.start_datetime is None:
+        return "date to be confirmed"
+    when = meeting.start_datetime.strftime("%a %d %b %Y %H:%M")
+    if meeting.end_datetime is not None:
+        when += "–" + meeting.end_datetime.strftime("%H:%M")
+    return when
+
+
+def _meeting_where(meeting):
+    """One-line human summary of where (and how) a meeting is held.
+
+    The on-premises room or the off-site venue, tagged when the meeting is
+    virtual or hybrid so the mode reads alongside the place.
+    """
+    where = meeting.venue_display
+    if meeting.is_virtual:
+        return f"{where} (virtual)" if where else "virtual"
+    if meeting.is_hybrid:
+        return f"{where} (hybrid)" if where else "hybrid"
+    return where or "venue to be confirmed"
+
+
+def notify_meeting_created(meeting, actor=None):
+    """Tell the meeting's audience that a new sitting has been scheduled."""
+    subject = f"Meeting scheduled: {meeting.title}"
+    message = (
+        f"A new {meeting.get_meeting_type_display()} has been scheduled.\n\n"
+        f"Title: {meeting.title}\n"
+        f"Reference: {meeting.identifier or '-'}\n"
+        f"When: {_meeting_when(meeting)}\n"
+        f"Where: {_meeting_where(meeting)}"
+    )
+    if meeting.host_group is not None:
+        message += f"\nConvener: {meeting.host_group.name}"
+    if meeting.chaired_by is not None:
+        message += f"\nChairperson: {meeting.chaired_by.display_name}"
+    return alert(
+        kind="meeting-created",
+        instance=meeting,
+        recipients=stakeholders(meeting),
+        subject=subject,
+        message=message,
+        actor=actor,
+        context={
+            "meeting_type": meeting.meeting_type,
+            "start_datetime": _iso(meeting.start_datetime),
+            "state": meeting.current_state.name if meeting.current_state_id else "",
+        },
+    )
+
+
+def notify_meeting_status(meeting, transition, *, actor=None, comment=""):
+    """Tell the meeting's audience that its status moved (scheduled, postponed, …)."""
+    from_state = transition.from_state
+    to_state = transition.to_state
+    subject = f"{meeting.title}: {from_state.name} → {to_state.name}"
+    message = (
+        f"'{meeting.title}' moved from '{from_state.name}' to '{to_state.name}' "
+        f"via '{transition.name}'.\n\n"
+        f"When: {_meeting_when(meeting)}\n"
+        f"Reference: {meeting.identifier or '-'}"
+    )
+    if comment:
+        message += f"\n\nComment: {comment}"
+
+    roles = list(transition.notify_roles.all()) + next_actor_roles(meeting)
+    return alert(
+        kind="meeting-status",
+        instance=meeting,
+        recipients=stakeholders(meeting, roles=roles),
+        subject=subject,
+        message=message,
+        actor=actor,
+        context={
+            "from_state": from_state.name,
+            "to_state": to_state.name,
+            "transition": transition.name,
+            "comment": comment,
+        },
+    )
+
+
+#: Human verbs for the attachment actions a meeting alert can carry.
+_DOCUMENT_ACTIONS = {
+    "attached": "uploaded",
+    "detached": "removed",
+    "version-added": "replaced with a new version",
+}
+
+
+def notify_meeting_document(meeting, action, attachment, *, actor=None):
+    """Tell the meeting's audience that a document was uploaded or removed.
+
+    Called by the attachment service after it has recorded the matching domain
+    event, so the audit trail exists before anyone is told about the change. The
+    subject names the document type (agenda, minutes, …) when it is one of those,
+    so a filed agenda reads differently from a general paper.
+    """
+    verb = _DOCUMENT_ACTIONS.get(action, "changed")
+    type_label = ""
+    try:
+        type_label = attachment.get_type_display()
+    except Exception:  # noqa: BLE001 - a snapshot object must still notify
+        type_label = ""
+    kind_label = f"{type_label} " if type_label else "document "
+    subject = f"{meeting.title}: {kind_label}{verb}"
+    message = (
+        f"A {kind_label}was {verb} on '{meeting.title}'.\n\n"
+        f"Document: {getattr(attachment, 'name', '-')}\n"
+        f"When: {_meeting_when(meeting)}"
+    )
+    if actor is not None:
+        message += f"\nBy: {_actor_label(actor)}"
+
+    kind = "meeting-document"
+    if getattr(attachment, "type", "") in ("minutes",):
+        kind = "meeting-minutes"
+    return alert(
+        kind=kind,
+        instance=meeting,
+        recipients=stakeholders(meeting),
+        subject=subject,
+        message=message,
+        actor=actor,
+        context={
+            "action": action,
+            "attachment_id": str(getattr(attachment, "public_id", "")),
+            "name": getattr(attachment, "name", ""),
+            "type": getattr(attachment, "type", ""),
+        },
+    )
+
+
+def notify_meeting_attendance(meeting, attendance, *, actor=None, status=""):
+    """Email the meeting's audience a recorded attendance summary.
+
+    Deliberately a *summary* rather than one message per attendee: recording a
+    register produces many row changes at once, so a single message reporting the
+    tally is what a convener actually wants.
+    """
+    counts = meeting.attendance_counts()
+    subject = f"{meeting.title}: attendance recorded"
+    message = (
+        f"Attendance has been recorded for '{meeting.title}'.\n\n"
+        f"Invited: {counts['invited']}\n"
+        f"Present: {counts['present']}\n"
+        f"Absent: {counts['absent']}\n"
+        f"Excused: {counts['excused']}\n"
+        f"Not yet recorded: {counts['not_recorded']}"
+    )
+    if meeting.quorum is not None:
+        message += (
+            f"\n\nQuorum: {meeting.quorum} — "
+            f"{'met' if counts['quorum_met'] else 'not met'}"
+        )
+    return alert(
+        kind="meeting-attendance",
+        instance=meeting,
+        recipients=stakeholders(meeting),
+        subject=subject,
+        message=message,
+        actor=actor,
+        context={"counts": counts, "status": status},
     )
 
 

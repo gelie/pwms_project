@@ -1,0 +1,85 @@
+{% comment %}
+  The week/day layout: the meetings laid out on a shared time axis, one column
+  per day. Each timed meeting is absolutely positioned from a ``top``/``height``
+  percentage (computed in ``_positioned_events``) and stacked into side-by-side
+  lanes when they overlap; all-day meetings sit in a strip above the axis.
+
+  The whole grid is server-rendered, so it works without JavaScript; the popover
+  is a pure enhancement (see ``static/js/meeting-calendar.js``).
+
+  Context: view, days, hours, hour_px, has_all_day, can_create_meeting.
+{% endcomment %}
+<div class="meeting-time{% if view == "day" %} meeting-time--single{% endif %}"
+     style="--cal-hours: {{ hours|length }}; --cal-hour-px: {{ hour_px }}px; --cal-days: {{ days|length }}">
+  <div class="meeting-time__head">
+    <div class="meeting-time__gutter-head"></div>
+    <div class="meeting-time__days">
+      {% for day in days %}
+        <div class="meeting-time__day{% if day.is_today %} is-today{% endif %}{% if day.is_weekend %} is-weekend{% endif %}">
+          <a class="meeting-time__day-date"
+             href="{{ day.day_url }}"
+             hx-get="{{ day.day_url }}"
+             hx-target="#meeting-calendar-region"
+             hx-select="#meeting-calendar-region"
+             hx-swap="outerHTML"
+             hx-push-url="true"
+             aria-label="Show {{ day.date|date:"l, j F Y" }}"
+             {% if day.is_today %}aria-current="date"{% endif %}>
+            <span class="meeting-time__day-name">{{ day.date|date:"D" }}</span>
+            <span class="meeting-time__day-num">{{ day.date|date:"j" }}</span>
+          </a>
+          {% if can_create_meeting %}
+            <a class="meeting-cell__add"
+               href="{{ day.create_url }}"
+               title="New meeting on {{ day.date|date:"j F Y" }}"
+               aria-label="New meeting on {{ day.date|date:"j F Y" }}">{% lucide "plus" size=13 %}</a>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  {% if has_all_day %}
+    <div class="meeting-time__allday">
+      <div class="meeting-time__allday-label">All day</div>
+      <div class="meeting-time__allday-grid">
+        {% for day in days %}
+          <div class="meeting-time__allday-cell">
+            {% for meeting in day.all_day %}
+              {% include "pwms/partials/meetings/event_chip.html" with meeting=meeting %}
+            {% endfor %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+
+  <div class="meeting-time__body">
+    <div class="meeting-time__gutter" aria-hidden="true">
+      {% for hour in hours %}
+        <div class="meeting-time__hour">{{ hour|stringformat:"02d" }}:00</div>
+      {% endfor %}
+    </div>
+    <div class="meeting-time__grid">
+      {% for day in days %}
+        <div class="meeting-time__col{% if day.is_weekend %} is-weekend{% endif %}{% if day.is_today %} is-today{% endif %}">
+          {% for event in day.events %}
+            <a class="meeting-event"
+               href="{% url "pwms:meeting_detail" event.meeting.public_id %}"
+               style="--event-color: {{ event.meeting.color }}; --top: {{ event.top }}%; --height: {{ event.height }}%; --lane: {{ event.lane }}; --lanes: {{ event.lanes }}"
+               data-meeting-event
+               data-title="{{ event.meeting.title }}"
+               data-type="{{ event.meeting.get_meeting_type_display }}"
+               data-time="{{ event.meeting.start_datetime|date:"H:i" }}{% if event.meeting.end_datetime %}–{{ event.meeting.end_datetime|date:"H:i" }}{% endif %}"
+               data-venue="{{ event.meeting.venue_display }}"
+               data-group="{{ event.meeting.host_group.name|default:"" }}"
+               data-state="{% if event.meeting.current_state_id %}{{ event.meeting.current_state.name }}{% endif %}">
+              <span class="meeting-event__time">{{ event.meeting.start_datetime|date:"H:i" }}</span>
+              <span class="meeting-event__title">{{ event.meeting.title }}</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>

@@ -57,6 +57,7 @@ from pwms.models import (
     InternationalAgreement,
     InternationalResolution,
     Notification,
+    Role,
     Transition,
     TransitionLog,
     User,
@@ -178,6 +179,15 @@ class Command(BaseCommand):
         "defence": "Portfolio Committee on Defence and Military Veterans",
     }
 
+    #: The Events (Meeting) workflow's owning group and create role. The Oracle
+    #: sync owns these rows in a real environment; on a development database it
+    #: has not run, so the type would be creatable by superusers alone. This
+    #: command creates them so the Events workflow is usable out of the box.
+    MEETING_GROUP_NAME = "ICT: IT Systems And Application Support Unit"
+    MEETING_GROUP_TYPE = "section"
+    MEETING_ROLE_NAME = "ECM Analyst Programmer"
+    MEETING_ROLE_DESCRIPTION = "Enterprise Content Management analyst and programmer"
+
     # -- entry point --------------------------------------------------------
     def add_arguments(self, parser):
         parser.add_argument(
@@ -194,6 +204,7 @@ class Command(BaseCommand):
         self.today = timezone.localdate()
         self.seeded: list[SeededWorkflow] = []
 
+        self._ensure_meeting_rbac()
         self._load_reference_data()
 
         with transaction.atomic(), silenced_notifications():
@@ -221,6 +232,32 @@ class Command(BaseCommand):
             raise CommandError("Aborted.")
 
     # -- reference data -----------------------------------------------------
+    def _ensure_meeting_rbac(self):
+        """Create the Events workflow's owning group and create role (dev only).
+
+        Idempotent, matched by name, and a no-op for the workflow type when it is
+        already owned: an administrator's configuration is never overwritten.
+        """
+        group, _ = Group.objects.get_or_create(
+            name=self.MEETING_GROUP_NAME,
+            parent=None,
+            defaults={"group_type": self.MEETING_GROUP_TYPE, "is_active": True},
+        )
+        role, _ = Role.objects.get_or_create(
+            name=self.MEETING_ROLE_NAME,
+            defaults={
+                "description": self.MEETING_ROLE_DESCRIPTION,
+                "can_create_workflows": True,
+            },
+        )
+        meeting_type = WorkflowType.objects.filter(name="Meeting").first()
+        if meeting_type is None:
+            return
+        if meeting_type.group_id is None:
+            meeting_type.group = group
+            meeting_type.save(update_fields=["group"])
+        meeting_type.create_roles.add(role)
+
     def _load_reference_data(self):
         """Resolve the workflow types, groups, users and event types by natural key."""
         self.types = {wt.name: wt for wt in WorkflowType.objects.all()}

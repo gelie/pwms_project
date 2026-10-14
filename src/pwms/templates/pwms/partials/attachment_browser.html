@@ -26,7 +26,7 @@ Context: attachment_sites, attachment_content_type, attachment_object_id.
                 <button type="button"
                         class="btn btn-link btn-sm p-0 text-decoration-none"
                         aria-label="Expand {{ site.name }}"
-                        hx-get="{% url "pwms:attachment_tree_children" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}&site_id={{ site.site_id|urlencode }}"
+                        hx-get="{% url "pwms:attachment_tree_children" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}&site_id={{ site.site_id|urlencode }}&default_type={{ attachment_default_type|urlencode }}"
                         hx-target="#site-{{ site.pk }}-children"
                         hx-swap="innerHTML">{% lucide "chevron-right" size=14 %}</button>
                 <span class="fw-medium text-truncate">{{ site.name }}</span>

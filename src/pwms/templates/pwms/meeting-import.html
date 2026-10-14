@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Import meetings{% endblock title %}
+{% block content %}
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:workflows" %}">Workflows</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:meetings" %}">Meetings</a>
+      </li>
+      <li class="breadcrumb-item active" aria-current="page">Import</li>
+    </ol>
+  </nav>
+
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="mb-0">{% lucide "upload" size=22 %} Import meetings</h1>
+    <div class="btn-group">
+      <a class="btn btn-outline-secondary"
+         href="{% url "pwms:meeting_import_template" %}?format=csv">{% lucide "download" size=16 %} Template (.csv)</a>
+      <a class="btn btn-outline-secondary"
+         href="{% url "pwms:meeting_import_template" %}?format=xlsx">Template (.xlsx)</a>
+    </div>
+  </div>
+
+  <p class="text-body-secondary">
+    Upload a <strong>.csv</strong> or <strong>.xlsx</strong> file of meetings. Each
+    row creates a meeting, or — when its <em>Reference</em> already exists — updates
+    that meeting. A blank cell leaves the field untouched, a row that cannot be read
+    is reported and skipped (the rest of the file still imports), and <strong>nothing
+    is ever deleted or emailed</strong>. The columns are the same ones the calendar
+    exports, so an exported file can be edited and imported straight back.
+  </p>
+
+  <div class="row g-4">
+    <div class="col-12 col-lg-5">
+      <section class="workflow-card workflow-card--pad">
+        <form method="post" enctype="multipart/form-data" novalidate>
+          {% csrf_token %}
+          <div class="mb-3">
+            <label class="form-label" for="{{ form.file.id_for_label }}">{{ form.file.label }}</label>
+            {{ form.file }}
+            {% if form.file.help_text %}
+              <div class="form-text">{{ form.file.help_text }}</div>
+            {% endif %}
+            {% for error in form.file.errors %}
+              <div class="invalid-feedback d-block">{{ error }}</div>
+            {% endfor %}
+          </div>
+          <div class="form-check mb-3">
+            {{ form.dry_run }}
+            <label class="form-check-label" for="{{ form.dry_run.id_for_label }}">{{ form.dry_run.label }}</label>
+          </div>
+          <div class="d-flex flex-wrap gap-2">
+            <button class="btn btn-primary" type="submit">{% lucide "upload" size=16 %} Import</button>
+            <a class="btn btn-secondary" href="{% url "pwms:meetings" %}">Cancel</a>
+          </div>
+        </form>
+      </section>
+    </div>
+
+    <div class="col-12 col-lg-7">
+      {% if report %}
+        <section class="workflow-card workflow-card--pad">
+          <h2 class="workflow-card-title">
+            {% if report.dry_run %}Check result{% else %}Import result{% endif %}
+          </h2>
+          <div class="d-flex flex-wrap gap-3 mb-3">
+            <span class="badge badge-success">{{ report.created }} created</span>
+            <span class="badge badge-state">{{ report.updated }} updated</span>
+            <span class="badge badge-muted">{{ report.skipped }} skipped</span>
+            <span class="badge {% if report.errors %}badge-state{% else %}badge-muted{% endif %}">
+              {{ report.errors|length }} error{{ report.errors|length|pluralize }}
+            </span>
+          </div>
+          {% if report.dry_run %}
+            <p class="small text-body-secondary">
+              This was a check only — nothing was saved. Re-run without
+              <em>Check only</em> to apply it.
+            </p>
+          {% endif %}
+          {% if report.errors %}
+            <p class="mb-1">Rows that could not be imported:</p>
+            <ul class="small text-body-secondary">
+              {% for error in report.errors %}<li>{{ error }}</li>{% endfor %}
+            </ul>
+          {% endif %}
+        </section>
+      {% else %}
+        <section class="workflow-card workflow-card--pad">
+          <h2 class="workflow-card-title">{% lucide "list" size=16 %} Import format</h2>
+          <p class="small text-body-secondary mb-2">
+            The first row must be the header. Unknown extra columns are ignored.
+          </p>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+              <thead>
+                <tr>
+                  <th scope="col">Column</th>
+                  <th scope="col">Required</th>
+                  <th scope="col">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for column in columns %}
+                  <tr>
+                    <th scope="row" class="fw-medium">{{ column.header }}</th>
+                    <td>{% if column.required %}Yes{% else %}No{% endif %}</td>
+                    <td class="small text-body-secondary">{{ column.help }}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      {% endif %}
+    </div>
+  </div>
+{% endblock content %}

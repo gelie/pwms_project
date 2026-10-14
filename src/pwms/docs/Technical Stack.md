@@ -87,6 +87,11 @@
   `PWMS_BASE_URL` makes the links in alert mail absolute. The
   `pwms.notifications.alerts` context processor feeds the navbar bell
   (`unread_alert_count` + the five newest `in_app` alerts).
+- `MEETING_CALENDAR_WEEK_START`: the day the Meetings calendar's weeks begin on
+  — a weekday name (`"monday"` … `"sunday"`) or an index (`0` = Monday … `6` =
+  Sunday); anything unrecognised falls back to Monday. Readers can override it
+  per session with the calendar's "Week starts" control (a `week_start` query
+  parameter).
 - Environment variables (`python-decouple`): `SECRET_KEY`, `DEBUG`, `PG_DB`,
   `PG_USERNAME`, `PG_PASSWORD`, `PG_HOST`, `PG_PORT`, `IDNO_HMAC_KEY`,
   `IDNO_ENC_KEY` (both required - they key the at-rest identity numbers, see

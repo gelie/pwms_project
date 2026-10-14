@@ -16,7 +16,7 @@
 > **This is the induction, not the course.** It gives the section a working mental
 > model of PWMS and the confidence to open it on Monday. The
 > [Training Manual](./Training%20Manual.md) is the reference course behind it —
-> fourteen modules, an assessment and a full set of exercises — and is what
+> fifteen modules, an assessment and a full set of exercises — and is what
 > participants are asked to read afterwards.
 
 ---

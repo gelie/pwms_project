@@ -391,6 +391,64 @@ and original recorder while `auditlog` captures the change. They are also
 editable through the Django admin (an inline on the bill page plus a standalone
 `BillVersionAdmin`) and bulk-loaded with `import_bill_versions`.
 
+### `Meeting(AbstractLegislativeWorkflow)` and `MeetingAttendance(BaseModel)`
+
+`pwms/models/meetings.py`. The **Events workflow**: a parliamentary sitting —
+House Plenary, committee, administration and other meeting types — as a concrete
+workflow instrument, so it inherits the machine (states/transitions), per-instance
+RBAC, attachments, domain events and the `auditlog` trail. The lifecycle is
+*Scheduled → In Progress → Completed*, with *Postponed* and *Cancelled* branches
+(both requiring a comment).
+
+`Meeting` adds the scheduling detail — `meeting_type`, `reference_number`,
+`start_datetime` / `end_datetime`, `all_day`, the on-premises `venue` (a room in
+a `Building`), the free-text `off_site_venue` / `off_site_address` for an external
+venue, `attendance_mode` (on the premises / hybrid / virtual) and `meeting_link`,
+the convener `host_group`, `chaired_by`, `secretary`, `quorum`, `agenda_summary`,
+`minutes_status` / `minutes_filed_at` — plus helpers (`calendar_state`,
+`attendance_counts()`, `venue_display`, `color`, `agenda_attachments`,
+`minutes_attachments`, `for_member`). The agenda and minutes are ordinary
+`Attachment` rows (types `agenda` / `minutes`).
+
+`Meeting.color` maps `meeting_type` to the calendar's per-type colour from the
+`MEETING_TYPE_COLORS` palette (a type without an entry falls back to
+`DEFAULT_MEETING_COLOR`), which is what the calendar draws and the CSV/XLSX
+export carries — see [Meetings Import & Export](./Meetings%20Import%20%26%20Export.md).
+
+On-premises venues come from the **`Building` / `Venue`** reference data
+(`pwms/models/venues.py`): a meeting *selects* a `Venue` (one room in one
+`Building`), while an off-premises meeting instead carries its venue as free text
+(`off_site_venue` / `off_site_address`). `venue_display` renders whichever is set,
+and `attendance_mode` records how the meeting is attended — on the premises
+(`is_on_premise`), hybrid (`is_hybrid`) or virtual (`is_virtual`, no physical
+room). Buildings and venues are curated in the admin and seeded by migration
+`0054`.
+
+`agenda_summary` holds the agenda the meeting's editor types in a
+dependency-free WYSIWYG editor (`static/js/rich-text.js`); because that value is
+attacker-controlled HTML, it is stored as written and **sanitised on output** by
+`pwms.utils.richtext` (an allowlist built on `html.parser`), which `Meeting.agenda_html`
+and the PDF/HTML instrument document both go through. It is never rendered raw.
+
+`MeetingAttendance` is one person's place at one meeting: `user` (or a
+`guest_name` / `guest_email` for a public hearing), `capacity`, `is_required`,
+`rsvp_status`, `attendance_status`, and the audit fields `recorded_at` /
+`recorded_by` / `recorded_ip`. `respond()` records an RSVP and `record()` records
+attendance during or after the sitting, appending a ``meeting-attendance-recorded``
+`WorkflowEvent`; the row itself is registered with `auditlog`. A unique
+constraint keeps one place per account per meeting (guests exempt).
+
+Each row also carries a `source` — `host_group` (generated from the meeting's
+hosting group) or `invitee` (added by hand: a PWMS user outside the hosting
+group, or a guest with no account). That split is what lets the register be
+rebuilt without disturbing the invitees: `Meeting.regenerate_attendance()`
+re-syncs only the generated rows to the hosting group's active members (adds
+joiners, removes leavers, skips anyone already on the register) and leaves every
+invitee and its RSVP/recorded attendance untouched, recording when it ran in
+`Meeting.register_generated_at`. The register is generated on creation (web and
+API) and whenever the hosting group changes; the panel's **Regenerate** button
+runs it on demand.
+
 ### `DelegationParticipant(BaseModel)`
 
 Delegation members and support officials (BR02.3.7/8).

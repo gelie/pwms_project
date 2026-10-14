@@ -2989,6 +2989,7 @@ class CreatableWorkflowMenuTests(TestCase):
                 "International Resolution",
                 "International Agreement",
                 "Bill",
+                "Meeting",
             },
         )
 
