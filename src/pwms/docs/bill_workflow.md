@@ -17,14 +17,15 @@ flowchart TD
     s5["National Council Of Provinces"]:::regular
     s6["Sent For Assent"]:::regular
     s7[["Assented"]]:::terminal
+    s8[["Lapsed"]]:::terminal
     s6 -.->|"Assented"| s7
     s0 -.->|"Refer to Portfolio Committee"| s1
     s3 -.->|"Refer to Select Committee"| s4
-    s5 -.->|"Send back to NA"| s3
-    s6 -.->|"Send back to NA"| s3
+    s6 -.->|"Send back to NA"| s1
+    s5 -.->|"Send back to NA"| s1
     s5 -.->|"Send for Signature"| s6
     s1 -.->|"Send to NA"| s3
     s4 -.->|"Send to NCOP"| s5
-    s0 -.->|"Withdraw"| s2
     s3 -.->|"Withdraw"| s2
+    s0 -.->|"Withdraw"| s2
 ```
