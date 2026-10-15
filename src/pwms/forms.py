@@ -37,6 +37,7 @@ from .models import (
     DelegationParticipant,
     DelegationReport,
     DelegationReportUpdate,
+    EventType,
     Group,
     InternationalAgreement,
     InternationalResolution,
@@ -44,6 +45,7 @@ from .models import (
     MeetingAttendance,
     State,
     Venue,
+    WorkflowEvent,
     WorkflowNote,
     WorkflowType,
 )
@@ -1069,6 +1071,40 @@ class WorkflowNoteForm(forms.ModelForm):
                 }
             )
         }
+
+
+class WorkflowEventForm(forms.ModelForm):
+    """One domain event to record against a workflow instance.
+
+    The event's actor and the record it belongs to are supplied by the view, so
+    the form carries only what the person chooses: which event, any note, and an
+    optional document reference. Events are append-only (see
+    :class:`~pwms.models.WorkflowEvent`), so there is no edit form beside it.
+    """
+
+    class Meta:
+        model = WorkflowEvent
+        fields = ["event_type", "notes", "document_url"]
+        labels = {"event_type": "Event", "notes": "Notes"}
+        widgets = {
+            "event_type": forms.Select(attrs={"class": "form-select"}),
+            "notes": forms.Textarea(
+                attrs={
+                    "class": "form-control",
+                    "rows": 2,
+                    "placeholder": "What happened, and any detail worth keeping",
+                }
+            ),
+            "document_url": forms.URLInput(
+                attrs={"class": "form-control", "placeholder": "https://… (optional)"}
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # The registry is global, so the picker offers every event type; ordering
+        # by name keeps it stable as administrators add more.
+        self.fields["event_type"].queryset = EventType.objects.order_by("name")
 
 
 # -- Meetings (the Events workflow) -----------------------------------------

@@ -98,6 +98,18 @@
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link"
+              id="tab-events"
+              data-bs-toggle="tab"
+              data-bs-target="#pane-events"
+              type="button"
+              role="tab"
+              aria-controls="pane-events"
+              aria-selected="false">
+        {% lucide "activity" size=16 %}<span>Events</span>
+        <span class="workflow-tab-count" id="tab-events-count">{{ event_rows|length }}</span></button>
+    </li>
+    <li class="nav-item" role="presentation">
+      <button class="nav-link"
               id="tab-attachments"
               data-bs-toggle="tab"
               data-bs-target="#pane-attachments"
@@ -504,6 +516,24 @@
       {% endblock notes %}
     </div>
 
+    {# --- Events ------------------------------------------------------- #}
+    <div class="tab-pane fade"
+         id="pane-events"
+         role="tabpanel"
+         aria-labelledby="tab-events"
+         tabindex="0">
+      {% comment %}
+        Every workflow instance carries domain events, so the panel is this
+        block's default. The status alert lives outside the swapped panel so it
+        survives the HTMX swap of #events-section (see
+        pwms/partials/events_section.html).
+      {% endcomment %}
+      <div id="events-status" aria-live="polite"></div>
+      {% block events %}
+        {% include "pwms/partials/events_section.html" %}
+      {% endblock events %}
+    </div>
+
     {# --- Timeline ---------------------------------------------------- #}
     <div class="tab-pane fade"
          id="pane-timeline"
@@ -518,7 +548,8 @@
         <div class="table-responsive">
           <table class="table table-striped table-hover align-middle mb-0">
             <caption class="visually-hidden">
-              State changes and create / update / delete history, newest first
+              State changes, domain events and create / update / delete history,
+              newest first
             </caption>
             <thead>
               <tr>
@@ -549,6 +580,16 @@
                       {% endif %}
                       {% if entry.notes %}
                         <span class="workflow-muted d-block">{{ entry.notes }}</span>
+                      {% endif %}
+                    {% elif entry.kind == "event" %}
+                      {% if entry.action %}
+                        <span class="workflow-muted d-block">{{ entry.action }}</span>
+                      {% endif %}
+                      {% if entry.notes %}
+                        <span class="workflow-muted d-block">{{ entry.notes }}</span>
+                      {% endif %}
+                      {% if entry.document_url %}
+                        <a href="{{ entry.document_url }}">Document</a>
                       {% endif %}
                     {% elif entry.changes %}
                       <ul class="workflow-changes">

@@ -1,16 +1,19 @@
 """One chronological history for a workflow instance.
 
-A workflow's story is written down twice, from two angles:
+A workflow's story is written down from three angles:
 
 * ``TransitionLog`` — the *semantic* moves: who took the instrument from one
   state to another, with their comment and IP;
+* ``WorkflowEvent`` — the *domain* facts: typed, append-only events (a document
+  attached, an ATC update published, an outcome recorded), which can also guard
+  a transition;
 * django-auditlog's ``LogEntry`` — the *CRUD* trail: every create / update /
   delete of the row, with a field-level diff.
 
 Read together they answer one question ("what happened to this record?"), so the
-detail page shows them as a single table rather than two. Both are keyed to the
-instance by ContentType + internal PK, so merging them is a concatenation and a
-sort; ``instance_timeline()`` returns the rows newest first.
+detail page shows them as a single table rather than three. Each source is keyed
+to the instance by ContentType + internal PK, so merging them is a concatenation
+and a sort; ``instance_timeline()`` returns the rows newest first.
 """
 
 from __future__ import annotations
@@ -37,6 +40,11 @@ SYSTEM_ACTOR = "System"
 #: auditlog's m2m operation -> the verb used in the timeline.
 _M2M_VERBS = {"add": "Added", "remove": "Removed", "clear": "Cleared"}
 
+#: Event origins that are not a signed-in person. Only these add anything to a
+#: row: a person-caused event already names its actor, so its origin is omitted
+#: (mirrors the same set in ``pwms.reporting.builder``).
+_SYSTEM_ORIGINS = {"system", "integration"}
+
 #: How many rows a detail page renders. The rest stay in the database; the tab
 #: says how many were left off rather than paginating a rarely-read history.
 TIMELINE_PREVIEW_LIMIT = 50
@@ -55,7 +63,7 @@ class TimelineChange:
 class TimelineEntry:
     """One row of the merged history."""
 
-    kind: str  #: transition | create | update | delete
+    kind: str  #: transition | event | create | update | delete
     label: str
     timestamp: Any
     actor: str
@@ -63,13 +71,15 @@ class TimelineEntry:
     to_state: str = ""
     action: str = ""
     notes: str = ""
+    document_url: str = ""
     ip_address: str | None = None
     changes: tuple[TimelineChange, ...] = ()
 
 
 def instance_timeline(instance, *, limit=None):
     """
-    Merge ``TransitionLog`` + auditlog history for ``instance``, newest first.
+    Merge ``TransitionLog`` + ``WorkflowEvent`` + auditlog for ``instance``,
+    newest first.
 
     ``limit`` caps the rows *after* sorting, so it always keeps the most recent
     ones; ``None`` returns everything.
@@ -80,6 +90,11 @@ def instance_timeline(instance, *, limit=None):
             "from_state", "to_state", "actor"
         )
     ]
+    # Only a workflow instance carries domain events; ``instance`` is one on
+    # every call site, but the guard keeps the function safe on a bare record.
+    events = getattr(instance, "events", None)
+    if events is not None:
+        entries.extend(_event_entry(event) for event in events())
     entries.extend(
         _audit_entry(entry, instance)
         for entry in get_audit_trail_for_instance(instance)
@@ -99,6 +114,20 @@ def _transition_entry(log):
         action=log.action,
         notes=log.notes,
         ip_address=log.ip_address,
+    )
+
+
+def _event_entry(event):
+    """One domain event as a timeline row (kind ``event``)."""
+    return TimelineEntry(
+        kind="event",
+        label=event.event_type.name,
+        timestamp=event.occurred_at,
+        actor=actor_label(event.actor),
+        # The origin only adds information when no person caused the event.
+        action=event.get_origin_display() if event.origin in _SYSTEM_ORIGINS else "",
+        notes=event.notes,
+        document_url=event.document_url,
     )
 
 

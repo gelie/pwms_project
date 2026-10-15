@@ -49,6 +49,7 @@ from .forms import (
     ReferralForm,
     ReportShareForm,
     ResolutionAdderForm,
+    WorkflowEventForm,
     WorkflowNoteForm,
 )
 from .models import (
@@ -787,9 +788,9 @@ def _workflow_detail_context(request, instance):
     """
     Context every workflow detail page shares.
 
-    ``timeline`` is the merged TransitionLog + auditlog history (see
-    :mod:`pwms.services.history`); ``diagram_*`` drives the Diagram tab, which
-    serves the image ``manage.py generate_diagrams`` wrote for the type.
+    ``timeline`` is the merged TransitionLog + WorkflowEvent + auditlog history
+    (see :mod:`pwms.services.history`); ``diagram_*`` drives the Diagram tab,
+    which serves the image ``manage.py generate_diagrams`` wrote for the type.
 
     Neighbours in the hierarchy are separate instances with their own access, so
     only the ones the reader may actually open are advertised.
@@ -826,6 +827,7 @@ def _workflow_detail_context(request, instance):
     }
     context.update(_referral_context(request, instance))
     context.update(_notes_context(request, instance))
+    context.update(_events_context(request, instance))
     return context
 
 
@@ -2573,6 +2575,68 @@ def workflow_note_delete(request, public_id):
     note, target = _note_for_change(request, public_id)
     note.delete()
     return _notes_response(request, target, success="Note deleted.")
+
+
+# --- Domain events (facts recorded against a record) -------------------------
+# A domain event is an append-only row (``WorkflowEvent``) typed by the
+# ``EventType`` registry, so it is evidence rather than state: it can guard a
+# transition and it feeds the merged Timeline. Unlike a note it is never
+# corrected in place — a mistake is answered with a compensating event — so this
+# panel only ever adds.
+
+
+def _events_context(request, instance):
+    """
+    Template context for a record's domain-event panel and its recorder.
+
+    ``event_rows`` is the instance's event log, newest first, shown to any reader
+    who may view the record. ``can_record_event`` folds the edit right into
+    whether the recorder is offered, because an event is evidence *on* the record
+    — writing one is an edit of the record, not a comment on it.
+    """
+    can_record = resolve(request.user, instance, EDIT)
+    context = {
+        **_target_identifiers(instance),
+        "event_rows": list(instance.events()),
+        "can_record_event": can_record,
+    }
+    if can_record:
+        context["event_form"] = WorkflowEventForm()
+    return context
+
+
+def _events_response(request, target, *, success="", error="", form=None):
+    """Re-render the events panel, announcing a change when there is one."""
+    context = _events_context(request, target)
+    context.update(_record_counters(target))
+    if form is not None:
+        # Hand the rejected form back bound, so its errors and the values already
+        # typed are shown again rather than silently dropped.
+        context["event_form"] = form
+    if error:
+        context["events_status"] = {"level": "danger", "message": error}
+    elif success:
+        context["events_status"] = {"level": "success", "message": success}
+    return render(request, "pwms/partials/events_section.html", context)
+
+
+@require_POST
+def workflow_event_add(request):
+    """Record a domain event against a record (HTMX fragment)."""
+    target = _workflow_target(request, EDIT)
+    form = WorkflowEventForm(request.POST)
+    if not form.is_valid():
+        return _events_response(request, target, form=form)
+    event_type = form.cleaned_data["event_type"]
+    # ``record_event`` is the model's own append path: it stamps the actor and
+    # origin and never updates an existing row.
+    target.record_event(
+        event_type,
+        actor=request.user,
+        notes=form.cleaned_data["notes"],
+        document_url=form.cleaned_data["document_url"],
+    )
+    return _events_response(request, target, success=f"Recorded “{event_type.name}”.")
 
 
 # --- Delegation participants (BR02.3.7/8) ------------------------------------

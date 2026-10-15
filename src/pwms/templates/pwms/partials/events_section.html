@@ -1,0 +1,92 @@
+{% comment %}
+The domain-event log on a workflow detail page: the events recorded against the
+record and the form that records one.
+
+Events are append-only rows (``pwms.WorkflowEvent``) typed by the ``EventType``
+registry, so there is no edit or delete here — a correction is recorded as a new
+compensating event. Unlike a note, an event is evidence: it can guard a
+transition, and it feeds the merged Timeline tab.
+
+Rendered standalone as the HTMX response to a record, and included by
+``pwms/workflow-detail.html`` for the first paint. The response root is
+``#events-section`` and callers swap it with ``outerHTML``; the status alert
+lives outside it (in the tab pane) so it survives that swap. The tab's own Events
+counter is refreshed out-of-band when the fragment is rendered for an HTMX
+request, since it is in the tab bar rather than the panel.
+
+Context (from ``pwms.views._events_context``): event_rows, can_record_event,
+event_form, target_content_type, target_object_id; plus events_status
+({level, message}) when an event was just recorded.
+{% endcomment %}
+<section class="workflow-card workflow-card--pad" id="events-section">
+  <div class="notes-header">
+    <h2 class="workflow-card-title mb-0">
+      {% lucide "activity" size=16 %} Events
+      <span class="badge badge-muted">{{ event_rows|length }}</span>
+    </h2>
+    {% if can_record_event %}
+      <button class="btn btn-sm btn-outline-primary"
+              type="button"
+              data-bs-toggle="collapse"
+              data-bs-target="#events-form"
+              aria-expanded="false"
+              aria-controls="events-form">Record event</button>
+    {% endif %}
+  </div>
+  {% if can_record_event %}
+    <div id="events-form" class="collapse{% if event_form.errors %} show{% endif %} mb-3">
+      <form method="post"
+            hx-post="{% url "pwms:workflow_events_add" %}"
+            hx-target="#events-section"
+            hx-swap="outerHTML">
+        {% csrf_token %}
+        <input type="hidden" name="content_type" value="{{ target_content_type }}">
+        <input type="hidden" name="object_id" value="{{ target_object_id }}">
+        {% include "pwms/_form_field.html" with field=event_form.event_type wrapper_class="col-12" %}
+        {% include "pwms/_form_field.html" with field=event_form.notes wrapper_class="col-12" %}
+        {% include "pwms/_form_field.html" with field=event_form.document_url wrapper_class="col-12" %}
+        <div class="d-flex gap-2 mt-2">
+          <button class="btn btn-primary btn-sm" type="submit">Record event</button>
+          <button class="btn btn-link btn-sm"
+                  type="button"
+                  data-bs-toggle="collapse"
+                  data-bs-target="#events-form">Cancel</button>
+        </div>
+      </form>
+    </div>
+  {% endif %}
+  <ul class="list-unstyled mb-0">
+    {% for event in event_rows %}
+      <li class="py-3{% if not forloop.last %} border-bottom{% endif %}">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <span class="badge text-bg-secondary">{{ event.event_type.name }}</span>
+          <span class="fw-medium">{{ event.actor.display_name|default:"System" }}</span>
+          <span class="small workflow-muted">{{ event.occurred_at|date:"d M Y H:i" }}</span>
+          {% if event.origin != "user" %}
+            <span class="badge badge-muted">{{ event.get_origin_display }}</span>
+          {% endif %}
+        </div>
+        {% if event.notes %}
+          <div class="workflow-prose mt-1">{{ event.notes|linebreaks }}</div>
+        {% endif %}
+        {% if event.document_url %}
+          <div class="mt-1">
+            <a href="{{ event.document_url }}">Document</a>
+          </div>
+        {% endif %}
+      </li>
+    {% empty %}
+      <li class="workflow-muted py-3">No events recorded.</li>
+    {% endfor %}
+  </ul>
+</section>
+{% if request.htmx %}
+  {# Out-of-band: the Events counter in the tab bar lives outside #events-section. #}
+  <span class="workflow-tab-count" id="tab-events-count" hx-swap-oob="true">{{ event_rows|length }}</span>
+{% endif %}
+{% include "pwms/partials/tab_counters.html" %}
+{% if events_status %}
+  <div id="events-status" hx-swap-oob="true">
+    <div class="alert alert-{{ events_status.level }} py-2 mb-3" role="alert">{{ events_status.message }}</div>
+  </div>
+{% endif %}

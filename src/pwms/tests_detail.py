@@ -21,6 +21,7 @@ from django.utils import timezone
 from .models import (
     Bill,
     DelegationReport,
+    EventType,
     Group,
     GroupMembership,
     InternationalAgreement,
@@ -39,6 +40,7 @@ DETAIL_PANES = (
     "progress",
     "related",
     "notes",
+    "events",
     "timeline",
     "attachments",
     "diagram",
@@ -177,6 +179,27 @@ class TimelineServiceTests(DetailPageTestCase):
         )
 
         self.assertEqual(entry.actor, "System")
+
+    def test_domain_events_are_merged_into_the_timeline(self):
+        report = self.make_report()
+        event_type = EventType.objects.get(slug="document-attached")
+        report.record_event(event_type, actor=self.user, notes="A document")
+
+        entry = next(item for item in instance_timeline(report) if item.kind == "event")
+
+        self.assertEqual(entry.label, event_type.name)
+        self.assertEqual(entry.actor, self.user.display_name)
+        self.assertEqual(entry.notes, "A document")
+
+    def test_a_system_event_names_its_origin_and_has_no_actor(self):
+        report = self.make_report()
+        event_type = EventType.objects.get(slug="atc-update-published")
+        report.record_event(event_type, origin="integration")
+
+        entry = next(item for item in instance_timeline(report) if item.kind == "event")
+
+        self.assertEqual(entry.actor, "System")
+        self.assertEqual(entry.action, "Integration")
 
     def test_m2m_change_is_summarised(self):
         """

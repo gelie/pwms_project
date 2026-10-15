@@ -267,6 +267,9 @@ urlpatterns = [
         views.workflow_note_delete,
         name="workflow_note_delete",
     ),
+    # Domain events: one cross-type route to record one, since any instrument can
+    # carry them. The log is append-only, so there is no edit or delete route.
+    path("events/add/", views.workflow_event_add, name="workflow_events_add"),
     # Group search for dynamic lookup
     path("group-search/", views.group_search, name="group_search"),
     # Delegation report lookup (the resolution form's parent picker)

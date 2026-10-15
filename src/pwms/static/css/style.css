@@ -1209,6 +1209,11 @@ html.password-toggle-ready .password-toggle {
     color: light-dark(#5b5240, #d3ccc0);
 }
 
+.badge-timeline--event {
+    background-color: var(--theme-brown);
+    color: light-dark(#fff, #121212);
+}
+
 /* ------------------------------------------------------------------ *
    Progress tab: a completion ring and the state sequence.
 
