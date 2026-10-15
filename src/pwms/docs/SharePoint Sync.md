@@ -320,7 +320,7 @@ record's **append-only domain event log** (see
 [Data Model §5](./Data%20Model.md#5-auditing)), through three seeded
 `EventType`s — `document-attached`, `document-detached` and
 `document-version-added` (migration `0031`). They surface as the section's
-“Document activity” list, and in the record's event log generally.
+“Document activity” list, in the record's **Events** tab, and on its **Timeline**.
 
 This is deliberately *not* inferred from `Attachment.created_at`: a detach
 deletes the row, so the event payload carries a **snapshot** of the document

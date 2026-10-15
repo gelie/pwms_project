@@ -300,7 +300,7 @@ screens.
    updates) · **Progress** (how far along, and the journey so far) · **Related**
    (on a report: the resolutions captured at the engagement, and the delegates; on
    the other instruments: the parent and attached records) · **Notes** ·
-   **Attachments** · **Referrals** · **Diagram** · **Timeline**.
+   **Events** · **Attachments** · **Referrals** · **Diagram** · **Timeline**.
 5. **The toolbar.** Point out **Document** (the record as a formal PDF or web
    page), **Status** (the moves available now), **Edit** and **Delete** — and say
    that each of these appears only if you are allowed to use it, so a missing button

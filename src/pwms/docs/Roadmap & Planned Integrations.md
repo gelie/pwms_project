@@ -271,6 +271,16 @@ backfill: the defaults are what materialisation already granted) — and
 that already exist, touching only the owning group's own flags. `view` stays
 unconditional and viewer groups stay read-only by design.
 
+✅ **Record-event panel & events in the Timeline shipped (2026-10-15)** — every
+record gains an **Events** tab holding its append-only domain-event log
+(`WorkflowEvent`) with a form that records an event by hand
+(`partials/events_section.html`, route `pwms:workflow_events_add`): add-only,
+since a correction is a new compensating event rather than an edit, and gated on
+the record's **edit** right. The **Timeline** now merges those events with the
+`TransitionLog` state changes and the auditlog CRUD trail into the one
+newest-first table (`pwms/services/history.py`), so a record's whole story reads
+in one place.
+
 Remaining (🔜):
 
 - Extend the group-scoped RBAC (`WorkflowType.group` + `create_roles`) further in

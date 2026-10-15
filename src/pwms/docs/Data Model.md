@@ -556,10 +556,8 @@ Lifecycle helpers `respond()`, `recall()`, `mark_expired()` and creation emit
 `referral-created` / `referral-responded` / `referral-recalled` /
 `referral-expired` events automatically (`save()` detects create/status
 changes), so every referral action lands on the instance's append-only
-`WorkflowEvent` trail. (The *Timeline* tab merges only `TransitionLog` and the
-auditlog CRUD rows for the instance's own content type, so these domain events
-surface with the other `WorkflowEvent` rows rather than in the Timeline — see
-[§5 of the Functional Design](./Functional%20Design.md#5-auditing--history).)
+`WorkflowEvent` trail — and so onto the instance's **Timeline** — see
+[§5 of the Functional Design](./Functional%20Design.md#5-auditing--history).
 
 A referral also **carries the referred group's access** to the record: view and
 edit while a referral to it is open, then view once every referral has closed. (It
@@ -701,8 +699,8 @@ Unique `(group_access, state)`.
 
 ### `TransitionLog` (plain `models.Model`, not `BaseModel`)
 
-Domain event log for workflow progression — one table serves every subclass via
-a GFK.
+State-change log for workflow progression — one table serves every subclass via a
+GFK.
 
 | Field | Notes |
 | --- | --- |
@@ -720,7 +718,10 @@ Indexed on `(content_type, object_id, -timestamp)`.
 attached", "ATC update published", "referral answered") as opposed to
 `TransitionLog`, which records *state changes*. Events are evidence, not state:
 rows are immutable (``save()`` refuses updates; corrections are compensating
-events), so the timeline stays trustworthy (BR08).
+events), so the timeline stays trustworthy (BR08). They are appended by the
+system (`record_event()`) and by hand from a record's **Events** tab, and the
+record's **Timeline** merges them with the `TransitionLog` state changes and the
+auditlog CRUD trail (`pwms.services.history`).
 
 | `EventType` field | Notes |
 | --- | --- |

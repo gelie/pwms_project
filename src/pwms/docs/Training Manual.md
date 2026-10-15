@@ -131,7 +131,7 @@ will hit.
 | **Referral** | A formal request to a committee or group to consider a record and respond by a date. |
 | **Attachment** | A link from a record to a document held in SharePoint. The document itself stays in SharePoint. |
 | **Note** | A dated, attributed entry in the record's note log — the running record of decisions, follow-ups and conversations. **Not** the same as the record's own *Notes* field. |
-| **Timeline** | The merged, newest-first history of everything recorded against a record: state changes, edits, and creations. |
+| **Timeline** | The merged, newest-first history of everything recorded against a record: state changes, events, edits and creations. |
 | **Alert** | An in-app notification, shown on the bell, with an email copy where an address is on file. Alerts always link back to the record they concern. |
 
 ### The three IRPD instruments at a glance
@@ -783,21 +783,22 @@ Open a record to reach its tabs:
 | **Progress** | The completion ring, the state sequence and the journey so far. |
 | **Related** | What belongs to the record: on a report, the resolutions captured at the engagement (with **Add Resolution**) and the delegates; on the other instruments, the hierarchy (parent and attached records). |
 | **Notes** | The note log, plus the record's own notes text where the instrument has one. |
+| **Events** | The record's event log — facts recorded against it, with a **Record event** form. |
 | **Attachments** | The documents held against the record. |
 | **Referrals** | Referrals raised and received, and the transitions available from the current state. |
 | **Diagram** | A picture of the workflow type. |
-| **Timeline** | Every state change and edit, newest first. |
+| **Timeline** | Every state change, recorded event and edit, newest first. |
 
 The record's current tab is kept in the address bar, so a refresh — or a link you
 send a colleague — returns to the same tab.
 
 ### 6.4 Reading the Timeline
 
-The **Timeline** tab merges two kinds of history into one newest-first table with
-columns **When**, **Event**, **Detail** and **Actor** (with the network address the
-action came from beneath the actor's name). State changes and field-level
-create/update/delete entries appear together. The tab shows the 50 most recent
-entries and says so when there are more.
+The **Timeline** tab merges three kinds of history into one newest-first table
+with columns **When**, **Event**, **Detail** and **Actor** (with the network
+address the action came from beneath the actor's name). State changes, recorded
+events and field-level create/update/delete entries appear together. The tab
+shows the 50 most recent entries and says so when there are more.
 
 ### 6.5 A weekly check the section should adopt
 
@@ -1855,6 +1856,7 @@ re-enter?
 | **BR02 / BR03 / BR12** | Business requirement references from the section's requirement specifications, quoted in PWMS's own help text |
 | **Dashboard** | The landing page: figures, breakdowns and four work lists |
 | **Document (toolbar)** | The record rendered as a formal PDF or web page |
+| **Event** | An append-only, dated fact recorded on a record (a document attached, a report adopted); evidence rather than state |
 | **Events workflow** | The instrument for parliamentary meetings (`Meeting`); its calendar is at `/pwms/meetings/` |
 | **Group** | An organisational unit — a house, committee, party, department or sub-unit |
 | **Instrument** | One of the five kinds of parliamentary record PWMS tracks |
@@ -1864,7 +1866,7 @@ re-enter?
 | **Referral** | A formal request to a committee to consider a record by a given date |
 | **Register** | A list page for one instrument, or the cross-instrument *Overview* |
 | **State / stage** | Where a record currently sits in its route |
-| **Timeline** | The merged, newest-first history of a record's state changes and edits |
+| **Timeline** | The merged, newest-first history of a record's state changes, events and edits |
 | **Transition** | A permitted move from one stage to another |
 | **Workflow type** | The definition of the stages and moves for a kind of instrument |
 
