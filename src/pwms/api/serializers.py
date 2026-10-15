@@ -12,6 +12,7 @@ from ..models import (
     InternationalResolution,
     Meeting,
     MeetingAttendance,
+    PublicStatus,
     Role,
     State,
     Transition,
@@ -396,11 +397,28 @@ class WorkflowTypeSerializer(serializers.ModelSerializer):
         read_only_fields = ["public_id", "slug", "is_root_type"]
 
 
+class PublicStatusSerializer(serializers.ModelSerializer):
+    """One row of the shared public-status vocabulary (BRS §12)."""
+
+    class Meta:
+        model = PublicStatus
+        fields = [
+            "id",
+            "public_id",
+            "name",
+            "slug",
+            "description",
+            "order",
+            "color",
+        ]
+        read_only_fields = ["public_id", "slug"]
+
+
 class StateSerializer(serializers.ModelSerializer):
     """One state of a workflow type's state machine."""
 
-    public_name_display = serializers.CharField(
-        source="get_public_name_display", read_only=True
+    public_status_name = serializers.CharField(
+        source="public_status.name", read_only=True
     )
 
     class Meta:
@@ -410,8 +428,8 @@ class StateSerializer(serializers.ModelSerializer):
             "public_id",
             "workflow_type",
             "name",
-            "public_name",
-            "public_name_display",
+            "public_status",
+            "public_status_name",
             "slug",
             "description",
             "is_initial",
@@ -420,7 +438,7 @@ class StateSerializer(serializers.ModelSerializer):
             "order",
             "color",
         ]
-        read_only_fields = ["public_id", "slug", "public_name_display"]
+        read_only_fields = ["public_id", "slug", "public_status_name"]
 
 
 class TransitionSerializer(serializers.ModelSerializer):

@@ -46,6 +46,7 @@ from .models import (
     GroupMembership,
     InternationalAgreement,
     InternationalResolution,
+    PublicStatus,
     Role,
     State,
     Transition,
@@ -76,6 +77,12 @@ from .services.permissions import (
 from .services.progress import machine_for
 
 
+def make_state(**kwargs):
+    """A ``State`` with a default public status, for these ad-hoc test machines."""
+    kwargs.setdefault("public_status", PublicStatus.objects.get(name="New"))
+    return State.objects.create(**kwargs)
+
+
 class WorkflowAuditingTests(TestCase):
     """
     Verifies both audit mechanisms are wired for workflow instances:
@@ -94,10 +101,8 @@ class WorkflowAuditingTests(TestCase):
             username="alice", email="alice@example.com", password="pw"
         )
         cls.wt = WorkflowType.objects.create(name="Test International Resolution")
-        cls.draft = State.objects.create(
-            workflow_type=cls.wt, name="Drafting", is_initial=True
-        )
-        cls.gazetted = State.objects.create(workflow_type=cls.wt, name="Gazetted")
+        cls.draft = make_state(workflow_type=cls.wt, name="Drafting", is_initial=True)
+        cls.gazetted = make_state(workflow_type=cls.wt, name="Gazetted")
         cls.submit = Transition.objects.create(
             workflow_type=cls.wt,
             name="Submit",
@@ -186,15 +191,11 @@ class WorkflowHierarchyTests(TestCase):
         )
         cls.other_type = WorkflowType.objects.create(name="Press Statement")
 
-        cls.report_state = State.objects.create(
-            workflow_type=cls.report_type, name="Draft"
-        )
-        cls.resolution_state = State.objects.create(
+        cls.report_state = make_state(workflow_type=cls.report_type, name="Draft")
+        cls.resolution_state = make_state(
             workflow_type=cls.resolution_type, name="Draft"
         )
-        cls.other_state = State.objects.create(
-            workflow_type=cls.other_type, name="Draft"
-        )
+        cls.other_state = make_state(workflow_type=cls.other_type, name="Draft")
 
     def _report(self, title="Delegation to the UN"):
         return DelegationReport.objects.create(
@@ -388,21 +389,23 @@ class SeededWorkflowDefinitionTests(TestCase):
         self.assertEqual(wt.transitions.count(), 20)
 
         # Every BRS §12 public status is reachable from the internal machine.
-        public_statuses = set(states.values_list("public_name", flat=True))
+        public_statuses = set(states.values_list("public_status__name", flat=True))
         self.assertTrue(
             {
-                "introduced",
-                "under_consideration",
-                "ncop",
-                "mediation",
-                "awaiting_assent",
-                "signed_into_law",
-                "constitutional_review",
+                "Introduced",
+                "Under Parliamentary Consideration",
+                "National Council of Provinces",
+                "Mediation / Reconsideration",
+                "Awaiting Presidential Assent",
+                "Signed into Law",
+                "Referred Back / Constitutional Review",
             }.issubset(public_statuses)
         )
         # The detailed committee stages stay distinct internally while all
         # publishing as the same simplified status.
-        internal_stages = states.filter(public_name="under_consideration")
+        internal_stages = states.filter(
+            public_status__name="Under Parliamentary Consideration"
+        )
         self.assertEqual(internal_stages.count(), 5)
 
     def test_bill_mainline_reaches_signed_into_law(self):
@@ -1053,7 +1056,7 @@ class ReferralTests(TestCase):
 
     def test_refer_is_gated_by_state_allows_referrals(self):
         wt = WorkflowType.objects.create(name="Test No Referral Type")
-        state = State.objects.create(
+        state = make_state(
             workflow_type=wt, name="Locked", is_initial=True, allows_referrals=False
         )
         resolution = InternationalResolution.objects.create(
@@ -1123,12 +1126,8 @@ class TransitionConditionTests(TestCase):
         User = get_user_model()
         cls.user = User.objects.create_user(username="conditions", password="pw")
         cls.wt = WorkflowType.objects.create(name="Test Condition Type")
-        cls.open_state = State.objects.create(
-            workflow_type=cls.wt, name="Open", is_initial=True
-        )
-        cls.done_state = State.objects.create(
-            workflow_type=cls.wt, name="Done", is_terminal=True
-        )
+        cls.open_state = make_state(workflow_type=cls.wt, name="Open", is_initial=True)
+        cls.done_state = make_state(workflow_type=cls.wt, name="Done", is_terminal=True)
         cls.finish = Transition.objects.create(
             workflow_type=cls.wt,
             name="Finish",
@@ -2545,9 +2544,7 @@ class ViewerGroupAccessTests(TestCase):
         )
         cls.wt = WorkflowType.objects.create(name="Test Viewer Type")
         cls.wt.viewer_groups.add(cls.viewer_group)
-        cls.state = State.objects.create(
-            workflow_type=cls.wt, name="Open", is_initial=True
-        )
+        cls.state = make_state(workflow_type=cls.wt, name="Open", is_initial=True)
 
     def _resolution(self, **overrides):
         data = {
@@ -2589,9 +2586,7 @@ class ViewerGroupAccessTests(TestCase):
 
     def test_type_without_viewer_groups_creates_no_access_rows(self):
         plain_type = WorkflowType.objects.create(name="Test Plain Type")
-        plain_state = State.objects.create(
-            workflow_type=plain_type, name="Open", is_initial=True
-        )
+        plain_state = make_state(workflow_type=plain_type, name="Open", is_initial=True)
         resolution = InternationalResolution.objects.create(
             workflow_type=plain_type,
             current_state=plain_state,
@@ -2642,7 +2637,7 @@ class ViewerGroupAccessTests(TestCase):
     def test_creation_materialises_primary_access_for_owner_group(self):
         owner_group = Group.objects.create(name="Owning Unit", group_type="division")
         wt = WorkflowType.objects.create(name="Test Owned Type", group=owner_group)
-        state = State.objects.create(workflow_type=wt, name="Open", is_initial=True)
+        state = make_state(workflow_type=wt, name="Open", is_initial=True)
         resolution = InternationalResolution.objects.create(
             workflow_type=wt,
             current_state=state,
@@ -2674,7 +2669,7 @@ class ViewerGroupAccessTests(TestCase):
         owner_group = Group.objects.create(name="Dual Role Unit", group_type="division")
         wt = WorkflowType.objects.create(name="Test Dual Type", group=owner_group)
         wt.viewer_groups.add(owner_group)
-        state = State.objects.create(workflow_type=wt, name="Open", is_initial=True)
+        state = make_state(workflow_type=wt, name="Open", is_initial=True)
         resolution = InternationalResolution.objects.create(
             workflow_type=wt,
             current_state=state,
@@ -2702,7 +2697,7 @@ class ViewerGroupAccessTests(TestCase):
         GroupMembership.objects.create(user=member, group=owner_group, role=owner_role)
         wt = WorkflowType.objects.create(name="Test Owned Edit Type", group=owner_group)
         wt.viewer_groups.add(self.viewer_group)
-        state = State.objects.create(workflow_type=wt, name="Open", is_initial=True)
+        state = make_state(workflow_type=wt, name="Open", is_initial=True)
         resolution = InternationalResolution.objects.create(
             workflow_type=wt,
             current_state=state,
@@ -2740,7 +2735,7 @@ class ViewerGroupAccessTests(TestCase):
             owner_can_transition=False,
             owner_can_delete=True,
         )
-        state = State.objects.create(workflow_type=wt, name="Open", is_initial=True)
+        state = make_state(workflow_type=wt, name="Open", is_initial=True)
         resolution = InternationalResolution.objects.create(
             workflow_type=wt,
             current_state=state,
@@ -2799,9 +2794,7 @@ class SyncTypeGroupAccessCommandTests(TestCase):
             name="Test Sync Type", group=cls.owner_group
         )
         cls.wt.viewer_groups.add(cls.viewer_group)
-        cls.state = State.objects.create(
-            workflow_type=cls.wt, name="Open", is_initial=True
-        )
+        cls.state = make_state(workflow_type=cls.wt, name="Open", is_initial=True)
         cls.resolution = InternationalResolution.objects.create(
             workflow_type=cls.wt,
             current_state=cls.state,
@@ -3014,9 +3007,7 @@ class AuditWorkflowAccessCommandTests(TestCase):
         cls.role = Role.objects.create(name="Audit Creator")
         cls.wt = WorkflowType.objects.create(name="Audit Type", group=cls.owner_group)
         cls.wt.create_roles.add(cls.role)
-        cls.state = State.objects.create(
-            workflow_type=cls.wt, name="Open", is_initial=True
-        )
+        cls.state = make_state(workflow_type=cls.wt, name="Open", is_initial=True)
         cls.owner = User.objects.create_user(username="audit-owner", password="pw")
         GroupMembership.objects.create(
             user=cls.owner, group=cls.owner_group, role=cls.role
@@ -3384,9 +3375,7 @@ class OwnerGroupEditGrantMigrationTests(TestCase):
             name="Migration Edit Type", group=self.owner_group
         )
         workflow_type.viewer_groups.add(self.viewer_group)
-        state = State.objects.create(
-            workflow_type=workflow_type, name="Open", is_initial=True
-        )
+        state = make_state(workflow_type=workflow_type, name="Open", is_initial=True)
         self.resolution = InternationalResolution.objects.create(
             workflow_type=workflow_type,
             current_state=state,
@@ -3443,9 +3432,7 @@ class OwnerGroupTransitionGrantMigrationTests(TestCase):
             name="Migration Transition Type", group=self.owner_group
         )
         workflow_type.viewer_groups.add(self.viewer_group)
-        state = State.objects.create(
-            workflow_type=workflow_type, name="Open", is_initial=True
-        )
+        state = make_state(workflow_type=workflow_type, name="Open", is_initial=True)
         self.resolution = InternationalResolution.objects.create(
             workflow_type=workflow_type,
             current_state=state,
@@ -3601,9 +3588,7 @@ class PermissionResolverTests(TestCase):
         GroupMembership.objects.create(user=cls.user, group=cls.group, role=cls.role)
 
         cls.wt = WorkflowType.objects.create(name="Resolver Test Type")
-        cls.state = State.objects.create(
-            workflow_type=cls.wt, name="Open", is_initial=True
-        )
+        cls.state = make_state(workflow_type=cls.wt, name="Open", is_initial=True)
         cls.resolution = InternationalResolution.objects.create(
             workflow_type=cls.wt,
             current_state=cls.state,

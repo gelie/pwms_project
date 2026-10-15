@@ -194,7 +194,7 @@ def dashboard(request):
             Counter(i.workflow_type.name for i in accessible), total
         ),
         "status_breakdown": _dashboard_breakdown(
-            Counter(i.current_state.get_public_name_display() for i in accessible),
+            Counter(i.current_state.public_status.name for i in accessible),
             total,
         ),
         "referral_rows": referral_rows[:DASHBOARD_ROWS],

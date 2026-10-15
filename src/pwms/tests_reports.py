@@ -42,6 +42,7 @@ from .models import (
     Group,
     InternationalAgreement,
     InternationalResolution,
+    PublicStatus,
     ReportShare,
     State,
     Transition,
@@ -91,13 +92,13 @@ class ReportFixtureMixin:
         cls.draft = State.objects.create(
             workflow_type=cls.report_type,
             name="Drafting",
-            public_name="in_progress",
+            public_status=PublicStatus.objects.get(name="In Progress"),
             is_initial=True,
         )
         cls.closed = State.objects.create(
             workflow_type=cls.report_type,
             name="Closed",
-            public_name="closed",
+            public_status=PublicStatus.objects.get(name="Closed"),
             is_terminal=True,
         )
         cls.submit = Transition.objects.create(
@@ -114,13 +115,13 @@ class ReportFixtureMixin:
         cls.res_draft = State.objects.create(
             workflow_type=cls.resolution_type,
             name="Captured",
-            public_name="new",
+            public_status=PublicStatus.objects.get(name="New"),
             is_initial=True,
         )
         cls.res_closed = State.objects.create(
             workflow_type=cls.resolution_type,
             name="Implemented",
-            public_name="implemented",
+            public_status=PublicStatus.objects.get(name="Implemented"),
             is_terminal=True,
         )
         cls.res_implement = Transition.objects.create(
@@ -1057,13 +1058,13 @@ class InstrumentFixtureMixin:
         cls.draft = State.objects.create(
             workflow_type=cls.wt,
             name="Drafting",
-            public_name="in_progress",
+            public_status=PublicStatus.objects.get(name="In Progress"),
             is_initial=True,
         )
         cls.closed = State.objects.create(
             workflow_type=cls.wt,
             name="Closed",
-            public_name="closed",
+            public_status=PublicStatus.objects.get(name="Closed"),
             is_terminal=True,
         )
         cls.submit = Transition.objects.create(

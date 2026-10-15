@@ -75,13 +75,14 @@ held by members of that group. The three international types belong to group 98
 General section). Creation roles are configured per environment; while
 `create_roles` is empty only superusers may create instances of that type.
 
-**Public status.** Every state carries a `public_name` — the simplified,
-citizen-facing status it maps to. The Bill machine uses the BRS §12 vocabulary
-(*Introduced*, *Under Parliamentary Consideration*, *National Council of
-Provinces*, *Mediation / Reconsideration*, *Awaiting Presidential Assent*,
-*Signed into Law*, *Referred Back / Constitutional Review*), so the detailed
-committee stages stay distinct internally while publishing as *Under
-Parliamentary Consideration*. `Bill.public_status` exposes the current value.
+**Public status.** Every state carries a `public_status` — a `PublicStatus`
+registry row holding the simplified, citizen-facing status it maps to. The Bill
+machine uses the BRS §12 vocabulary (*Introduced*, *Under Parliamentary
+Consideration*, *National Council of Provinces*, *Mediation / Reconsideration*,
+*Awaiting Presidential Assent*, *Signed into Law*, *Referred Back /
+Constitutional Review*), so the detailed committee stages stay distinct
+internally while publishing as *Under Parliamentary Consideration*.
+`Bill.public_status` exposes the current value.
 
 **Version integrity.** A bill's versions are preserved as `BillVersion` rows —
 newest first, never overwritten — distinguishing the introduced version,

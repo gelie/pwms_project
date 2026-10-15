@@ -39,6 +39,7 @@ from .models import (
     Group,
     GroupMembership,
     Notification,
+    PublicStatus,
     Role,
     State,
     Transition,
@@ -55,6 +56,13 @@ from .notifications import (
     referral_audience,
     stakeholders,
 )
+
+
+def make_state(**kwargs):
+    """A ``State`` with a default public status, for these ad-hoc test machines."""
+    kwargs.setdefault("public_status", PublicStatus.objects.get(name="New"))
+    return State.objects.create(**kwargs)
+
 
 #: The name django-background-tasks registers for the alert-email job.
 EMAIL_TASK_NAME = "pwms.tasks.deliver_notification_email"
@@ -115,12 +123,10 @@ class AlertFixture(TestCase):
         )
         cls.workflow_type.create_roles.add(cls.officer_role, cls.denied_role)
 
-        cls.draft = State.objects.create(
+        cls.draft = make_state(
             workflow_type=cls.workflow_type, name="Drafting", is_initial=True
         )
-        cls.review = State.objects.create(
-            workflow_type=cls.workflow_type, name="Under review"
-        )
+        cls.review = make_state(workflow_type=cls.workflow_type, name="Under review")
         cls.submit = Transition.objects.create(
             workflow_type=cls.workflow_type,
             name="Submit",

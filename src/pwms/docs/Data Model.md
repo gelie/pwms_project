@@ -203,12 +203,30 @@ flag the command only creates missing rows, so an administrator's edits are neve
 overwritten). Migrations `0037`, `0040` and `0041` are how the policy itself
 arrived: view + edit first, then transition, then the type fields that state it.
 
+### `PublicStatus(BaseModel)`
+
+The shared, citizen-facing status vocabulary a state publishes as (BRS §12) —
+*Introduced*, *Under Parliamentary Consideration*, *National Council of
+Provinces*, etc. A registry table rather than a code enum, so the vocabulary and
+its presentation are data: an administrator curates the label, `description`,
+`order` and `color`, and every workflow type shares the one set. Seeded from the
+former `State.public_name` choices by migration `0056_publicstatus`.
+
+| Field | Notes |
+| --- | --- |
+| `name`, `slug` | identity (both unique; the slug is the stable key) |
+| `description` | citizen-facing explanation of what the status means |
+| `order`, `color` | display on public-facing views |
+
+Reverse relation: `states`.
+
 ### `State`
 
 | Field | Notes |
 | --- | --- |
 | `workflow_type` (FK, related `states`) | owning machine |
 | `name`, `slug`, `description` | identity (slug unique per type) |
+| `public_status` (FK `PublicStatus`, related `states`) | the simplified, citizen-facing status this state publishes as (BRS §12); several internal states may share one |
 | `is_initial`, `is_terminal`, `allows_referrals` | behaviour flags |
 | `order`, `color` | display |
 
@@ -342,7 +360,7 @@ Helpers: `is_overdue` / `overdue_identifier` implement BR12 ("Due date expired
 
 A Parliamentary bill tracked through its legislative lifecycle (BRS *Online Bill
 Tracking*). Internal procedural states map to the seven high-level public
-statuses through `State.public_name`, exposed on the model as `public_status`.
+statuses through `State.public_status`, exposed on the model as `public_status`.
 
 | Field | Notes |
 | --- | --- |
@@ -357,7 +375,7 @@ statuses through `State.public_name`, exposed on the model as `public_status`.
 | `bill_document_url` | SharePoint link to the bill document (BRS §7B) |
 | `notes` | sub-events / explanatory notes under the current stage (BRS §15A) |
 
-Properties: `public_status` returns the current state's `public_name` display
+Properties: `public_status` returns the current state's `PublicStatus` name
 value (empty string when the bill has no state); `current_version` is **derived**
 from the version history (the row flagged `is_current`, else the most recent
 version, else `""`) rather than typed — see `BillVersion` below. `is_overdue` /
@@ -486,7 +504,7 @@ natural key) the seeded BRS machines; migration
 | **Delegation Report** | Awaiting PGIR approval *(initial)* → Submitted for tabling → Tabled and referred to Committee → Closed – House approved *(terminal)* |
 | **International Resolution** | Captured *(initial)* → Assigned → In Progress → Implemented → Closed *(terminal)*; `parent_type` = Delegation Report |
 | **International Agreement** | Submitted for tabling → Agreement Tabled – referred to Committee *(initial)* → Committee considering and processing → Committee submitted report for tabling → House adopted – referred to Department → Closed – House approved *(terminal)* |
-| **Bill** | Introduced *(initial)* → Referred to Committee → Public Participation → Committee Deliberation → Committee Report → House Debate and Voting → NCOP Consideration → Awaiting Presidential Assent → Signed into Law *(terminal)*, with mediation, presidential referral-back and withdrawal branches; each state carries a BRS §12 public status in `public_name` |
+| **Bill** | Introduced *(initial)* → Referred to Committee → Public Participation → Committee Deliberation → Committee Report → House Debate and Voting → NCOP Consideration → Awaiting Presidential Assent → Signed into Law *(terminal)*, with mediation, presidential referral-back and withdrawal branches; each state carries a BRS §12 public status through `State.public_status` |
 
 Each step has a single onward transition; roles are **not** attached to these
 transitions (assign `allowed_roles` / `notify_roles` per environment). The Bill

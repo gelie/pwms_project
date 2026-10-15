@@ -109,6 +109,7 @@ keys never appear in a URL. Lists are paginated (`count` / `next` / `previous` /
 | Roles | `/api/roles/` | `/api/roles/{public_id}/` |
 | Memberships | `/api/memberships/` | `/api/memberships/{public_id}/` |
 | Workflow types | `/api/workflow-types/` | `/api/workflow-types/{public_id}/` |
+| Public statuses | `/api/public-statuses/` | `/api/public-statuses/{public_id}/` |
 | States | `/api/states/` | `/api/states/{public_id}/` |
 | Transitions | `/api/transitions/` | `/api/transitions/{public_id}/` |
 | Delegation reports | `/api/delegation-reports/` | `/api/delegation-reports/{public_id}/` |

@@ -112,7 +112,7 @@ def _common_facts(instance, children):
         _field("Title", instance.title),
         _field("Workflow type", instance.workflow_type.name),
         _field("Current state", state.name),
-        _field("Public status", state.get_public_name_display()),
+        _field("Public status", state.public_status.name),
         _field("Priority", instance.get_priority_display()),
         _field("Owner", _name(instance.owner)),
         _field("Assigned to", _name(instance.assigned_to) or "—"),

@@ -26,6 +26,7 @@ from .models import (
     Meeting,
     MeetingAttendance,
     Notification,
+    PublicStatus,
     ReportShare,
     Role,
     SharepointDrive,
@@ -211,6 +212,7 @@ class StateInline(admin.TabularInline):
     extra = 0
     fields = (
         "name",
+        "public_status",
         "order",
         "is_initial",
         "is_terminal",
@@ -317,15 +319,25 @@ class StateAdmin(admin.ModelAdmin):
     list_display = (
         "workflow_type",
         "name",
+        "public_status",
         "order",
         "is_initial",
         "is_terminal",
         "color",
     )
-    list_filter = ("workflow_type", "is_initial", "is_terminal")
+    list_filter = ("workflow_type", "public_status", "is_initial", "is_terminal")
     search_fields = ("name", "workflow_type__name")
-    autocomplete_fields = ("workflow_type",)
+    autocomplete_fields = ("workflow_type", "public_status")
     ordering = ("workflow_type", "order", "name")
+
+
+@admin.register(PublicStatus)
+class PublicStatusAdmin(admin.ModelAdmin):
+    """Admin for the shared public-status vocabulary (BRS §12)."""
+
+    list_display = ("name", "slug", "order", "color")
+    search_fields = ("name", "slug", "description")
+    ordering = ("order", "name")
 
 
 class TransitionConditionInline(admin.TabularInline):

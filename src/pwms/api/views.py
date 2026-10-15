@@ -28,6 +28,7 @@ from ..models import (
     InternationalResolution,
     Meeting,
     MeetingAttendance,
+    PublicStatus,
     Role,
     State,
     Transition,
@@ -55,6 +56,7 @@ from .serializers import (
     MeetingAttendanceSerializer,
     MeetingSerializer,
     MembershipSerializer,
+    PublicStatusSerializer,
     RoleSerializer,
     StateSerializer,
     TransitionLogSerializer,
@@ -106,6 +108,7 @@ def api_root(request):
             ("roles", "role"),
             ("memberships", "membership"),
             ("workflow-types", "workflow-type"),
+            ("public-statuses", "public-status"),
             ("states", "state"),
             ("transitions", "transition"),
             ("delegation-reports", "delegation-report"),
@@ -561,7 +564,7 @@ def _parse_uuid(name, value):
     """Validate a UUID query parameter, or raise a 400 field error."""
     try:
         return UUID(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         raise ValidationError({name: "Expected a UUID."})
 
 
@@ -667,10 +670,19 @@ class WorkflowTypeViewSet(ResourceViewSet):
 class StateViewSet(ResourceViewSet):
     """The states making up each workflow type's machine."""
 
-    queryset = State.objects.select_related("workflow_type").all()
+    queryset = State.objects.select_related("workflow_type", "public_status").all()
     serializer_class = StateSerializer
     search_fields = ["name", "slug", "description"]
     ordering_fields = ["workflow_type", "order", "name"]
+
+
+class PublicStatusViewSet(ResourceViewSet):
+    """The shared public-status vocabulary a state publishes as (BRS §12)."""
+
+    queryset = PublicStatus.objects.all()
+    serializer_class = PublicStatusSerializer
+    search_fields = ["name", "slug", "description"]
+    ordering_fields = ["order", "name"]
 
 
 class TransitionViewSet(ResourceViewSet):

@@ -19,11 +19,18 @@ from .models import (
     GroupMembership,
     InternationalAgreement,
     InternationalResolution,
+    PublicStatus,
     Role,
     State,
     Transition,
     WorkflowType,
 )
+
+
+def make_state(**kwargs):
+    """A ``State`` with a default public status, for these ad-hoc test machines."""
+    kwargs.setdefault("public_status", PublicStatus.objects.get(name="New"))
+    return State.objects.create(**kwargs)
 
 
 class AuditHistoryApiTests(TestCase):
@@ -36,7 +43,7 @@ class AuditHistoryApiTests(TestCase):
             username="alice", email="alice@example.com", password="pw"
         )
         wt = WorkflowType.objects.create(name="Test International Resolution")
-        draft = State.objects.create(workflow_type=wt, name="Drafting", is_initial=True)
+        draft = make_state(workflow_type=wt, name="Drafting", is_initial=True)
         cls.res = InternationalResolution.objects.create(
             workflow_type=wt,
             current_state=draft,
@@ -180,9 +187,7 @@ class AgreementAuditHistoryApiTests(TestCase):
             username="agreement-api", email="agreement-api@example.com", password="pw"
         )
         wt = WorkflowType.objects.create(name="Test International Agreement")
-        tabled = State.objects.create(
-            workflow_type=wt, name="Agreement Tabled", is_initial=True
-        )
+        tabled = make_state(workflow_type=wt, name="Agreement Tabled", is_initial=True)
         cls.agreement = InternationalAgreement.objects.create(
             workflow_type=wt,
             current_state=tabled,
@@ -243,9 +248,7 @@ class BillAuditHistoryApiTests(TestCase):
             username="bill-api", email="bill-api@example.com", password="pw"
         )
         wt = WorkflowType.objects.create(name="Test Bill Type")
-        introduced = State.objects.create(
-            workflow_type=wt, name="Introduced", is_initial=True
-        )
+        introduced = make_state(workflow_type=wt, name="Introduced", is_initial=True)
         cls.bill = Bill.objects.create(
             workflow_type=wt,
             current_state=introduced,
@@ -521,10 +524,10 @@ class WorkflowResourceApiTests(TestCase):
             name="Bill Machine", group=cls.group
         )
         cls.workflow_type.create_roles.add(cls.role)
-        cls.draft = State.objects.create(
+        cls.draft = make_state(
             workflow_type=cls.workflow_type, name="Draft", is_initial=True
         )
-        cls.assent = State.objects.create(
+        cls.assent = make_state(
             workflow_type=cls.workflow_type, name="Assent", is_terminal=True
         )
         cls.send = Transition.objects.create(

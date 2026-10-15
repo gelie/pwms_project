@@ -1188,44 +1188,64 @@ class WorkflowStatePermission(BaseModel):
         return f"{self.group_access.group.name} - {self.state.name}: [{perm_str}]"
 
 
+class PublicStatus(BaseModel):
+    """
+    The simplified, citizen-facing status a state publishes as (BRS §12).
+
+    One row per status ("Introduced", "Under Parliamentary Consideration", …),
+    shared by every workflow type, so the public vocabulary and how it is
+    presented (label, description, order, colour) are data an administrator can
+    curate rather than a code enum. A :class:`State` maps to exactly one through
+    ``public_status``: several internal committee stages can publish under one
+    status while staying distinct internally.
+    """
+
+    name = models.CharField(max_length=100, unique=True)
+    slug = AutoSlugField(populate_from="name", unique=True, editable=False)
+    description = models.TextField(
+        blank=True,
+        help_text="Citizen-facing explanation of what this status means.",
+    )
+    order = models.IntegerField(
+        default=0, help_text="Display order on public-facing views."
+    )
+    color = models.CharField(
+        max_length=7, default="#5b8f22", help_text="Hex color code"
+    )
+
+    class Meta:
+        ordering = ["order", "name"]
+        verbose_name = "public status"
+        verbose_name_plural = "public statuses"
+
+    def __str__(self):
+        return self.name
+
+
 class State(BaseModel):
     """
     Workflow states: Draft, Submitted, Under Review, Approved, Rejected, etc.
 
-    ``public_name`` is the simplified, citizen-facing status a state maps to.
-    Internal machines keep their detailed procedural states while the public
-    view collapses them onto this vocabulary — the Online Bill Tracking BRS, for
-    example, tracks each committee stage separately but publishes all of them
-    as *Under Parliamentary Consideration*.
+    ``public_status`` is the simplified, citizen-facing status a state maps to
+    (:class:`PublicStatus`). Internal machines keep their detailed procedural
+    states while the public view collapses them onto that vocabulary — the
+    Online Bill Tracking BRS, for example, tracks each committee stage
+    separately but publishes all of them as *Under Parliamentary
+    Consideration*.
     """
-
-    PUBLIC_NAME_CHOICES = [
-        # Generic buckets, shared by every workflow type.
-        ("new", _("New")),
-        ("scheduled", _("Scheduled")),
-        ("in_progress", _("In Progress")),
-        ("postponed", _("Postponed")),
-        ("referred", _("Referred")),
-        ("withdrawn", _("Withdrawn")),
-        ("on_hold", _("On Hold")),
-        ("cancelled", _("Cancelled")),
-        ("implemented", _("Implemented")),
-        ("closed", _("Closed")),
-        # High-level public statuses proposed for bill tracking (BRS §12).
-        ("introduced", _("Introduced")),
-        ("under_consideration", _("Under Parliamentary Consideration")),
-        ("ncop", _("National Council of Provinces")),
-        ("mediation", _("Mediation / Reconsideration")),
-        ("awaiting_assent", _("Awaiting Presidential Assent")),
-        ("signed_into_law", _("Signed into Law")),
-        ("constitutional_review", _("Referred Back / Constitutional Review")),
-    ]
 
     workflow_type = models.ForeignKey(
         WorkflowType, on_delete=models.CASCADE, related_name="states"
     )
     name = models.CharField(max_length=100)
-    public_name = models.CharField(max_length=50, choices=PUBLIC_NAME_CHOICES)
+    public_status = models.ForeignKey(
+        PublicStatus,
+        on_delete=models.PROTECT,
+        related_name="states",
+        help_text=(
+            "Simplified citizen-facing status this state publishes as (BRS §12)."
+        ),
+    )
     slug = AutoSlugField(
         populate_from="name",
         unique=False,
@@ -2655,10 +2675,9 @@ class Bill(AbstractLegislativeWorkflow):
     *Online Bill Tracking*).
 
     The BRS separates detailed internal procedural tracking from a simplified
-    public view: every internal state maps to one of the seven high-level
-    public statuses through ``State.public_name`` (BRS §12), so the same record
-    can be published at ``public_status`` without exposing internal
-    granularity.
+    public view: every internal state maps to one of the high-level public
+    statuses through ``State.public_status`` (BRS §12), so the same record can
+    be published at ``public_status`` without exposing internal granularity.
 
     System behaviour:
 
@@ -2794,7 +2813,7 @@ class Bill(AbstractLegislativeWorkflow):
         """
         if self.current_state_id is None:
             return ""
-        return self.current_state.get_public_name_display()
+        return self.current_state.public_status.name
 
     @property
     def current_version(self):
