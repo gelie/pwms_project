@@ -188,7 +188,7 @@ class User(AbstractUser, BaseModel):
         return self.get_full_name() or self.get_username()
 
     def get_absolute_url(self):
-        return reverse("bungeni:user_detail", kwargs={"pk": self.pk})
+        return reverse("pwms:user_detail", kwargs={"pk": self.pk})
 
     def clean(self):
         if self.date_of_birth and self.date_of_birth > datetime.date.today():

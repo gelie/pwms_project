@@ -226,6 +226,16 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_ROOT = BASE_DIR / "media"
 MEDIA_URL = "/media/"
 
+# Directory listings (the all-groups and people browse pages).
+#
+# ``DIRECTORY_PAGE_SIZE`` is the size those listings open at; it is env-driven so
+# a deployment can tune it without a code change. ``DIRECTORY_PAGE_SIZES`` are the
+# sizes the "Per page" control offers, and a reader may pick any of them for a
+# single request; the configured default is always offered too, so a non-default
+# ``DIRECTORY_PAGE_SIZE`` still shows up (and stays selected).
+DIRECTORY_PAGE_SIZE = config("DIRECTORY_PAGE_SIZE", default=25, cast=int)
+DIRECTORY_PAGE_SIZES = (10, 25, 50, 100)
+
 # Date/time pickers (django-flatpickr).
 # https://django-flatpickr.readthedocs.io/
 # The flatpickr build and the package's own glue script are vendored under

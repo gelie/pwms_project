@@ -3,7 +3,7 @@
 {% block content %}
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <h1 class="mb-0">All Groups</h1>
-    <span class="text-muted">{{ groups|length }} group{{ groups|length|pluralize }}</span>
+    <span class="text-muted">{{ page_obj.paginator.count }} group{{ page_obj.paginator.count|pluralize }}</span>
   </div>
   <form class="row g-2 align-items-end mb-3" method="get" role="search">
     <div class="col-12 col-lg-4">
@@ -22,6 +22,17 @@
         {% for value, label in type_choices %}
           <option value="{{ value }}"
                   {% if value == request.GET.type %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-6 col-lg-2">
+      <label class="form-label" for="group-page-size">Per page</label>
+      <select class="form-select"
+              id="group-page-size"
+              name="per_page"
+              onchange="this.form.submit()">
+        {% for size in page_sizes %}
+          <option value="{{ size }}" {% if size == per_page %}selected{% endif %}>{{ size }}</option>
         {% endfor %}
       </select>
     </div>
@@ -44,7 +55,7 @@
         </tr>
       </thead>
       <tbody>
-        {% for group in groups %}
+        {% for group in page_obj %}
           <tr>
             <td>
               <a class="group-name"
@@ -78,4 +89,5 @@
       </tbody>
     </table>
   </div>
+  {% include "pwms/partials/pagination.html" with aria_label="Group pages" %}
 {% endblock content %}

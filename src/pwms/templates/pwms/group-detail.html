@@ -119,7 +119,9 @@
       <tbody>
         {% for membership in memberships %}
           <tr>
-            <td>{{ membership.user.get_full_name|default:membership.user.get_username }}</td>
+            <td>
+              <a href="{% url "pwms:user_detail" membership.user.pk %}">{{ membership.user.get_full_name|default:membership.user.get_username }}</a>
+            </td>
             <td><span class="badge text-bg-secondary">{{ membership.role.name }}</span></td>
             <td>{{ membership.start_date|date:"Y-m-d" }}</td>
           </tr>

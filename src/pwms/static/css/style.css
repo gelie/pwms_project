@@ -9,9 +9,11 @@ body {
 }
 
 .site-header {
-    z-index: 99;
-    /* Was hard-coded #fefefe, which kept the whole header a bright slab above an
-       otherwise dark page (the middle band only tints whatever is behind it). */
+    /* No z-index here on purpose. ``body`` is a flex column, so a non-auto
+       z-index would make this a stacking context and cap every child — including
+       the search results panel, which has to overflow *over* the sticky navbar
+       (#desktop-nav, z-index 999). Left at ``auto``, the panel's own z-index wins
+       while the navbar still paints above the header itself. */
     background: light-dark(#fefefe, #121212);
 }
 
@@ -66,6 +68,166 @@ body {
     border-radius: 3px;
     font-size: 14px;
     width: 300px;
+}
+
+/* -- Global search: the header box and its results panel ------------------- */
+.global-search {
+    width: 300px;
+}
+
+/* The input fills the wrapper, so the panel can align to the box's right edge. */
+.search-wrapper .global-search input {
+    width: 100%;
+}
+
+.global-search-spinner {
+    position: absolute;
+    top: 50%;
+    right: 0.6rem;
+    transform: translateY(-50%);
+    color: #6c757d;
+    pointer-events: none;
+}
+
+.global-search-results {
+    position: absolute;
+    top: calc(100% + 0.25rem);
+    right: 0;
+    /* Above the sticky navbar (#desktop-nav is z-index 999). */
+    z-index: 1060;
+    width: min(92vw, 460px);
+    max-height: min(70vh, 30rem);
+    overflow-y: auto;
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.5rem;
+    box-shadow: 0 0.75rem 1.75rem rgba(0, 0, 0, 0.18);
+}
+
+.global-search-panel {
+    padding: 0.4rem;
+}
+
+.global-search-group + .global-search-group {
+    margin-top: 0.35rem;
+    padding-top: 0.35rem;
+    border-top: 1px solid var(--bs-border-color-translucent);
+}
+
+.global-search-group-title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0.25rem 0.5rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--bs-secondary-color);
+}
+
+.global-search-group-title svg {
+    flex: none;
+}
+
+.global-search-count {
+    margin-left: auto;
+    font-size: 0.68rem;
+    font-weight: 600;
+    color: var(--bs-secondary-color);
+}
+
+.global-search-hit {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.4rem 0.5rem;
+    border-radius: 0.375rem;
+    color: inherit;
+    text-decoration: none;
+}
+
+.global-search-hit:hover,
+.global-search-hit:focus {
+    background: var(--bs-tertiary-bg);
+    color: inherit;
+}
+
+.global-search-hit-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+}
+
+.global-search-hit-title {
+    font-size: 0.9rem;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.global-search-hit-meta {
+    font-size: 0.75rem;
+    color: var(--bs-secondary-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.global-search-hit-badge {
+    flex: none;
+    padding: 0.1rem 0.4rem;
+    border-radius: 0.25rem;
+    font-family: var(--bs-font-monospace);
+    font-size: 0.68rem;
+    background: var(--bs-tertiary-bg);
+    color: var(--bs-secondary-color);
+}
+
+.global-search-empty {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.85rem 0.75rem;
+    font-size: 0.85rem;
+    color: var(--bs-secondary-color);
+}
+
+.global-search-more {
+    padding: 0.5rem;
+    border-top: 1px solid var(--bs-border-color-translucent);
+    text-align: center;
+    font-size: 0.8rem;
+}
+
+/* #top-nav paints every link white; the panel sits on the body background, so
+   its rows and its "see all" link take the theme's own colours instead. */
+#top-nav .global-search-results a {
+    color: var(--bs-body-color);
+}
+
+#top-nav .global-search-results .global-search-more a {
+    color: var(--bs-link-color);
+}
+
+/* -- User profile ---------------------------------------------------------- */
+.user-profile-avatar {
+    width: 4rem;
+    height: 4rem;
+    flex: none;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+.user-profile-avatar--placeholder {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bs-secondary-bg);
+    color: var(--bs-secondary-color);
 }
 
 #middle-top-content {

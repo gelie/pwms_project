@@ -11,13 +11,15 @@ from auditlog.models import LogEntry
 from django.apps import apps
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import AnonymousUser
 from django.contrib.contenttypes.models import ContentType
 from django.core import mail
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.management import call_command
 from django.core.management.base import CommandError
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, connection, transaction
 from django.test import SimpleTestCase, TestCase
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
 from django_flatpickr.widgets import DatePickerInput, DateTimePickerInput
@@ -75,6 +77,7 @@ from .services.permissions import (
     resolve,
 )
 from .services.progress import machine_for
+from .services.search import DEFAULT_PER_CATEGORY, search_site
 
 
 def make_state(**kwargs):
@@ -4533,3 +4536,428 @@ class BuildUatWorkbookCommandTests(TestCase):
                 form="does-not-exist.html",
                 stdout=StringIO(),
             )
+
+
+class GlobalSearchTests(TestCase):
+    """The header's site-wide search: fragment vs page, scope and ranking."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.user = User.objects.create_user(username="searcher", password="pw")
+        cls.other = User.objects.create_user(username="outsider", password="pw")
+        # No group on the type: only the owner of a record may view it, which is
+        # what lets a test prove another user's record never surfaces.
+        cls.wt = WorkflowType.objects.create(name="Search Test Reports")
+        cls.state = make_state(workflow_type=cls.wt, name="Drafting", is_initial=True)
+        cls.report = DelegationReport.objects.create(
+            workflow_type=cls.wt,
+            title="Climate finance delegation",
+            current_state=cls.state,
+            owner=cls.user,
+            engagement_name="COP climate summit",
+        )
+        cls.other_report = DelegationReport.objects.create(
+            workflow_type=cls.wt,
+            title="Climate finance delegation (someone else's)",
+            current_state=cls.state,
+            owner=cls.other,
+        )
+        cls.group = Group.objects.create(
+            name="Climate Change Committee", group_type="committee"
+        )
+
+    def setUp(self):
+        self.client.force_login(self.user)
+
+    def _search(self, query, **extra):
+        return self.client.get(reverse("pwms:global_search"), {"q": query}, **extra)
+
+    def test_htmx_request_returns_the_results_fragment(self):
+        """HTMX gets the fragment the header swaps in, not a whole page."""
+        response = self._search("climate", HTTP_HX_REQUEST="true")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "pwms/partials/global_search_results.html")
+        self.assertContains(response, "Climate finance delegation")
+
+    def test_plain_request_returns_a_full_results_page(self):
+        """Without JavaScript the same URL serves a linkable results page."""
+        response = self._search("climate")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "pwms/search-results.html")
+        self.assertContains(response, "Climate finance delegation")
+
+    def test_results_are_grouped_by_the_register_they_came_from(self):
+        response = self._search("climate", HTTP_HX_REQUEST="true")
+
+        self.assertContains(response, "Delegation reports")
+        self.assertContains(response, "Groups")
+        self.assertContains(response, self.group.name)
+
+    def test_a_record_the_reader_cannot_view_is_never_returned(self):
+        response = self._search("climate", HTTP_HX_REQUEST="true")
+
+        self.assertContains(response, "Climate finance delegation")
+        self.assertNotContains(response, "someone else's")
+
+    def test_an_empty_query_returns_nothing(self):
+        response = self._search("   ", HTTP_HX_REQUEST="true")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "global-search-panel")
+
+    def test_an_empty_query_renders_no_categories(self):
+        response = self._search("")
+
+        self.assertTemplateUsed(response, "pwms/search-results.html")
+        self.assertEqual(response.context["total"], 0)
+
+    def test_title_matches_rank_before_body_mentions(self):
+        """A title hit leads; a passing mention in the body trails it."""
+        DelegationReport.objects.create(
+            workflow_type=self.wt,
+            title="Budget review",
+            current_state=self.state,
+            owner=self.user,
+        )
+        DelegationReport.objects.create(
+            workflow_type=self.wt,
+            title="Annual planning",
+            description="The budget review cycle explained",
+            current_state=self.state,
+            owner=self.user,
+        )
+
+        categories = search_site(self.user, "budget")
+        reports = next(c for c in categories if c.key == "delegation-reports")
+
+        titles = [hit.title for hit in reports.hits]
+        self.assertEqual(titles[0], "Budget review")
+        self.assertIn("Annual planning", titles)
+
+    def test_each_category_is_capped(self):
+        for index in range(DEFAULT_PER_CATEGORY + 2):
+            DelegationReport.objects.create(
+                workflow_type=self.wt,
+                title=f"Capstone report {index}",
+                current_state=self.state,
+                owner=self.user,
+            )
+
+        categories = search_site(self.user, "capstone")
+        reports = next(c for c in categories if c.key == "delegation-reports")
+
+        self.assertEqual(len(reports.hits), DEFAULT_PER_CATEGORY)
+
+    def test_an_anonymous_user_finds_nothing(self):
+        self.assertEqual(search_site(AnonymousUser(), "climate"), [])
+
+
+class GlobalSearchHeaderTests(TestCase):
+    """The search box is part of the site chrome, but only once signed in."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = get_user_model().objects.create_user(
+            username="viewer", password="pw"
+        )
+
+    def test_the_box_appears_for_a_signed_in_reader(self):
+        self.client.force_login(self.user)
+        search_url = reverse("pwms:global_search")
+
+        response = self.client.get(reverse("pwms:home"))
+
+        self.assertContains(response, 'id="global-search-input"')
+        self.assertContains(response, f'hx-get="{search_url}"')
+
+    def test_the_box_is_absent_for_an_anonymous_visitor(self):
+        # The home page is reachable anonymously, so its header renders too.
+        response = self.client.get(reverse("pwms:home"))
+
+        self.assertNotContains(response, 'id="global-search-input"')
+
+
+class UserProfileTests(TestCase):
+    """The person profile page, its privacy boundary, and the links into it."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.person = User.objects.create_user(
+            username="tmokoena",
+            password="pw",
+            first_name="Thandeka",
+            last_name="Mokoena",
+            positiondesc="Committee Secretary",
+            party_affiliation="ANC",
+            constituency="Gauteng",
+            bio="Long-serving committee secretary.",
+            email="tmokoena@parliament.gov.za",
+            is_staff_member=True,
+        )
+        # Identity / personnel fields the profile page must never surface.
+        cls.person.set_idno("9001015800083")
+        cls.person.date_of_birth = date(1990, 1, 1)
+        cls.person.gender = "female"
+        cls.person.employee_id = "EMP-42"
+        cls.person.save()
+        cls.group = Group.objects.create(
+            name="Portfolio Committee on Health", group_type="portfolio_committee"
+        )
+        cls.role = Role.objects.create(name="Committee Secretary")
+        GroupMembership.objects.create(user=cls.person, group=cls.group, role=cls.role)
+
+    def setUp(self):
+        self.client.force_login(self.person)
+
+    def _url(self):
+        return reverse("pwms:user_detail", kwargs={"pk": self.person.pk})
+
+    def test_the_profile_shows_the_person_and_their_groups(self):
+        response = self.client.get(self._url())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "pwms/user-detail.html")
+        self.assertContains(response, "Thandeka Mokoena")
+        self.assertContains(response, "Committee Secretary")
+        self.assertContains(response, self.group.name)
+        self.assertContains(response, "ANC")
+
+    def test_the_profile_omits_identity_and_personnel_fields(self):
+        response = self.client.get(self._url())
+        body = response.content.decode()
+
+        # The ID number, date of birth, gender and employee id stay off the page.
+        self.assertNotIn("9001015800083", body)
+        self.assertNotIn("1990-01-01", body)
+        self.assertNotIn("EMP-42", body)
+        self.assertNotIn("female", body)
+
+    def test_get_absolute_url_points_at_the_profile(self):
+        self.assertEqual(self.person.get_absolute_url(), self._url())
+
+    def test_a_group_page_links_its_members_to_their_profiles(self):
+        response = self.client.get(
+            reverse("pwms:group_detail", kwargs={"pk": self.group.pk})
+        )
+
+        self.assertContains(response, self._url())
+
+
+class PersonSearchTests(TestCase):
+    """People are a search source, found by name or username."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.viewer = User.objects.create_user(username="viewer", password="pw")
+        cls.person = User.objects.create_user(
+            username="tmokoena",
+            password="pw",
+            first_name="Thandeka",
+            last_name="Mokoena",
+            positiondesc="Committee Secretary",
+        )
+        cls.departed = User.objects.create_user(
+            username="gone",
+            password="pw",
+            first_name="Departed",
+            last_name="Zulu",
+            is_active=False,
+        )
+
+    def setUp(self):
+        self.client.force_login(self.viewer)
+
+    def _search(self, query):
+        return self.client.get(
+            reverse("pwms:global_search"), {"q": query}, HTTP_HX_REQUEST="true"
+        )
+
+    def test_a_person_is_found_and_linked_to_their_profile(self):
+        response = self._search("mokoena")
+
+        self.assertContains(response, "People")
+        self.assertContains(response, "Thandeka Mokoena")
+        self.assertContains(
+            response, reverse("pwms:user_detail", kwargs={"pk": self.person.pk})
+        )
+
+    def test_a_person_is_found_by_username(self):
+        response = self._search("tmokoena")
+
+        self.assertContains(response, "Thandeka Mokoena")
+
+    def test_inactive_people_are_not_offered(self):
+        response = self._search("Zulu")
+
+        self.assertNotContains(response, "Departed Zulu")
+
+
+class PeopleDirectoryTests(TestCase):
+    """The browsable people directory and its filters."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.viewer = User.objects.create_user(
+            username="directory-viewer", password="pw"
+        )
+        cls.mp = User.objects.create_user(
+            username="mp-one",
+            password="pw",
+            first_name="Amara",
+            last_name="Nkosi",
+            positiondesc="Member of Parliament",
+            is_mp=True,
+        )
+        cls.staff = User.objects.create_user(
+            username="staff-one",
+            password="pw",
+            first_name="Sipho",
+            last_name="Dlamini",
+            positiondesc="Committee Secretary",
+            is_staff_member=True,
+        )
+        cls.former = User.objects.create_user(
+            username="former-one",
+            password="pw",
+            first_name="Fikile",
+            last_name="Botha",
+            is_staff_member=True,
+            is_active=False,
+        )
+
+    def setUp(self):
+        self.client.force_login(self.viewer)
+
+    def _get(self, **params):
+        return self.client.get(reverse("pwms:people"), params)
+
+    def test_the_directory_lists_current_people_with_profile_links(self):
+        response = self._get()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "pwms/all-people.html")
+        self.assertContains(response, "Amara Nkosi")
+        self.assertContains(response, "Sipho Dlamini")
+        self.assertContains(
+            response, reverse("pwms:user_detail", kwargs={"pk": self.mp.pk})
+        )
+
+    def test_the_directory_hides_former_staff_by_default_but_can_show_them(self):
+        self.assertNotContains(self._get(), "Fikile Botha")
+        self.assertContains(self._get(status="former"), "Fikile Botha")
+        self.assertContains(self._get(status="all"), "Fikile Botha")
+
+    def test_the_directory_filters_by_free_text(self):
+        response = self._get(q="committee secretary")
+
+        self.assertContains(response, "Sipho Dlamini")
+        self.assertNotContains(response, "Amara Nkosi")
+
+    def test_the_directory_filters_by_kind(self):
+        response = self._get(kind="mp")
+
+        self.assertContains(response, "Amara Nkosi")
+        self.assertNotContains(response, "Sipho Dlamini")
+
+    def test_the_directory_is_linked_from_the_nav(self):
+        response = self.client.get(reverse("pwms:home"))
+
+        self.assertContains(response, reverse("pwms:people"))
+
+
+class DirectoryPaginationTests(TestCase):
+    """Both directory listings paginate, and their page links keep the filters."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.viewer = get_user_model().objects.create_user(
+            username="pager", password="pw"
+        )
+        # Enough rows to spill onto a second page of DIRECTORY_PAGE_SIZE (25).
+        for index in range(30):
+            Group.objects.create(
+                name=f"Paging Group {index:02d}", group_type="committee"
+            )
+            get_user_model().objects.create(
+                username=f"paging-user-{index:02d}",
+                first_name="Paging",
+                last_name=f"User{index:02d}",
+            )
+
+    def setUp(self):
+        self.client.force_login(self.viewer)
+
+    def test_the_group_list_paginates(self):
+        # Scoped by the free-text filter: the test database also carries the
+        # groups the data migrations seed, so the unfiltered order is not ours.
+        first = self.client.get(reverse("pwms:all_groups"), {"q": "Paging"})
+        second = self.client.get(reverse("pwms:all_groups"), {"q": "Paging", "page": 2})
+
+        self.assertEqual(len(first.context["page_obj"]), 25)
+        self.assertTrue(first.context["page_obj"].has_next())
+        self.assertContains(first, "Paging Group 24")
+        self.assertNotContains(first, "Paging Group 29")
+        self.assertContains(second, "Paging Group 29")
+
+    def test_the_people_list_paginates(self):
+        first = self.client.get(reverse("pwms:people"), {"q": "Paging"})
+        second = self.client.get(reverse("pwms:people"), {"q": "Paging", "page": 2})
+
+        self.assertEqual(len(first.context["page_obj"]), 25)
+        self.assertTrue(first.context["page_obj"].has_next())
+        self.assertContains(first, "Paging User23")
+        self.assertNotContains(first, "Paging User29")
+        self.assertContains(second, "Paging User29")
+
+    def test_page_links_keep_the_active_filters(self):
+        response = self.client.get(
+            reverse("pwms:all_groups"), {"q": "Paging", "type": "committee"}
+        )
+
+        self.assertEqual(response.context["base_query"], "q=Paging&type=committee")
+        self.assertContains(response, "?q=Paging&amp;type=committee&amp;page=2")
+
+    def test_an_unusable_page_falls_back_instead_of_erroring(self):
+        last = self.client.get(reverse("pwms:all_groups"), {"q": "Paging", "page": 999})
+        self.assertEqual(last.context["page_obj"].number, 2)
+
+        first = self.client.get(
+            reverse("pwms:all_groups"), {"q": "Paging", "page": "not-a-number"}
+        )
+        self.assertEqual(first.context["page_obj"].number, 1)
+
+    def test_a_per_page_size_is_honoured(self):
+        response = self.client.get(
+            reverse("pwms:people"), {"q": "Paging", "per_page": 10}
+        )
+
+        self.assertEqual(len(response.context["page_obj"]), 10)
+        self.assertEqual(response.context["page_obj"].paginator.num_pages, 3)
+
+    def test_an_unlisted_per_page_size_falls_back_to_the_default(self):
+        response = self.client.get(
+            reverse("pwms:people"), {"q": "Paging", "per_page": 9999}
+        )
+
+        self.assertEqual(len(response.context["page_obj"]), 25)
+
+    def test_the_page_size_is_configurable(self):
+        with self.settings(DIRECTORY_PAGE_SIZE=5, DIRECTORY_PAGE_SIZES=(5, 50)):
+            response = self.client.get(reverse("pwms:people"), {"q": "Paging"})
+
+        self.assertEqual(len(response.context["page_obj"]), 5)
+        # The default is folded into the offered sizes even when it is not listed.
+        self.assertEqual(response.context["page_sizes"], [5, 50])
+
+    def test_the_listing_is_paged_in_the_database(self):
+        with CaptureQueriesContext(connection) as captured:
+            self.client.get(reverse("pwms:people"), {"q": "Paging", "per_page": 10})
+
+        sql = " ".join(query["sql"] for query in captured.captured_queries)
+        self.assertIn("LIMIT 10", sql.upper())

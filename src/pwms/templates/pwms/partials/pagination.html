@@ -1,0 +1,54 @@
+{% comment %}
+Bootstrap pagination for a browsable list.
+
+Expects ``page_obj`` (a Django Page), ``page_range`` (the page numbers to offer,
+computed in the view because templates cannot pass arguments to a method) and
+``base_query`` (the page's current filters, urlencoded, with no ``page``
+parameter). Page links append ``page=N`` to ``base_query``, so moving page keeps
+the filters. ``aria_label`` is optional. Renders nothing for a single page.
+{% endcomment %}
+{% if page_obj.paginator.num_pages > 1 %}
+  <nav aria-label="{{ aria_label|default:"Pagination" }}">
+    <ul class="pagination justify-content-center">
+      {% if page_obj.has_previous %}
+        <li class="page-item">
+          <a class="page-link"
+             href="?{% if base_query %}{{ base_query }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Previous</a>
+        </li>
+      {% else %}
+        <li class="page-item disabled">
+          <span class="page-link">Previous</span>
+        </li>
+      {% endif %}
+      {% for number in page_range %}
+        {% if number == page_obj.paginator.ELLIPSIS %}
+          <li class="page-item disabled">
+            <span class="page-link">{{ number }}</span>
+          </li>
+        {% elif number == page_obj.number %}
+          <li class="page-item active" aria-current="page">
+            <span class="page-link">{{ number }}</span>
+          </li>
+        {% else %}
+          <li class="page-item">
+            <a class="page-link"
+               href="?{% if base_query %}{{ base_query }}&amp;{% endif %}page={{ number }}">{{ number }}</a>
+          </li>
+        {% endif %}
+      {% endfor %}
+      {% if page_obj.has_next %}
+        <li class="page-item">
+          <a class="page-link"
+             href="?{% if base_query %}{{ base_query }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Next</a>
+        </li>
+      {% else %}
+        <li class="page-item disabled">
+          <span class="page-link">Next</span>
+        </li>
+      {% endif %}
+    </ul>
+  </nav>
+  <p class="text-center text-muted small">
+    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+  </p>
+{% endif %}

@@ -241,6 +241,8 @@ urlpatterns = [
     ),
     # User search
     path("user-search/", views.user_search, name="user_search"),
+    # Site-wide search: the header box's HTMX endpoint and its no-JS results page.
+    path("search/", views.global_search, name="global_search"),
     # Referrals: raise one on a workflow instance, then answer or withdraw it.
     # The add route names its target with content_type/object_id (see
     # pwms.views._workflow_target); the other two act on a single referral row.
@@ -322,6 +324,10 @@ urlpatterns = [
     path("groups/mine/", views.my_groups, name="my_groups"),
     path("groups/all/", views.all_groups, name="all_groups"),
     path("groups/<int:pk>/", views.group_detail, name="group_detail"),
+    # People: the browsable directory, and one person's profile (linked from
+    # search and group pages).
+    path("people/", views.people, name="people"),
+    path("users/<int:pk>/", views.user_detail, name="user_detail"),
     # Alerts: the bell menu, its page, and the read state of both. "read-all" is
     # declared before the <uuid> route so the literal always wins the match.
     path("alerts/", views.notifications, name="notifications"),

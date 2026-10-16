@@ -1,0 +1,51 @@
+{% comment %}
+Categorized global-search results.
+
+Shared by the header's HTMX panel (swapped into #global-search-results) and the
+standalone /search/ page. An empty query renders nothing at all, which is how
+clearing the box empties the panel.
+
+Each category is a heading — icon, label, count — over a list of links. The
+badge on the right is the record's own identifier (bill number, meeting
+reference, group short name), so the reader can tell two similarly titled rows
+apart at a glance. ``standalone`` (set by the full results page) drops the
+"see all results" link, which would otherwise point at the page it is on.
+{% endcomment %}
+{% if query %}
+  <div class="global-search-panel">
+    {% if categories %}
+      {% for category in categories %}
+        <section class="global-search-group">
+          <h2 class="global-search-group-title">
+            {% lucide category.icon size=14 %}
+            <span>{{ category.label }}</span>
+            <span class="global-search-count">{{ category.count }}</span>
+          </h2>
+          <ul class="list-unstyled mb-0">
+            {% for hit in category.hits %}
+              <li>
+                <a class="global-search-hit" href="{{ hit.url }}">
+                  <span class="global-search-hit-body">
+                    <span class="global-search-hit-title">{{ hit.title }}</span>
+                    {% if hit.meta %}<span class="global-search-hit-meta">{{ hit.meta }}</span>{% endif %}
+                  </span>
+                  {% if hit.badge %}<span class="global-search-hit-badge">{{ hit.badge }}</span>{% endif %}
+                </a>
+              </li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endfor %}
+      {% if not standalone %}
+        <div class="global-search-more">
+          <a href="{% url "pwms:global_search" %}?q={{ query|urlencode }}">See all results for “{{ query }}”</a>
+        </div>
+      {% endif %}
+    {% else %}
+      <div class="global-search-empty">
+        {% lucide "search" size=16 %}
+        <span>No results for “{{ query }}”.</span>
+      </div>
+    {% endif %}
+  </div>
+{% endif %}
