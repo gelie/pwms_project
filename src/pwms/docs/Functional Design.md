@@ -75,13 +75,14 @@ held by members of that group. The three international types belong to group 98
 General section). Creation roles are configured per environment; while
 `create_roles` is empty only superusers may create instances of that type.
 
-**Public status.** Every state carries a `public_name` — the simplified,
-citizen-facing status it maps to. The Bill machine uses the BRS §12 vocabulary
-(*Introduced*, *Under Parliamentary Consideration*, *National Council of
-Provinces*, *Mediation / Reconsideration*, *Awaiting Presidential Assent*,
-*Signed into Law*, *Referred Back / Constitutional Review*), so the detailed
-committee stages stay distinct internally while publishing as *Under
-Parliamentary Consideration*. `Bill.public_status` exposes the current value.
+**Public status.** Every state carries a `public_status` — a `PublicStatus`
+registry row holding the simplified, citizen-facing status it maps to. The Bill
+machine uses the BRS §12 vocabulary (*Introduced*, *Under Parliamentary
+Consideration*, *National Council of Provinces*, *Mediation / Reconsideration*,
+*Awaiting Presidential Assent*, *Signed into Law*, *Referred Back /
+Constitutional Review*), so the detailed committee stages stay distinct
+internally while publishing as *Under Parliamentary Consideration*.
+`Bill.public_status` exposes the current value.
 
 **Version integrity.** A bill's versions are preserved as `BillVersion` rows —
 newest first, never overwritten — distinguishing the introduced version,
@@ -113,8 +114,8 @@ Definitions are reusable: they are exported/imported as JSON
 ### 3.2 Instances
 
 A workflow instance (today: **DelegationReport**, **InternationalResolution** —
-which may nest inside a report — **InternationalAgreement** and **Bill**) is
-created with:
+which may nest inside a report — **InternationalAgreement**, **Bill** and
+**Meeting**, the Events workflow) is created with:
 
 - a workflow **type** and its **initial state**;
 - an **owner** and optionally an **assignee**;
@@ -152,9 +153,12 @@ Taking a transition needs the **`transition`** capability rather than `edit` (se
 [§4](#4-access-control)), and the reader lands on the record's Timeline afterwards.
 
 Alongside state changes, the instance keeps an **append-only event timeline**
-(`WorkflowEvent`, e.g. *Report document attached*, *ATC update published*) via
-`record_event()`. Events are the evidence guards check — they are never edited;
-corrections are new compensating events.
+(`WorkflowEvent`, e.g. *Report document attached*, *ATC update published*).
+Events are the evidence guards check — they are never edited; corrections are new
+compensating events. They are appended by the system (`record_event()`; documents
+and referrals raise their own) and by hand from the record's **Events** tab
+([§9](#9-web-ui--api)), and they appear in the record's **Timeline** alongside the
+state changes and the CRUD trail.
 
 ### 3.4 Referrals
 
@@ -164,10 +168,8 @@ referral carries who referred it, when, its response deadline, status
 (`open`/`responded`/`recalled`/`expired`/`cancelled`) and the response document.
 Lifecycle actions (`respond()` / `recall()` / `mark_expired()`) automatically
 emit `referral-*` events, so every referral action lands on the instance's
-append-only `WorkflowEvent` trail (the *Timeline* tab merges only
-`TransitionLog` and auditlog rows for the instance itself, so domain events
-surface with the other `WorkflowEvent` rows rather than in the Timeline). An
-open referral can block a transition via the `no_open_referrals` condition.
+append-only `WorkflowEvent` trail — and therefore in its **Timeline**. An open
+referral can block a transition via the `no_open_referrals` condition.
 
 The **Referrals tab** on every detail page drives the lifecycle without the
 admin: *Add Referral* opens a searchable committee picker plus a response
@@ -359,10 +361,11 @@ and exposed through the API:
 Consumers:
 
 - Each instance's **detail page** renders the history in its **Timeline** tab:
-  state changes and the field-level CRUD audit merged into one newest-first table
-  ([§9](#9-web-ui--api), `pwms.services.history`). Domain events
-  (`WorkflowEvent`) surface where they belong — e.g. document events as the
-  Attachments section's “Document activity”.
+  state changes, domain events (`WorkflowEvent`) and the field-level CRUD audit
+  merged into one newest-first table ([§9](#9-web-ui--api),
+  `pwms.services.history`). The **Events** tab lists the domain events and offers
+  the recorder, and document events still also show in the Attachments section's
+  “Document activity”.
 - The **REST API** exposes the auditlog CRUD trail for each instrument
   (`GET …/audit/`, see [API Reference](./API%20Reference.md)).
 
@@ -454,8 +457,8 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
   the navbar *Workflows* dropdown. List pages carry a free-text filter.
 - **Detail pages are tabbed**: one header plus a tab per concern — Overview (key
   information, ownership, description, type-specific facts and system
-  information), **Progress**, Related, Notes, **Timeline**, Attachments, Diagram
-  and Referrals. Every instrument fills the same shared shell
+  information), **Progress**, Related, Notes, Events, **Timeline**, Attachments,
+  Diagram and Referrals. Every instrument fills the same shared shell
   (`templates/pwms/workflow-detail.html`) and inherits the same panels from it,
   and `static/js/workflow-tabs.js` mirrors the open tab into the URL hash so a
   refresh — or a shared link — returns to it. The panels are the shell's own, so
@@ -478,6 +481,9 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
   - **Notes** — a per-instrument note log (`WorkflowNote`) whose entries can be
     edited inline, plus the type's own `notes` text and progress fields where it
     has them.
+  - **Events** — the record's append-only domain-event log (`WorkflowEvent`) and
+    the form that records one by hand ([§3.3](#33-transitioning)). Add-only:
+    there is no edit or delete, since a correction is a new compensating event.
   - **Referrals** — raise / respond / withdraw ([§3.4](#34-referrals)) and the
     transitions available from the current state, each row linking into the same
     confirmation page for a reader who may take one.
@@ -491,9 +497,10 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
   (`pwms.services.progress`). The dashboard's work lists (*Assigned to you*,
   *Due soon*, *Overdue*, *Awaiting your committees*) repeat the same measure as a
   thin bar on each row, so where a record stands is visible without opening it.
-- **Unified Timeline**: `TransitionLog` state changes and the auditlog CRUD trail
-  (create / update / delete, with the fields that changed) are merged into one
-  newest-first table rather than the two separate tables the page used to carry.
+- **Unified Timeline**: `TransitionLog` state changes, `WorkflowEvent` domain
+  events and the auditlog CRUD trail (create / update / delete, with the fields
+  that changed) are merged into one newest-first table rather than the separate
+  tables the page used to carry.
 - **Diagram**: the Diagram tab embeds the type's generated state machine
   (`GET /pwms/instruments/{public_id}/diagram.svg`), and names the command that
   renders it when the image is absent.
@@ -505,6 +512,11 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
   ([§6](#6-alerts-notifications--email)).
 - **Reports**: the builder, exports, per-instrument documents and the read-only
   shared view ([§8](#8-reporting-exports--sharing)).
+- **Meetings calendar**: the Events workflow's main page (`/pwms/meetings/`) is a
+  colour-coded **month / week / day** calendar of the meetings the reader may
+  view, with HTMX navigation, type / *mine* / free-text filters, a configurable
+  week start, a *Next up* strip, a JSON feed, and **CSV/XLSX import and export**
+  ([Meetings Import & Export](./Meetings%20Import%20%26%20Export.md)).
 - **Django Admin** for administration (users, groups, roles, memberships,
   workflow definitions, the SharePoint mirror, and notifications — read-only).
 - **REST API (DRF)** with token authentication and resource endpoints (users,
@@ -527,7 +539,8 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
 - **Notification / deadline jobs** — referral deadline reminders and expiry
   (email delivered) and the scheduled report-share drain; delegate expirations,
   overdue alerts and event-status jobs still to be repointed to `pwms.models`.
-- **Workflow tooling** — state import, workflow-type import/export, diagrams.
+- **Workflow tooling** — state import, workflow-type import/export, the meeting
+  CSV/XLSX import (`import_meetings`), diagrams.
 - **Maintenance** — validate memberships, group-access backfill, bill versions,
   show hierarchy.
 

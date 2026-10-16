@@ -24,6 +24,7 @@ from .forms import (
     DelegationReportForm,
     InternationalAgreementForm,
     InternationalResolutionForm,
+    MeetingForm,
 )
 from .models import WorkflowType
 
@@ -36,6 +37,7 @@ CREATE_VIEWS = (
     (InternationalResolutionForm, "pwms:international_resolution_create"),
     (InternationalAgreementForm, "pwms:international_agreement_create"),
     (BillForm, "pwms:bill_create"),
+    (MeetingForm, "pwms:meeting_create"),
 )
 
 #: Workflow type **name** -> URL name of the view that creates an instance of it.

@@ -203,12 +203,30 @@ flag the command only creates missing rows, so an administrator's edits are neve
 overwritten). Migrations `0037`, `0040` and `0041` are how the policy itself
 arrived: view + edit first, then transition, then the type fields that state it.
 
+### `PublicStatus(BaseModel)`
+
+The shared, citizen-facing status vocabulary a state publishes as (BRS §12) —
+*Introduced*, *Under Parliamentary Consideration*, *National Council of
+Provinces*, etc. A registry table rather than a code enum, so the vocabulary and
+its presentation are data: an administrator curates the label, `description`,
+`order` and `color`, and every workflow type shares the one set. Seeded from the
+former `State.public_name` choices by migration `0056_publicstatus`.
+
+| Field | Notes |
+| --- | --- |
+| `name`, `slug` | identity (both unique; the slug is the stable key) |
+| `description` | citizen-facing explanation of what the status means |
+| `order`, `color` | display on public-facing views |
+
+Reverse relation: `states`.
+
 ### `State`
 
 | Field | Notes |
 | --- | --- |
 | `workflow_type` (FK, related `states`) | owning machine |
 | `name`, `slug`, `description` | identity (slug unique per type) |
+| `public_status` (FK `PublicStatus`, related `states`) | the simplified, citizen-facing status this state publishes as (BRS §12); several internal states may share one |
 | `is_initial`, `is_terminal`, `allows_referrals` | behaviour flags |
 | `order`, `color` | display |
 
@@ -342,7 +360,7 @@ Helpers: `is_overdue` / `overdue_identifier` implement BR12 ("Due date expired
 
 A Parliamentary bill tracked through its legislative lifecycle (BRS *Online Bill
 Tracking*). Internal procedural states map to the seven high-level public
-statuses through `State.public_name`, exposed on the model as `public_status`.
+statuses through `State.public_status`, exposed on the model as `public_status`.
 
 | Field | Notes |
 | --- | --- |
@@ -357,7 +375,7 @@ statuses through `State.public_name`, exposed on the model as `public_status`.
 | `bill_document_url` | SharePoint link to the bill document (BRS §7B) |
 | `notes` | sub-events / explanatory notes under the current stage (BRS §15A) |
 
-Properties: `public_status` returns the current state's `public_name` display
+Properties: `public_status` returns the current state's `PublicStatus` name
 value (empty string when the bill has no state); `current_version` is **derived**
 from the version history (the row flagged `is_current`, else the most recent
 version, else `""`) rather than typed — see `BillVersion` below. `is_overdue` /
@@ -390,6 +408,64 @@ and `recorded_by` come from the request, and an edit keeps the row's identity
 and original recorder while `auditlog` captures the change. They are also
 editable through the Django admin (an inline on the bill page plus a standalone
 `BillVersionAdmin`) and bulk-loaded with `import_bill_versions`.
+
+### `Meeting(AbstractLegislativeWorkflow)` and `MeetingAttendance(BaseModel)`
+
+`pwms/models/meetings.py`. The **Events workflow**: a parliamentary sitting —
+House Plenary, committee, administration and other meeting types — as a concrete
+workflow instrument, so it inherits the machine (states/transitions), per-instance
+RBAC, attachments, domain events and the `auditlog` trail. The lifecycle is
+*Scheduled → In Progress → Completed*, with *Postponed* and *Cancelled* branches
+(both requiring a comment).
+
+`Meeting` adds the scheduling detail — `meeting_type`, `reference_number`,
+`start_datetime` / `end_datetime`, `all_day`, the on-premises `venue` (a room in
+a `Building`), the free-text `off_site_venue` / `off_site_address` for an external
+venue, `attendance_mode` (on the premises / hybrid / virtual) and `meeting_link`,
+the convener `host_group`, `chaired_by`, `secretary`, `quorum`, `agenda_summary`,
+`minutes_status` / `minutes_filed_at` — plus helpers (`calendar_state`,
+`attendance_counts()`, `venue_display`, `color`, `agenda_attachments`,
+`minutes_attachments`, `for_member`). The agenda and minutes are ordinary
+`Attachment` rows (types `agenda` / `minutes`).
+
+`Meeting.color` maps `meeting_type` to the calendar's per-type colour from the
+`MEETING_TYPE_COLORS` palette (a type without an entry falls back to
+`DEFAULT_MEETING_COLOR`), which is what the calendar draws and the CSV/XLSX
+export carries — see [Meetings Import & Export](./Meetings%20Import%20%26%20Export.md).
+
+On-premises venues come from the **`Building` / `Venue`** reference data
+(`pwms/models/venues.py`): a meeting *selects* a `Venue` (one room in one
+`Building`), while an off-premises meeting instead carries its venue as free text
+(`off_site_venue` / `off_site_address`). `venue_display` renders whichever is set,
+and `attendance_mode` records how the meeting is attended — on the premises
+(`is_on_premise`), hybrid (`is_hybrid`) or virtual (`is_virtual`, no physical
+room). Buildings and venues are curated in the admin and seeded by migration
+`0054`.
+
+`agenda_summary` holds the agenda the meeting's editor types in a
+dependency-free WYSIWYG editor (`static/js/rich-text.js`); because that value is
+attacker-controlled HTML, it is stored as written and **sanitised on output** by
+`pwms.utils.richtext` (an allowlist built on `html.parser`), which `Meeting.agenda_html`
+and the PDF/HTML instrument document both go through. It is never rendered raw.
+
+`MeetingAttendance` is one person's place at one meeting: `user` (or a
+`guest_name` / `guest_email` for a public hearing), `capacity`, `is_required`,
+`rsvp_status`, `attendance_status`, and the audit fields `recorded_at` /
+`recorded_by` / `recorded_ip`. `respond()` records an RSVP and `record()` records
+attendance during or after the sitting, appending a ``meeting-attendance-recorded``
+`WorkflowEvent`; the row itself is registered with `auditlog`. A unique
+constraint keeps one place per account per meeting (guests exempt).
+
+Each row also carries a `source` — `host_group` (generated from the meeting's
+hosting group) or `invitee` (added by hand: a PWMS user outside the hosting
+group, or a guest with no account). That split is what lets the register be
+rebuilt without disturbing the invitees: `Meeting.regenerate_attendance()`
+re-syncs only the generated rows to the hosting group's active members (adds
+joiners, removes leavers, skips anyone already on the register) and leaves every
+invitee and its RSVP/recorded attendance untouched, recording when it ran in
+`Meeting.register_generated_at`. The register is generated on creation (web and
+API) and whenever the hosting group changes; the panel's **Regenerate** button
+runs it on demand.
 
 ### `DelegationParticipant(BaseModel)`
 
@@ -428,7 +504,7 @@ natural key) the seeded BRS machines; migration
 | **Delegation Report** | Awaiting PGIR approval *(initial)* → Submitted for tabling → Tabled and referred to Committee → Closed – House approved *(terminal)* |
 | **International Resolution** | Captured *(initial)* → Assigned → In Progress → Implemented → Closed *(terminal)*; `parent_type` = Delegation Report |
 | **International Agreement** | Submitted for tabling → Agreement Tabled – referred to Committee *(initial)* → Committee considering and processing → Committee submitted report for tabling → House adopted – referred to Department → Closed – House approved *(terminal)* |
-| **Bill** | Introduced *(initial)* → Referred to Committee → Public Participation → Committee Deliberation → Committee Report → House Debate and Voting → NCOP Consideration → Awaiting Presidential Assent → Signed into Law *(terminal)*, with mediation, presidential referral-back and withdrawal branches; each state carries a BRS §12 public status in `public_name` |
+| **Bill** | Introduced *(initial)* → Referred to Committee → Public Participation → Committee Deliberation → Committee Report → House Debate and Voting → NCOP Consideration → Awaiting Presidential Assent → Signed into Law *(terminal)*, with mediation, presidential referral-back and withdrawal branches; each state carries a BRS §12 public status through `State.public_status` |
 
 Each step has a single onward transition; roles are **not** attached to these
 transitions (assign `allowed_roles` / `notify_roles` per environment). The Bill
@@ -480,10 +556,8 @@ Lifecycle helpers `respond()`, `recall()`, `mark_expired()` and creation emit
 `referral-created` / `referral-responded` / `referral-recalled` /
 `referral-expired` events automatically (`save()` detects create/status
 changes), so every referral action lands on the instance's append-only
-`WorkflowEvent` trail. (The *Timeline* tab merges only `TransitionLog` and the
-auditlog CRUD rows for the instance's own content type, so these domain events
-surface with the other `WorkflowEvent` rows rather than in the Timeline — see
-[§5 of the Functional Design](./Functional%20Design.md#5-auditing--history).)
+`WorkflowEvent` trail — and so onto the instance's **Timeline** — see
+[§5 of the Functional Design](./Functional%20Design.md#5-auditing--history).
 
 A referral also **carries the referred group's access** to the record: view and
 edit while a referral to it is open, then view once every referral has closed. (It
@@ -625,8 +699,8 @@ Unique `(group_access, state)`.
 
 ### `TransitionLog` (plain `models.Model`, not `BaseModel`)
 
-Domain event log for workflow progression — one table serves every subclass via
-a GFK.
+State-change log for workflow progression — one table serves every subclass via a
+GFK.
 
 | Field | Notes |
 | --- | --- |
@@ -644,7 +718,10 @@ Indexed on `(content_type, object_id, -timestamp)`.
 attached", "ATC update published", "referral answered") as opposed to
 `TransitionLog`, which records *state changes*. Events are evidence, not state:
 rows are immutable (``save()`` refuses updates; corrections are compensating
-events), so the timeline stays trustworthy (BR08).
+events), so the timeline stays trustworthy (BR08). They are appended by the
+system (`record_event()`) and by hand from a record's **Events** tab, and the
+record's **Timeline** merges them with the `TransitionLog` state changes and the
+auditlog CRUD trail (`pwms.services.history`).
 
 | `EventType` field | Notes |
 | --- | --- |

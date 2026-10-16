@@ -93,8 +93,13 @@ reports 104 findings (27 auto-fixable), `views.py` 2 643 lines,
       mail already does HTML + text. Low effort, visible.
 - [ ] **Markdown → HTML rendering for note fields** — `markdown` is a declared
       dependency but unused.
-- [ ] **Calendar view** — the legacy `update_event_statuses` calendar concept was
-      dropped; meetings/sessions would be a new model.
+- [x] **Calendar view / meetings (Events workflow)** — shipped as a `Meeting`
+      workflow instrument: a colour-coded calendar dashboard (month / week / day)
+      at `/pwms/meetings/`, agenda / minutes as documents, an auditable attendance
+      register, status and document alerts, CSV/XLSX import & export, and REST
+      endpoints (list/detail, "my meetings by membership", attendance, minutes).
+      The legacy `update_event_statuses` command (which imported the removed
+      `workflows.models.Event`) is superseded by it and can be retired.
 - [ ] **Motions and Questions instruments** — named as "planned", not started.
 - [ ] **Web UI gaps** — Share / Comment / Manage are RBAC-gated but still
       admin-side (the API exposes view/edit/delete and the workflow actions, not

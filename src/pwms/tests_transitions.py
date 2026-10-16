@@ -18,12 +18,19 @@ from .models import (
     Group,
     GroupMembership,
     InternationalResolution,
+    PublicStatus,
     Role,
     State,
     Transition,
     TransitionCondition,
     WorkflowType,
 )
+
+
+def make_state(**kwargs):
+    """A ``State`` with a default public status, for these ad-hoc test machines."""
+    kwargs.setdefault("public_status", PublicStatus.objects.get(name="New"))
+    return State.objects.create(**kwargs)
 
 
 class StatusTransitionTests(TestCase):
@@ -64,13 +71,11 @@ class StatusTransitionTests(TestCase):
             name="Status Transition Type", group=cls.group
         )
         cls.workflow_type.viewer_groups.add(cls.viewer_group)
-        cls.open_state = State.objects.create(
+        cls.open_state = make_state(
             workflow_type=cls.workflow_type, name="Open", is_initial=True
         )
-        cls.assigned = State.objects.create(
-            workflow_type=cls.workflow_type, name="Assigned"
-        )
-        cls.closed = State.objects.create(
+        cls.assigned = make_state(workflow_type=cls.workflow_type, name="Assigned")
+        cls.closed = make_state(
             workflow_type=cls.workflow_type, name="Closed", is_terminal=True
         )
         cls.assign = Transition.objects.create(
@@ -228,10 +233,10 @@ class StatusTransitionTests(TestCase):
 
     def test_a_transition_from_another_workflow_type_is_a_404(self):
         other_type = WorkflowType.objects.create(name="Other Status Type")
-        other_start = State.objects.create(
+        other_start = make_state(
             workflow_type=other_type, name="Start", is_initial=True
         )
-        other_end = State.objects.create(workflow_type=other_type, name="End")
+        other_end = make_state(workflow_type=other_type, name="End")
         foreign = Transition.objects.create(
             workflow_type=other_type,
             name="Elsewhere",

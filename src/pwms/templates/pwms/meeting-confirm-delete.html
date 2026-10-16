@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Delete {{ meeting.title }}{% endblock title %}
+{% block content %}
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:workflows" %}">Workflows</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:meetings" %}">Meetings</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:meeting_detail" meeting.public_id %}">{{ meeting.title }}</a>
+      </li>
+      <li class="breadcrumb-item active" aria-current="page">Delete</li>
+    </ol>
+  </nav>
+  <h1 class="mb-3">Delete Meeting</h1>
+  <div class="alert alert-warning" role="alert">
+    This action cannot be undone. The attendance register, documents, referrals
+    and audit entries attached to this meeting will be removed with it.
+  </div>
+  <p>
+    Are you sure you want to delete
+    <strong>{{ meeting.title }}{% if meeting.reference_number %} ({{ meeting.reference_number }}){% endif %}</strong>?
+  </p>
+  <form method="post">
+    {% csrf_token %}
+    <div class="d-flex flex-wrap gap-2">
+      <button class="btn btn-danger" type="submit">Yes, delete this meeting</button>
+      <a class="btn btn-secondary"
+         href="{% url "pwms:meeting_detail" meeting.public_id %}">Cancel</a>
+    </div>
+  </form>
+{% endblock content %}

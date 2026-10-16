@@ -51,6 +51,12 @@ class Notification(BaseModel):
         ("referral-recalled", _("Referral recalled")),
         ("referral-expired", _("Referral expired")),
         ("referral-deadline", _("Referral deadline reminder")),
+        # Meetings (the Events workflow).
+        ("meeting-created", _("Meeting created")),
+        ("meeting-status", _("Meeting status changed")),
+        ("meeting-document", _("Meeting document changed")),
+        ("meeting-attendance", _("Meeting attendance recorded")),
+        ("meeting-minutes", _("Meeting minutes filed")),
     ]
 
     recipient = models.ForeignKey(

@@ -1,0 +1,58 @@
+{% comment %}
+  The calendar body, rendered inside ``#meeting-calendar-region`` on the meetings
+  page (which the page's HTMX navigation swaps in place) and also standalone by
+  ``pwms:meeting_calendar``. It picks the month grid or the week/day time axis
+  from ``view`` and carries the period navigation and the colour legend so they
+  refresh with the grid.
+
+  Context (see ``pwms.views._meeting_calendar_context``): view, period_label,
+  prev_url, next_url, today_url, legend, meeting_count, can_create_meeting.
+{% endcomment %}
+<div id="meeting-calendar" class="meeting-calendar">
+  <div class="meeting-calendar__nav">
+    <div class="meeting-calendar__nav-left">
+      <a class="btn btn-sm btn-outline-secondary"
+         href="{{ prev_url }}"
+         hx-get="{{ prev_url }}"
+         hx-target="#meeting-calendar-region"
+         hx-select="#meeting-calendar-region"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         aria-label="Previous period">{% lucide "chevron-left" size=16 %}</a>
+      <h2 class="meeting-calendar__period">
+        {{ period_label }}
+        <span class="badge badge-muted">{{ meeting_count }}</span>
+      </h2>
+      <a class="btn btn-sm btn-outline-secondary"
+         href="{{ next_url }}"
+         hx-get="{{ next_url }}"
+         hx-target="#meeting-calendar-region"
+         hx-select="#meeting-calendar-region"
+         hx-swap="outerHTML"
+         hx-push-url="true"
+         aria-label="Next period">{% lucide "chevron-right" size=16 %}</a>
+      <a class="btn btn-sm btn-outline-secondary"
+         href="{{ today_url }}"
+         hx-get="{{ today_url }}"
+         hx-target="#meeting-calendar-region"
+         hx-select="#meeting-calendar-region"
+         hx-swap="outerHTML"
+         hx-push-url="true">Today</a>
+    </div>
+    {% if legend %}
+      <ul class="meeting-legend" aria-label="Meeting types shown">
+        {% for item in legend %}
+          <li class="meeting-legend__item">
+            <span class="meeting-legend__dot" style="--event-color: {{ item.color }}" aria-hidden="true"></span>{{ item.label }}
+          </li>
+        {% endfor %}
+      </ul>
+    {% endif %}
+  </div>
+
+  {% if view == "month" %}
+    {% include "pwms/partials/meetings/calendar_month.html" %}
+  {% else %}
+    {% include "pwms/partials/meetings/calendar_time.html" %}
+  {% endif %}
+</div>

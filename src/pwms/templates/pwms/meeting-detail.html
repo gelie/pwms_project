@@ -1,0 +1,112 @@
+{% extends "pwms/workflow-detail.html" %}
+{% block title %}{{ meeting.title }}{% endblock title %}
+
+{% block breadcrumb %}
+  <li class="breadcrumb-item">
+    <a href="{% url "pwms:meetings" %}">Meetings</a>
+  </li>
+  <li class="breadcrumb-item active" aria-current="page">{{ meeting.title|truncatechars:40 }}</li>
+{% endblock breadcrumb %}
+
+{% block subtitle %}
+  {{ meeting.get_meeting_type_display }}
+  {% if meeting.reference_number %}· {{ meeting.reference_number }}{% endif %}
+  · {{ meeting.start_datetime|date:"d M Y H:i" }}
+{% endblock subtitle %}
+
+{% block badges %}
+  <span class="badge badge-muted">{{ meeting.get_meeting_type_display }}</span>
+  {% if not meeting.is_on_premise %}<span class="badge text-bg-info">{{ meeting.get_attendance_mode_display }}</span>{% endif %}
+{% endblock badges %}
+
+{% block actions %}
+  {% include "pwms/partials/document_actions.html" with object=meeting %}
+  {% include "pwms/partials/status_transitions.html" with object=meeting %}
+  {% include "pwms/partials/workflow_actions.html" with object=meeting edit_url="pwms:meeting_update" delete_url="pwms:meeting_delete" %}
+{% endblock actions %}
+
+{% block overview_key %}
+  <div class="workflow-fact">
+    <dt>Starts</dt>
+    <dd>{{ meeting.start_datetime|date:"D d M Y H:i"|default:"—" }}</dd>
+  </div>
+  <div class="workflow-fact">
+    <dt>Ends</dt>
+    <dd>
+      {% if meeting.all_day %}All day{% else %}{{ meeting.end_datetime|date:"D d M Y H:i"|default:"—" }}{% endif %}
+    </dd>
+  </div>
+  <div class="workflow-fact">
+    <dt>Venue</dt>
+    <dd>{{ meeting.venue_display|default:"—" }}</dd>
+  </div>
+  <div class="workflow-fact">
+    <dt>Attendance</dt>
+    <dd>{{ meeting.get_attendance_mode_display }}</dd>
+  </div>
+  <div class="workflow-fact">
+    <dt>Convener</dt>
+    <dd>{{ meeting.host_group.name|default:"—" }}</dd>
+  </div>
+  <div class="workflow-fact">
+    <dt>Chairperson</dt>
+    <dd>{{ meeting.chaired_by.display_name|default:"—" }}</dd>
+  </div>
+  <div class="workflow-fact">
+    <dt>Secretary</dt>
+    <dd>{{ meeting.secretary.display_name|default:"—" }}</dd>
+  </div>
+  <div class="workflow-fact">
+    <dt>Quorum</dt>
+    <dd>{{ meeting.quorum|default:"—" }}</dd>
+  </div>
+  {% if meeting.meeting_link %}
+    <div class="workflow-fact">
+      <dt>Join link</dt>
+      <dd><a href="{{ meeting.meeting_link }}" target="_blank" rel="noopener">Open meeting link</a></dd>
+    </div>
+  {% endif %}
+{% endblock overview_key %}
+
+{% block overview_extra %}{% endblock overview_extra %}
+
+{% block hierarchy %}{% endblock hierarchy %}
+
+{% block related %}
+  {% comment %}
+    The Related tab gathers what is done *around* the meeting: the agenda (typed
+    here or uploaded as a document), the attendance register generated from the
+    hosting group plus any invitees, the minutes, and the agenda documents that
+    have been filed. A meeting has no parent/child workflow, so the base
+    Hierarchy card is blanked out.
+  {% endcomment %}
+  <section class="workflow-card workflow-card--pad">
+    {% include "pwms/partials/meetings/agenda.html" %}
+  </section>
+
+  <section class="workflow-card workflow-card--pad">
+    {% include "pwms/partials/meetings/attendance.html" %}
+  </section>
+
+  <section class="workflow-card workflow-card--pad">
+    {% include "pwms/partials/meetings/minutes.html" %}
+  </section>
+
+  <section class="workflow-card workflow-card--pad">
+    <h2 class="workflow-card-title">{% lucide "file-text" size=16 %} Agenda documents</h2>
+    <ul class="list-group list-group-flush">
+      {% for attachment in agenda_attachments %}
+        <li class="list-group-item d-flex justify-content-between align-items-center gap-2 px-0">
+          <a href="{% url "pwms:attachment_open" attachment.public_id %}"
+             target="_blank"
+             rel="noopener">{{ attachment.name }}</a>
+          <span class="badge badge-muted">{{ attachment.get_type_display }}</span>
+        </li>
+      {% empty %}
+        <li class="list-group-item px-0 text-muted">
+          No agenda documents attached yet. Add them from the Attachments tab.
+        </li>
+      {% endfor %}
+    </ul>
+  </section>
+{% endblock related %}

@@ -17,7 +17,7 @@ All commands live in `pwms/management/commands/` and run as:
 > The reworked Oracle sync suite (`sync_groups_oracle`, `sync_roles_oracle`,
 > `sync_users_oracle`), `scrape_parliament_committees`, `generate_diagrams`,
 > `populate_sites`, `load_places`, `import_groups`, `import_bill_versions`,
-> `check_referral_deadlines`, `send_scheduled_report_shares`,
+> `import_meetings`, `check_referral_deadlines`, `send_scheduled_report_shares`,
 > `sync_type_group_access` and `show_workflow_hierarchy` import `pwms.models`
 > directly and run cleanly; the `legacy` / `pending repoint` statuses below apply
 > to the rest.
@@ -194,6 +194,35 @@ is safe — matching rows are skipped, changed rows are updated, and **nothing i
 ever deleted** (version integrity). Rows with an unknown bill number, version
 type or date are reported and skipped, and the command ends with a summary.
 `--dry-run` previews the changes without writing.
+
+## Meetings
+
+| Command | Purpose | Status |
+| --- | --- | --- |
+| `import_meetings` | bulk-import meetings (the Events workflow) from a CSV/XLSX file | ✅ live |
+
+Bulk-imports meetings from the calendar's own import format — the same columns
+and behaviour as the **Import** page on `/pwms/meetings/`, because it calls the
+same function (`pwms.services.meetings_io.import_meetings`). Rows **upsert on**
+`Reference`: an existing meeting with that reference is updated, otherwise one is
+created. Blank cells leave fields untouched; a row that cannot be read is
+reported and skipped while the rest still imports; **nothing is deleted or
+emailed**. The full column reference is
+[Meetings Import & Export](./Meetings%20Import%20%26%20Export.md).
+
+```bash
+python manage.py import_meetings meetings.csv
+python manage.py import_meetings meetings.xlsx --dry-run
+python manage.py import_meetings meetings.csv --actor jsmith
+```
+
+| Option | Effect |
+| --- | --- |
+| `--dry-run` | Report what would change without writing anything |
+| `--actor USERNAME` | The user new meetings are owned by and attributed to (default: the first superuser) |
+
+The command ends with a summary (created / updated / skipped / errors) and lists
+every row it could not import, with its line number.
 
 ## Notifications & deadlines
 

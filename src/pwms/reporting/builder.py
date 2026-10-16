@@ -562,7 +562,7 @@ def _describe(instance):
         "title": instance.title,
         "type": instance.workflow_type.name,
         "state": instance.current_state.name,
-        "public_status": instance.current_state.get_public_name_display(),
+        "public_status": instance.current_state.public_status.name,
         "priority": instance.get_priority_display(),
         "priority_value": instance.priority,
         "owner": instance.owner.display_name if instance.owner else "",

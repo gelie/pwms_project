@@ -289,6 +289,12 @@ DEFAULT_FROM_EMAIL = config(
 DEFAULT_FROM_EMAIL = config("DEFAULT_FROM_EMAIL", default="noreply@parliament.gov.za")
 PWMS_BASE_URL = config("PWMS_BASE_URL", default="http://localhost:8000")
 
+# The Meetings calendar's week begins on this day. Accepts a weekday name
+# ("monday" … "sunday") or an index (0 = Monday … 6 = Sunday); anything
+# unrecognised falls back to Monday. Readers can override it per session with the
+# calendar's "Week starts" control (a `week_start` query parameter).
+MEETING_CALENDAR_WEEK_START = config("MEETING_CALENDAR_WEEK_START", default="monday")
+
 # For Production Server
 # EMAIL_BACKEND = config(
 #     "EMAIL_BACKEND", default="django.core.mail.backends.console.EmailBackend"

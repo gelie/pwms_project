@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}{% if is_create %}New Meeting{% else %}Edit {{ meeting.title }}{% endif %}{% endblock title %}
+{% block extra_head %}{{ form.media }}{% endblock extra_head %}
+{% block content %}
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:workflows" %}">Workflows</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:meetings" %}">Meetings</a>
+      </li>
+      <li class="breadcrumb-item active" aria-current="page">
+        {% if is_create %}New meeting{% else %}{{ meeting.title }}{% endif %}
+      </li>
+    </ol>
+  </nav>
+  <h1 class="mb-3">
+    {% if is_create %}
+      New Meeting
+    {% else %}
+      Edit Meeting
+    {% endif %}
+  </h1>
+  <form method="post" class="input-form" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger" role="alert">
+        {% for error in form.non_field_errors %}<p class="mb-0">{{ error }}</p>{% endfor %}
+      </div>
+    {% endif %}
+
+    <h2 class="h5 mb-3">Workflow</h2>
+    <div class="row g-3 mb-4">
+      {% include "pwms/_hidden_field.html" with field=form.owner %}
+      {% if is_create %}
+        {% include "pwms/_hidden_field.html" with field=form.workflow_type %}
+      {% else %}
+        {% include "pwms/_form_field.html" with field=form.current_state wrapper_class="col-12 col-md-4" %}
+      {% endif %}
+      {% include "pwms/_form_field.html" with field=form.title wrapper_class="col-12 col-md-8" %}
+      {% include "pwms/_form_field.html" with field=form.description wrapper_class="col-12" %}
+      {% include "pwms/_picker_field.html" with field=form.assigned_to search_url="pwms:user_search" placeholder="Type to search users..." selected_name=form.picker_labels.assigned_to wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_form_field.html" with field=form.priority wrapper_class="col-12 col-md-6" %}
+    </div>
+
+    <h2 class="h5 mb-3">Schedule</h2>
+    <div class="row g-3 mb-4">
+      {% include "pwms/_form_field.html" with field=form.reference_number wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_form_field.html" with field=form.meeting_type wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_form_field.html" with field=form.quorum wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_form_field.html" with field=form.start_datetime wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_form_field.html" with field=form.end_datetime wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_form_field.html" with field=form.attendance_mode wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_form_field.html" with field=form.venue wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_form_field.html" with field=form.meeting_link wrapper_class="col-12 col-md-4" %}
+      <div class="col-12 col-md-6">
+        {% include "pwms/_form_field.html" with field=form.off_site_venue %}
+      </div>
+      <div class="col-12 col-md-6">
+        {% include "pwms/_form_field.html" with field=form.off_site_address %}
+      </div>
+      <p class="col-12 small text-body-secondary mb-0">
+        Select an on-premises room, or leave it blank and name the off-site venue
+        instead. A hybrid or virtual meeting also takes a join link.
+      </p>
+      <div class="col-12 col-md-6">
+        <div class="form-check mt-2">
+          {{ form.all_day }}
+          <label class="form-check-label" for="{{ form.all_day.id_for_label }}">{{ form.all_day.label }}</label>
+        </div>
+      </div>
+      {% include "pwms/_picker_field.html" with field=form.host_group search_url="pwms:group_search" placeholder="Type to search groups..." selected_name=form.picker_labels.host_group wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_picker_field.html" with field=form.chaired_by search_url="pwms:user_search" placeholder="Type to search users..." selected_name=form.picker_labels.chaired_by wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_picker_field.html" with field=form.secretary search_url="pwms:user_search" placeholder="Type to search users..." selected_name=form.picker_labels.secretary wrapper_class="col-12 col-md-6" %}
+    </div>
+
+    <h2 class="h5 mb-3">Agenda &amp; notes</h2>
+    <div class="row g-3 mb-4">
+      {% include "pwms/_form_field.html" with field=form.agenda_summary wrapper_class="col-12" %}
+      {% include "pwms/_form_field.html" with field=form.notes wrapper_class="col-12" %}
+      <p class="small text-body-secondary mb-0">
+        Agenda documents and the minutes are uploaded from the meeting page once
+        it has been saved.
+      </p>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2">
+      <button class="btn btn-primary" type="submit">
+        {% if is_create %}Create meeting{% else %}Save changes{% endif %}
+      </button>
+      {% if is_create %}
+        <a class="btn btn-secondary" href="{% url "pwms:meetings" %}">Cancel</a>
+      {% else %}
+        <a class="btn btn-secondary"
+           href="{% url "pwms:meeting_detail" meeting.public_id %}">Cancel</a>
+      {% endif %}
+    </div>
+  </form>
+{% endblock content %}

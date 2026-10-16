@@ -33,6 +33,8 @@ class PwmsConfig(AppConfig):
             DelegationReport,
             InternationalAgreement,
             InternationalResolution,
+            Meeting,
+            MeetingAttendance,
             WorkflowNote,
         )
 
@@ -52,6 +54,17 @@ class PwmsConfig(AppConfig):
         )
         auditlog.register(
             Bill,
+            exclude_fields=["updated_at"],
+        )
+        # Meetings are workflow instances too, and their attendance register is a
+        # child row that changes on its own (RSVP and attendance recorded during
+        # and after the sitting), so both carry their own audit trail.
+        auditlog.register(
+            Meeting,
+            exclude_fields=["updated_at"],
+        )
+        auditlog.register(
+            MeetingAttendance,
             exclude_fields=["updated_at"],
         )
 

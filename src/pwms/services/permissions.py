@@ -38,7 +38,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied
 from django.db.models import Model
 
-from ..models import AbstractLegislativeWorkflow
+from ..models import AbstractLegislativeWorkflow, Meeting, MeetingAttendance
 
 User = get_user_model()
 
@@ -162,6 +162,15 @@ def _resolve_workflow_instance(
     # group/Role/State grant — assigning work must not widen anyone's authority.
     if action == VIEW and user.pk == instance.assigned_to_id:
         return True
+    # An invitee is on the meeting's own register, which is what entitles them to
+    # see it — a committee meeting routinely invites people outside the unit that
+    # administers the register.
+    if (
+        action == VIEW
+        and isinstance(instance, Meeting)
+        and instance.attendances.filter(user=user).exists()
+    ):
+        return True
     if instance.can(user, action, ignore_referral_grants=ignore_referral_grants):
         return True
 
@@ -174,6 +183,19 @@ def _resolve_workflow_instance(
             ):
                 return True
     return False
+
+
+@register_resolver(MeetingAttendance)
+def _resolve_meeting_attendance(user, attendance, action: str) -> bool:
+    """
+    Resolve an attendance row through its meeting's own RBAC.
+
+    Attendance is part of a meeting, not a resource of its own: whoever may view
+    or edit the meeting may view or edit its register, and nobody else. Without
+    this the row would fall to the default resolver, which lets any signed-in
+    user read it (see ``_default_resolver``).
+    """
+    return resolve(user, attendance.meeting, action)
 
 
 def _default_resolver(user, resource, action: str) -> bool:

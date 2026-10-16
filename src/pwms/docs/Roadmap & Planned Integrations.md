@@ -271,6 +271,16 @@ backfill: the defaults are what materialisation already granted) — and
 that already exist, touching only the owning group's own flags. `view` stays
 unconditional and viewer groups stay read-only by design.
 
+✅ **Record-event panel & events in the Timeline shipped (2026-10-15)** — every
+record gains an **Events** tab holding its append-only domain-event log
+(`WorkflowEvent`) with a form that records an event by hand
+(`partials/events_section.html`, route `pwms:workflow_events_add`): add-only,
+since a correction is a new compensating event rather than an edit, and gated on
+the record's **edit** right. The **Timeline** now merges those events with the
+`TransitionLog` state changes and the auditlog CRUD trail into the one
+newest-first table (`pwms/services/history.py`), so a record's whole story reads
+in one place.
+
 Remaining (🔜):
 
 - Extend the group-scoped RBAC (`WorkflowType.group` + `create_roles`) further in
@@ -373,10 +383,16 @@ details are present) and `WorkflowReferral` (below). The legacy single-set
 recorded from the report's Overview tab, the seeded close guard is satisfied by the
 owning office rather than by an administrator.
 
-🔜 **Calendar view** — the legacy `update_event_statuses` command tracked
-scheduled/ongoing/completed *calendar* items (title, start/end); if a
-meetings/sessions calendar is wanted it should be a separate model from the
-workflow event log, reusing `deadline` + flatpickr.
+✅ **Meetings calendar shipped** — the Events workflow is its own instrument
+(`Meeting`, a parliamentary sitting) rather than a second table beside the event
+log, so it reuses the machine, RBAC and auditing. `/pwms/meetings/` is a
+colour-coded **month / week / day** calendar (per-type colours via
+`Meeting.color` / `MEETING_TYPE_COLORS`), with HTMX navigation, type / *mine* /
+free-text filters, a configurable **week start**, a *Next up* strip and a JSON
+feed (`meeting_calendar_json`). Meetings can also be **imported and exported** as
+CSV/XLSX (the web *Import* page, or `manage.py import_meetings`) — see
+[Meetings Import & Export](./Meetings%20Import%20%26%20Export.md). The legacy
+`update_event_statuses` command is superseded by it and can be retired.
 
 ---
 

@@ -19,6 +19,7 @@ from .models import (
     Group,
     GroupMembership,
     InternationalResolution,
+    PublicStatus,
     Role,
     State,
     WorkflowGroupAccess,
@@ -32,6 +33,12 @@ from .services.permissions import (
     resolve,
     visible_instances,
 )
+
+
+def make_state(**kwargs):
+    """A ``State`` with a default public status, for these ad-hoc test machines."""
+    kwargs.setdefault("public_status", PublicStatus.objects.get(name="New"))
+    return State.objects.create(**kwargs)
 
 
 class ReferralAccessTests(TestCase):
@@ -97,9 +104,7 @@ class ReferralAccessTests(TestCase):
         )
         GroupMembership.objects.create(user=officer, group=office, role=officer_role)
         office_type = WorkflowType.objects.create(name="RA Office Type", group=office)
-        state = State.objects.create(
-            workflow_type=office_type, name="Open", is_initial=True
-        )
+        state = make_state(workflow_type=office_type, name="Open", is_initial=True)
         resolution = InternationalResolution.objects.create(
             workflow_type=office_type,
             current_state=state,
@@ -251,9 +256,7 @@ class ReferralAccessTests(TestCase):
         owned_type = WorkflowType.objects.create(
             name="RA Owned Type", group=self.committee
         )
-        state = State.objects.create(
-            workflow_type=owned_type, name="Open", is_initial=True
-        )
+        state = make_state(workflow_type=owned_type, name="Open", is_initial=True)
         owned = InternationalResolution.objects.create(
             workflow_type=owned_type,
             current_state=state,

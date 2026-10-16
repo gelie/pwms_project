@@ -1,0 +1,97 @@
+{% comment %}
+  A meeting's minutes: the current status, the filed minutes documents, and the
+  actions that move the status on (draft / filed / approved).
+
+  "Upload minutes" opens the shared SharePoint picker aimed at the meeting with
+  the attachment type defaulted to *Minutes* (the picker lives in the Attachments
+  tab), and switches the reader to that tab so the upload is visible. The tab is
+  switched through Bootstrap's Tab API on the real tab button — ``data-bs-toggle``
+  only works on an element inside the tab list, and on a button elsewhere it
+  resolves a null parent and throws.
+
+  Rendered standalone as the HTMX response to a status change and included by
+  ``pwms/meeting-detail.html`` for the first paint.
+
+  Context (see ``pwms.views._meeting_minutes_context``): meeting,
+  minutes_attachments, agenda_attachments, can_edit_minutes,
+  minutes_status_message (optional: {level, message}).
+{% endcomment %}
+<div id="meeting-minutes">
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <h3 class="h6 mb-0">
+      {% lucide "file-check" size=16 %} Minutes
+      <span class="badge {% if meeting.minutes_status == "approved" %}text-bg-success{% elif meeting.minutes_status == "filed" %}text-bg-primary{% else %}badge-muted{% endif %}">
+        {{ meeting.get_minutes_status_display }}
+      </span>
+    </h3>
+    {% if can_edit_minutes %}
+      <button type="button"
+              class="btn btn-sm btn-outline-primary"
+              onclick="bootstrap.Tab.getOrCreateInstance(document.getElementById('tab-attachments')).show()"
+              hx-get="{% url "pwms:attachment_browser" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}&default_type=minutes"
+              hx-target="#attachment-browser"
+              hx-swap="innerHTML">{% lucide "upload" size=14 %} Upload minutes</button>
+    {% endif %}
+  </div>
+
+  <div id="meeting-minutes-status" aria-live="polite">
+    {% if minutes_status_message %}
+      <div class="alert alert-{{ minutes_status_message.level }} py-2 mb-3" role="alert">{{ minutes_status_message.message }}</div>
+    {% endif %}
+  </div>
+
+  {% if meeting.minutes_filed_at %}
+    <p class="small text-body-secondary mb-2">Filed {{ meeting.minutes_filed_at|date:"d M Y H:i" }}.</p>
+  {% endif %}
+
+  <ul class="list-group list-group-flush mb-3">
+    {% for attachment in minutes_attachments %}
+      <li class="list-group-item d-flex justify-content-between align-items-center gap-2 px-0">
+        <a href="{% url "pwms:attachment_open" attachment.public_id %}"
+           target="_blank"
+           rel="noopener">{{ attachment.name }}</a>
+        <span class="small text-body-secondary">{{ attachment.created_at|date:"d M Y" }}</span>
+      </li>
+    {% empty %}
+      <li class="list-group-item px-0 text-muted">No minutes attached yet.</li>
+    {% endfor %}
+  </ul>
+
+  {% if can_edit_minutes %}
+    <div class="d-flex flex-wrap gap-2">
+      {% if meeting.minutes_status != "draft" %}
+        <form method="post"
+              class="m-0"
+              hx-post="{% url "pwms:meeting_minutes_status" meeting.public_id %}"
+              hx-target="#meeting-minutes"
+              hx-swap="outerHTML">
+          {% csrf_token %}
+          <input type="hidden" name="status" value="draft">
+          <button type="submit" class="btn btn-sm btn-outline-secondary">Mark draft</button>
+        </form>
+      {% endif %}
+      {% if meeting.minutes_status != "filed" %}
+        <form method="post"
+              class="m-0"
+              hx-post="{% url "pwms:meeting_minutes_status" meeting.public_id %}"
+              hx-target="#meeting-minutes"
+              hx-swap="outerHTML">
+          {% csrf_token %}
+          <input type="hidden" name="status" value="filed">
+          <button type="submit" class="btn btn-sm btn-outline-primary">File minutes</button>
+        </form>
+      {% endif %}
+      {% if meeting.minutes_status != "approved" %}
+        <form method="post"
+              class="m-0"
+              hx-post="{% url "pwms:meeting_minutes_status" meeting.public_id %}"
+              hx-target="#meeting-minutes"
+              hx-swap="outerHTML">
+          {% csrf_token %}
+          <input type="hidden" name="status" value="approved">
+          <button type="submit" class="btn btn-sm btn-outline-success">Approve minutes</button>
+        </form>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>

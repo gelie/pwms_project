@@ -23,7 +23,7 @@ The manual is in four parts.
   vocabulary the rest of the manual uses.
 - **Part B — Learning Objectives and Outcomes** states what the training sets out
   to achieve, and the specific, measurable results each participant should reach.
-- **Part C — Training Modules** is the course itself: fourteen modules, each with
+- **Part C — Training Modules** is the course itself: fifteen modules, each with
   a purpose, step-by-step instructions, a worked example, warnings, and a
   "Check your understanding" prompt.
 - **Part D — Appendices** holds the field reference, the state-and-transition
@@ -131,7 +131,7 @@ will hit.
 | **Referral** | A formal request to a committee or group to consider a record and respond by a date. |
 | **Attachment** | A link from a record to a document held in SharePoint. The document itself stays in SharePoint. |
 | **Note** | A dated, attributed entry in the record's note log — the running record of decisions, follow-ups and conversations. **Not** the same as the record's own *Notes* field. |
-| **Timeline** | The merged, newest-first history of everything recorded against a record: state changes, edits, and creations. |
+| **Timeline** | The merged, newest-first history of everything recorded against a record: state changes, events, edits and creations. |
 | **Alert** | An in-app notification, shown on the bell, with an email copy where an address is on file. Alerts always link back to the record they concern. |
 
 ### The three IRPD instruments at a glance
@@ -155,7 +155,7 @@ report's form. A resolution may also stand alone with no parent report.
 
 ## 5. Learning Objectives
 
-The training sets out to achieve seven objectives. On completion, the IRPD
+The training sets out to achieve eight objectives. On completion, the IRPD
 section will be able to use PWMS as the single, authoritative record of its
 international engagement work.
 
@@ -168,6 +168,7 @@ international engagement work.
 | **O5** | **Move records forward correctly.** Take the right transition at the right time, satisfy any precondition the system enforces, and understand how a state change is recorded and communicated. |
 | **O6** | **Manage referrals and documents.** Raise, answer and withdraw committee referrals, and attach, open, version and detach SharePoint documents on a record. |
 | **O7** | **Report and share responsibly.** Build, preview, export and share reports that contain exactly the records the reader is entitled to see, and produce a formal document for a single instrument. |
+| **O8** | **Run the section's meetings.** Read the Events calendar, add a meeting with its agenda, minutes and attendance register, and move meetings in and out as a CSV or Excel file. |
 
 ## 6. Learning Outcomes
 
@@ -208,6 +209,10 @@ By the end of the training, a participant will be able to:
 10. **LO-T10** — Explain why a control may be missing from a page, what the record's
     Timeline proves, and how to escalate an access problem. *(Modules 6, 13 —
     Assessment Q2, Q18)*
+11. **LO-T11** — Read the meetings calendar (month / week / day, colour-coded by
+    type, with a configurable week start), add a meeting with its schedule and
+    venue, use its agenda, minutes and attendance register, and export meetings to
+    — or import them from — a CSV/XLSX file. *(Module 15 — Assessment Q19)*
 
 ### 6.2 Outcome map
 
@@ -227,6 +232,7 @@ By the end of the training, a participant will be able to:
 | 12. Alerts and email | LO-T9, LO-T10 | Q17 |
 | 13. Access, accountability and the audit trail | LO-T10 | Q2, Q18 |
 | 14. Routine procedures | All — consolidation | Practical exercises |
+| 15. Meetings and the Events calendar | LO-T11 | Q19 |
 
 ---
 
@@ -247,6 +253,7 @@ flowchart TD
     M11 --> M12["12. Alerts and email"]
     M12 --> M13["13. Access and accountability"]
     M13 --> M14["14. Routine procedures"]
+    M14 --> M15["15. Meetings & the Events calendar"]
 ```
 
 ---
@@ -776,21 +783,22 @@ Open a record to reach its tabs:
 | **Progress** | The completion ring, the state sequence and the journey so far. |
 | **Related** | What belongs to the record: on a report, the resolutions captured at the engagement (with **Add Resolution**) and the delegates; on the other instruments, the hierarchy (parent and attached records). |
 | **Notes** | The note log, plus the record's own notes text where the instrument has one. |
+| **Events** | The record's event log — facts recorded against it, with a **Record event** form. |
 | **Attachments** | The documents held against the record. |
 | **Referrals** | Referrals raised and received, and the transitions available from the current state. |
 | **Diagram** | A picture of the workflow type. |
-| **Timeline** | Every state change and edit, newest first. |
+| **Timeline** | Every state change, recorded event and edit, newest first. |
 
 The record's current tab is kept in the address bar, so a refresh — or a link you
 send a colleague — returns to the same tab.
 
 ### 6.4 Reading the Timeline
 
-The **Timeline** tab merges two kinds of history into one newest-first table with
-columns **When**, **Event**, **Detail** and **Actor** (with the network address the
-action came from beneath the actor's name). State changes and field-level
-create/update/delete entries appear together. The tab shows the 50 most recent
-entries and says so when there are more.
+The **Timeline** tab merges three kinds of history into one newest-first table
+with columns **When**, **Event**, **Detail** and **Actor** (with the network
+address the action came from beneath the actor's name). State changes, recorded
+events and field-level create/update/delete entries appear together. The tab
+shows the 50 most recent entries and says so when there are more.
 
 ### 6.5 A weekly check the section should adopt
 
@@ -1560,6 +1568,149 @@ shares in the name of a current officer before a colleague leaves?
 
 ---
 
+## Module 15 — Meetings and the Events calendar
+
+**Purpose.** Run the section's own meetings — and read every parliamentary sitting
+PWMS tracks — from one colour-coded calendar, keeping each meeting's agenda,
+minutes and attendance together.
+
+**What you will be able to do.** Read the meetings calendar in month, week or day
+view, add a meeting, keep its agenda, minutes and attendance register, and import
+or export meetings as a spreadsheet.
+
+### 15.1 The Events workflow
+
+Alongside the three IRPD registers, PWMS carries the **Events workflow**: a
+`Meeting` instrument for every kind of parliamentary sitting — **House Plenary**,
+joint sittings, **committee** meetings (portfolio, select and ad hoc),
+administration and management meetings, task teams, workshops and
+public-participation events.
+
+The section uses it to schedule and minute its own committee meetings. Each meeting
+follows its own lifecycle:
+
+**Scheduled → In Progress → Completed**, with **Postponed** and **Cancelled**
+branches (a postponed meeting can be rescheduled; a cancelled one is terminal).
+
+Open it from the navbar's **Workflows** menu → **Meetings**. The page opens on a
+**calendar**.
+
+### 15.2 The calendar
+
+Three layouts, chosen with the buttons in the toolbar:
+
+| View | Shows |
+| --- | --- |
+| **Month** | the month as a grid of days, each with its meetings, and a panel for the selected day |
+| **Week** | seven day columns on a shared time axis, each meeting placed at its time |
+| **Day** | one day on that same time axis |
+
+- **Colour = meeting type.** Every meeting is coloured by its type, and the
+  **legend** names the types currently on show, so a month reads at a glance.
+- **Getting around.** The **‹** / **›** buttons step a month, week or day;
+  **Today** returns to now; the period label names what you are looking at.
+- **Filters.** Search over title, reference and venue, pick a `Meeting type`, and
+  tick **Mine** for only your own. **Apply** runs them; **Clear** removes them.
+- **Week starts.** Choose **Monday** … **Sunday**; your choice is remembered as
+  you browse.
+- **Next up.** The strip at the top of the page lists the soonest meetings.
+- **Day panel** (month view). Select a day's number to list its meetings beneath
+  the grid, with a **Day view** link.
+
+> **A feed for other systems.** The **Calendar feed (JSON)** link under the
+> calendar returns the same permission-scoped meetings as JSON.
+
+### 15.3 Adding a meeting
+
+Start a meeting in any of three ways: the round **+** at the bottom right, the
+**+** in a day's corner on the calendar (either opens the form already dated for
+that day), or **New meeting** at the top.
+
+Only the first three fields are required:
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `Title` | **Yes** | The meeting's name. |
+| `Meeting type` | **Yes** | House Plenary, Committee Meeting, Workshop, … — this drives the calendar colour. |
+| `Start` | **Yes** | Date and time. |
+| `End` | No | When it is expected to finish. |
+| `All day` | No | Tick for a whole-day event (no times shown). |
+| `Attendance mode` | No | **On the premises**, **Hybrid** or **Virtual**; defaults to on the premises. |
+| `Venue` | No | For an on-premises meeting, the **room** (a room in a building). |
+| `Off-site venue` / `Off-site address` | No | For an external meeting; leave `Venue` blank and name the venue here. |
+| `Meeting link` | No | A join link for a hybrid or virtual meeting. |
+| `Host group` | No | The House, committee or unit that convenes it. Its members become the **attendance register** (§15.4). |
+| `Chaired by` / `Secretary` | No | The chair and the minute-taker. |
+| `Quorum` | No | The number required for the meeting to be quorate. |
+| `Reference` | No | Your own reference, e.g. `NA/PC-HEALTH/2026-11-05`. |
+| `Priority` | No | Low / Medium / High / Urgent. |
+| `Description`, `Agenda`, `Notes` | No | The agenda is written in the on-page editor (§15.4). |
+
+Select **Create meeting**. PWMS saves it, **generates the attendance register**
+from the host group, and alerts the meeting's audience. You land on the meeting's
+page.
+
+### 15.4 A meeting's record
+
+A meeting opens on the shared tabbed page (Module 6.3). The tabs that matter here:
+
+- **Overview** — the schedule, the venue (on- or off-premises), the attendance
+  mode, and who convenes and chairs it.
+- **Related** — the working parts of the meeting:
+  - **Agenda** — write it in the on-page editor; agenda *documents* are attached
+    with the rest of the papers.
+  - **Attendance** — the register (below).
+  - **Minutes** — file and approve the minutes, and attach the minutes documents.
+- **Attachments** — the agenda, order papers, notices, minutes and supporting
+  documents (Module 9).
+- **Timeline** — every change, with who made it.
+
+**The attendance register** has two kinds of row:
+
+| Row | Where it comes from |
+| --- | --- |
+| Generated | the **host group**'s active members, added when the meeting is created |
+| Invitee | added by hand — a PWMS user outside the host group, or a guest with no account |
+
+Each row records a person's **RSVP** (accepted, declined, tentative) and their
+**attendance** (present, absent, apology), and who recorded it. **Regenerate**
+re-syncs the generated rows to the host group (adds joiners, drops leavers) and
+**keeps every invitee** and its recorded attendance. **Email summary** sends the
+recorded attendance to the meeting's audience.
+
+> **⚠ Editing the host group regenerates the register.** Changing a meeting's
+> `Host group` re-syncs the generated rows to the new group's members; invitees
+> you added by hand are kept. Record attendance during or after the sitting — each
+> entry is auditable.
+
+### 15.5 Importing and exporting meetings
+
+Meetings can be moved in and out as a **CSV** or **Excel (.xlsx)** file, in the
+same columns, so a file exported from the calendar can be edited and imported
+back.
+
+- **Export.** On the calendar, **Export → Excel workbook (.xlsx)** or
+  **Comma-separated (.csv)**. The download carries the meetings you may see that
+  match your current filters.
+- **Import.** **Import** (top right) → choose a file → **Import**. A row
+  **creates** a meeting, or **updates** the one whose `Reference` already exists.
+  A blank cell leaves that field untouched; a row that cannot be read is reported
+  and skipped (the rest still imports); and **nothing is deleted or emailed**.
+  Tick **Check only** first to preview without saving.
+- **Template.** Download a blank template (`.csv` or `.xlsx`) from the import
+  page. The columns and their rules are documented in
+  [Meetings Import & Export](./Meetings%20Import%20%26%20Export.md).
+
+> **A lighter-weight route for bulk loads.** Outside the browser,
+> `python manage.py import_meetings <file>` runs the same import — add `--dry-run`
+> to preview, or `--actor <username>` to set who the new meetings are owned by.
+
+**Check your understanding.** A committee meeting is moved from Wednesday morning
+to Thursday afternoon. What must you change, and what should you not have to
+re-enter?
+
+---
+
 # Part D — Appendices
 
 ## Appendix A — Field reference
@@ -1620,6 +1771,26 @@ shares in the name of a current officer before a colleague leaves?
 | `Agreement document URL` | No | SharePoint link to the agreement. |
 | `Explanatory memorandum URL` | No | SharePoint link to the memorandum. |
 
+### A.5 Meeting (the Events workflow)
+
+| Field | Required | Rules and notes |
+| --- | --- | --- |
+| `Reference` | No | Your own reference, e.g. `NA/PC-HEALTH/2026-11-05`. The import matches on it. |
+| `Title` | **Yes** | The meeting's name. |
+| `Meeting type` | **Yes** | House Plenary, Committee Meeting, Workshop, … — drives the calendar colour. |
+| `Start` | **Yes** | Date and time. |
+| `End` | No | Must not be before `Start`. |
+| `All day` | No | A whole-day event, with no times shown. |
+| `Attendance mode` | No | On the premises / Hybrid / Virtual. |
+| `Venue` | No | An on-premises room (a room in a building). |
+| `Off-site venue` / `Off-site address` | No | An external venue; used when `Venue` is blank. |
+| `Meeting link` | No | Join link for a hybrid or virtual meeting. |
+| `Host group` | No | Who convenes it; its members form the attendance register. |
+| `Chaired by` / `Secretary` | No | Chair and minute-taker. |
+| `Quorum` | No | The number needed to be quorate. |
+| `Priority` | No | Low / Medium / High / Urgent. Defaults to Medium. |
+| `Description` / `Agenda` / `Notes` | No | The agenda is written in the on-page editor. |
+
 ## Appendix B — States and transitions reference
 
 ### B.1 Delegation Report
@@ -1662,6 +1833,16 @@ shares in the name of a current officer before a colleague leaves?
 | Implemented (resolution); House adopted – referred to Department | *Implemented* |
 | Closed; Closed – House approved | *Closed* |
 
+### B.5 Meeting
+
+| Stage | In / out | Transition |
+| --- | --- | --- |
+| *Scheduled* | **Start** | → *In Progress* via **Start meeting**; → *Postponed* via **Postpone meeting**; → *Cancelled* via **Cancel meeting** |
+| *In Progress* | | → *Completed* via **Complete meeting**; → *Cancelled* via **Cancel meeting (in progress)** |
+| *Postponed* | | → *Scheduled* via **Reschedule meeting**; → *Cancelled* via **Cancel meeting (postponed)** |
+| *Completed* | **End** | — |
+| *Cancelled* | **End** | — |
+
 ## Appendix C — Glossary
 
 | Term | Definition |
@@ -1670,18 +1851,22 @@ shares in the name of a current officer before a colleague leaves?
 | **Assignee** | The person named in *Assigned to*; may view the record |
 | **ATC** | Announcements, Tablings and Committee Reports — publication of a tabled matter, with reference, date and page |
 | **Attachments tab** | The panel holding a record's SharePoint documents, their versions and their activity |
+| **Attendance mode** | How a meeting is attended: *On the premises*, *Hybrid* or *Virtual* |
+| **Attendance register** | A meeting's list of expected people — the host group's members plus any invitees — with each person's RSVP and recorded attendance |
 | **BR02 / BR03 / BR12** | Business requirement references from the section's requirement specifications, quoted in PWMS's own help text |
 | **Dashboard** | The landing page: figures, breakdowns and four work lists |
 | **Document (toolbar)** | The record rendered as a formal PDF or web page |
+| **Event** | An append-only, dated fact recorded on a record (a document attached, a report adopted); evidence rather than state |
+| **Events workflow** | The instrument for parliamentary meetings (`Meeting`); its calendar is at `/pwms/meetings/` |
 | **Group** | An organisational unit — a house, committee, party, department or sub-unit |
-| **Instrument** | One of the four kinds of parliamentary record PWMS tracks |
+| **Instrument** | One of the five kinds of parliamentary record PWMS tracks |
 | **Note** | An entry in the record's note log, editable by its author |
 | **Owner** | The person accountable for a record; may view, edit and delete it |
 | **Public status** | The simplified outward-facing status that several internal stages can share |
 | **Referral** | A formal request to a committee to consider a record by a given date |
 | **Register** | A list page for one instrument, or the cross-instrument *Overview* |
 | **State / stage** | Where a record currently sits in its route |
-| **Timeline** | The merged, newest-first history of a record's state changes and edits |
+| **Timeline** | The merged, newest-first history of a record's state changes, events and edits |
 | **Transition** | A permitted move from one stage to another |
 | **Workflow type** | The definition of the stages and moves for a kind of instrument |
 
@@ -1722,6 +1907,20 @@ shares in the name of a current officer before a colleague leaves?
 | Attachments show no SharePoint sites | Ask the administrator to enable the site and sync your membership |
 | No alert email arrives | Ask the administrator to confirm the mail service and that the background worker is running |
 | A share link must be revoked | Only an administrator can revoke it — ask, and do not rely on the link in the meantime |
+
+### D.4 Meetings at a glance
+
+| I want to… | Go to |
+| --- | --- |
+| See the meetings calendar (month / week / day) | **Workflows → Meetings** |
+| Add a meeting | the round **+** or a day's **+**, or **New meeting** |
+| Change a meeting's schedule or venue | **Edit** in its toolbar |
+| Write the agenda | the record's **Related** tab → **Agenda** |
+| Record attendance | the record's **Related** tab → **Attendance** |
+| File or approve the minutes | the record's **Related** tab → **Minutes** |
+| Export meetings as a file | **Export** on the calendar (Excel or CSV) |
+| Import meetings from a file | **Import** on the calendar (create / update) |
+| Change the week's first day | **Week starts** on the calendar toolbar |
 
 ## Appendix E — Administrator prerequisites and known limitations
 
@@ -1834,9 +2033,17 @@ figures. Export it as a PDF and as a CSV and compare what each contains. Create 
 share link that expires in seven days and open it in a separate browser session to
 confirm the read-only view.
 
+**Exercise 11 — Meetings.** Open **Workflows → Meetings** and switch between the
+month, week and day views. Set **Week starts** to Sunday and confirm the columns
+move. Add a committee meeting with a host group, a start and end time and an
+on-premises room. Open it and add an agenda, add one invitee to the attendance
+register, and record someone's attendance. Finally, export the meetings as a CSV,
+edit a title in a spreadsheet, and import the file back with **Check only** ticked
+to confirm PWMS reports an update without saving it.
+
 ## Appendix G — Assessment
 
-Answer all eighteen questions. The pass mark is 15.
+Answer all nineteen questions. The pass mark is 16.
 
 1. Name the four work lists on the dashboard and say what each one tells you.
 2. A control you expected — **Add attachment** — is missing from a record you can
@@ -1867,6 +2074,9 @@ Answer all eighteen questions. The pass mark is 15.
 16. What does the Report type selector change, and what does it not change?
 17. Name three things a recipient of a shared report link should know.
 18. What does the Timeline prove, and why does that matter to the section?
+19. A meeting's register is generated from the host group. What is the difference
+    between a *generated* row and an *invitee* row, and what happens to each when
+    you press **Regenerate**?
 
 ### Answer key
 
@@ -1921,6 +2131,11 @@ Answer all eighteen questions. The pass mark is 15.
     referral and document action. It matters because it is the section's evidence
     when reporting, when a committee queries a matter, and when accountability is
     tested.
+19. A *generated* row is a member of the meeting's `Host group`, added when the
+    meeting is created; an *invitee* row was added by hand (a user outside the host
+    group, or a guest). **Regenerate** re-syncs the generated rows to the host
+    group's active members — adding joiners and removing leavers — and leaves every
+    invitee, with its RSVP and recorded attendance, untouched.
 
 ---
 

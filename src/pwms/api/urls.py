@@ -14,6 +14,7 @@ router.register("groups", views.GroupViewSet, basename="group")
 router.register("roles", views.RoleViewSet, basename="role")
 router.register("memberships", views.MembershipViewSet, basename="membership")
 router.register("workflow-types", views.WorkflowTypeViewSet, basename="workflow-type")
+router.register("public-statuses", views.PublicStatusViewSet, basename="public-status")
 router.register("states", views.StateViewSet, basename="state")
 router.register("transitions", views.TransitionViewSet, basename="transition")
 router.register(
@@ -26,6 +27,7 @@ router.register(
 )
 router.register("agreements", views.InternationalAgreementViewSet, basename="agreement")
 router.register("bills", views.BillViewSet, basename="bill")
+router.register("meetings", views.MeetingViewSet, basename="meeting")
 
 urlpatterns = [
     path("", views.api_root, name="api-root"),

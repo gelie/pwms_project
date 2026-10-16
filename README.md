@@ -39,14 +39,21 @@ ContentType-linked RBAC layer, and everything that happens to an instrument is
   the delivery log; dispatch is queued through `django-background-tasks`.
 - **Documents** — SharePoint attachments on every workflow record, with on-demand
   version history and `document-*` events on the audit trail.
+- **Meetings (the Events workflow)** — a **colour-coded calendar dashboard**
+  (month / week / day views, configurable week start) over a `Meeting` workflow
+  instrument for House Plenary, committee, administration and other sitting
+  types: agendas, minutes and papers as SharePoint documents, an auditable
+  attendance register recorded during or after the sitting, **CSV/XLSX import and
+  export**, and REST endpoints (list/detail, "my meetings by membership",
+  attendance, minutes).
 - **Reporting** — a permission-scoped report builder over all four registers with
   xlsx / pdf / html / csv exports, per-instrument formal documents, token sharing
   and scheduled delivery.
 - **Authentication** — Active Directory (LDAP) sign-in that falls back to the
   local database, so the app boots and signs in without a directory.
 - **REST API** (DRF) with token authentication and endpoints for users,
-  memberships, the workflow registry and every workflow register, plus
-  **OpenAPI / Swagger / ReDoc** docs.
+  memberships, the workflow registry and every workflow register (meetings
+  included), plus **OpenAPI / Swagger / ReDoc** docs.
 - **Admin, background jobs, management commands** for sync (Oracle/legacy), scraping, notifications and diagram generation.
 
 ---
@@ -96,6 +103,7 @@ The self-documentation lives in [`pwms/docs/`](src/pwms/docs/):
 | [Technical Stack](src/pwms/docs/Technical%20Stack.md) | Frameworks, libraries, config, environment |
 | [API Reference](src/pwms/docs/API%20Reference.md) | Endpoints, auth, schema/docs URLs |
 | [Search Lookups](src/pwms/docs/Search%20Lookups.md) | HTMX search pickers and the country → city cascade |
+| [Meetings Import & Export](src/pwms/docs/Meetings%20Import%20%26%20Export.md) | The CSV/XLSX format the Meetings calendar imports and exports |
 | [Management Commands](src/pwms/docs/Management%20Commands.md) | Every `manage.py` command and its purpose |
 | [SharePoint Sync](src/pwms/docs/SharePoint%20Sync.md) | `populate_sites`, the local `Sharepoint*` tables and document attachments |
 | [Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md) | Email, notifications, SharePoint, exports and what remains |
@@ -179,7 +187,7 @@ importable via the editable install):
 .venv/bin/python manage.py test \
   pwms.tests pwms.tests_api pwms.tests_attachments pwms.tests_authentication \
   pwms.tests_detail pwms.tests_detail_actions pwms.tests_executive \
-  pwms.tests_messages pwms.tests_notifications \
+  pwms.tests_meetings pwms.tests_messages pwms.tests_notifications \
   pwms.tests_referral_access pwms.tests_referrals pwms.tests_reports \
   pwms.tests_transitions
 ```
@@ -196,8 +204,8 @@ pull request, in order of cost:
 1. **Lint** — `ruff check` and `ruff format --check`.
 2. **Migrations** — `makemigrations --check --dry-run` (models must not have
    drifted from the migrations) then `migrate` against the service database.
-3. **Tests** — the 13-module suite above (656 tests) against a PostgreSQL
-   service, under `coverage` (configuration in `pyproject.toml`).
+3. **Tests** — the 14-module suite above against a PostgreSQL service, under
+   `coverage` (configuration in `pyproject.toml`).
 
 > **Two gates currently report without failing the build**, because both flag
 > *pre-existing* conditions that would otherwise make CI red on day one:

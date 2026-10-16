@@ -10,6 +10,9 @@ from ..models import (
     GroupMembership,
     InternationalAgreement,
     InternationalResolution,
+    Meeting,
+    MeetingAttendance,
+    PublicStatus,
     Role,
     State,
     Transition,
@@ -292,6 +295,39 @@ class MembershipSerializer(serializers.ModelSerializer):
         ]
 
 
+class UserMembershipSerializer(serializers.ModelSerializer):
+    """One of a user's memberships, with the group and role spelled out.
+
+    Used by ``GET /api/users/{username}/memberships/``: the user is the path, so
+    it is not repeated here, and the group is identified by its ``public_id``
+    (like every other resource) rather than a database key.
+    """
+
+    group_public_id = serializers.UUIDField(source="group.public_id", read_only=True)
+    group_name = serializers.CharField(source="group.name", read_only=True)
+    group_type = serializers.CharField(source="group.group_type", read_only=True)
+    role = serializers.CharField(source="role.name", read_only=True)
+    role_slug = serializers.CharField(source="role.slug", read_only=True)
+
+    class Meta:
+        model = GroupMembership
+        fields = [
+            "public_id",
+            "group_public_id",
+            "group_name",
+            "group_type",
+            "role",
+            "role_slug",
+            "start_date",
+            "end_date",
+            "is_active",
+            "notes",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = fields
+
+
 class GroupMemberSerializer(serializers.ModelSerializer):
     """One member of a group: the user, their role, and the appointment window."""
 
@@ -361,11 +397,28 @@ class WorkflowTypeSerializer(serializers.ModelSerializer):
         read_only_fields = ["public_id", "slug", "is_root_type"]
 
 
+class PublicStatusSerializer(serializers.ModelSerializer):
+    """One row of the shared public-status vocabulary (BRS §12)."""
+
+    class Meta:
+        model = PublicStatus
+        fields = [
+            "id",
+            "public_id",
+            "name",
+            "slug",
+            "description",
+            "order",
+            "color",
+        ]
+        read_only_fields = ["public_id", "slug"]
+
+
 class StateSerializer(serializers.ModelSerializer):
     """One state of a workflow type's state machine."""
 
-    public_name_display = serializers.CharField(
-        source="get_public_name_display", read_only=True
+    public_status_name = serializers.CharField(
+        source="public_status.name", read_only=True
     )
 
     class Meta:
@@ -375,8 +428,8 @@ class StateSerializer(serializers.ModelSerializer):
             "public_id",
             "workflow_type",
             "name",
-            "public_name",
-            "public_name_display",
+            "public_status",
+            "public_status_name",
             "slug",
             "description",
             "is_initial",
@@ -385,7 +438,7 @@ class StateSerializer(serializers.ModelSerializer):
             "order",
             "color",
         ]
-        read_only_fields = ["public_id", "slug", "public_name_display"]
+        read_only_fields = ["public_id", "slug", "public_status_name"]
 
 
 class TransitionSerializer(serializers.ModelSerializer):
@@ -644,3 +697,179 @@ class WorkflowTransitionRequestSerializer(serializers.Serializer):
         default="",
         help_text="Reason for the move; required when the transition demands one.",
     )
+
+
+# ---------------------------------------------------------------------------
+# Meetings (the Events workflow)
+# ---------------------------------------------------------------------------
+
+
+class MeetingAttendanceSerializer(serializers.ModelSerializer):
+    """One row of a meeting's attendance register."""
+
+    display_name = serializers.CharField(read_only=True)
+    email = serializers.EmailField(read_only=True)
+    is_present = serializers.BooleanField(read_only=True)
+    capacity_label = serializers.CharField(
+        source="get_capacity_display", read_only=True
+    )
+    source_label = serializers.CharField(source="get_source_display", read_only=True)
+    rsvp_status_label = serializers.CharField(
+        source="get_rsvp_status_display", read_only=True
+    )
+    attendance_status_label = serializers.CharField(
+        source="get_attendance_status_display", read_only=True
+    )
+    recorded_by_email = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MeetingAttendance
+        fields = [
+            "id",
+            "public_id",
+            "meeting",
+            "user",
+            "guest_name",
+            "guest_email",
+            "display_name",
+            "email",
+            "source",
+            "source_label",
+            "capacity",
+            "capacity_label",
+            "is_required",
+            "rsvp_status",
+            "rsvp_status_label",
+            "attendance_status",
+            "attendance_status_label",
+            "is_present",
+            "invited_at",
+            "responded_at",
+            "recorded_at",
+            "recorded_by",
+            "recorded_by_email",
+            "recorded_ip",
+            "note",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "public_id",
+            "display_name",
+            "email",
+            "is_present",
+            "invited_at",
+            "responded_at",
+            "recorded_at",
+            "recorded_by",
+            "recorded_ip",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_recorded_by_email(self, obj) -> str | None:
+        return getattr(obj.recorded_by, "email", None) if obj.recorded_by_id else None
+
+
+class MeetingAttendanceAddSerializer(serializers.Serializer):
+    """Body of the ``attendance/add`` action."""
+
+    user = serializers.IntegerField(
+        required=False, allow_null=True, help_text="pk of the user to add."
+    )
+    guest_name = serializers.CharField(required=False, allow_blank=True, default="")
+    guest_email = serializers.EmailField(required=False, allow_blank=True, default="")
+    capacity = serializers.ChoiceField(
+        choices=MeetingAttendance.CAPACITY_CHOICES, default="member"
+    )
+    is_required = serializers.BooleanField(default=False)
+
+    def validate(self, attrs):
+        if not attrs.get("user") and not (attrs.get("guest_name") or "").strip():
+            raise serializers.ValidationError("Provide a user or a guest name.")
+        return attrs
+
+
+class MeetingAttendanceRecordSerializer(serializers.Serializer):
+    """Body of the ``attendance/record`` action."""
+
+    attendance = serializers.UUIDField(
+        help_text="public_id of the MeetingAttendance row to update."
+    )
+    rsvp_status = serializers.ChoiceField(
+        choices=MeetingAttendance.RSVP_STATUS_CHOICES, required=False, allow_blank=True
+    )
+    attendance_status = serializers.ChoiceField(
+        choices=MeetingAttendance.ATTENDANCE_STATUS_CHOICES,
+        required=False,
+        allow_blank=True,
+    )
+    note = serializers.CharField(required=False, allow_blank=True, default="")
+
+    def validate(self, attrs):
+        if not attrs.get("rsvp_status") and not attrs.get("attendance_status"):
+            raise serializers.ValidationError(
+                "Provide an rsvp_status, an attendance_status, or both."
+            )
+        return attrs
+
+
+class MeetingSerializer(WorkflowInstanceSerializer):
+    """A parliamentary meeting (the Events workflow)."""
+
+    meeting_type_label = serializers.CharField(
+        source="get_meeting_type_display", read_only=True
+    )
+    attendance_mode_label = serializers.CharField(
+        source="get_attendance_mode_display", read_only=True
+    )
+    venue_display = serializers.CharField(read_only=True)
+    minutes_status_label = serializers.CharField(
+        source="get_minutes_status_display", read_only=True
+    )
+    calendar_state = serializers.CharField(read_only=True)
+    attendance_summary = serializers.SerializerMethodField()
+    attendance = MeetingAttendanceSerializer(
+        source="attendances", many=True, read_only=True
+    )
+
+    class Meta(WorkflowInstanceSerializer.Meta):
+        model = Meeting
+        fields = WorkflowInstanceSerializer.Meta.fields + [
+            "reference_number",
+            "meeting_type",
+            "meeting_type_label",
+            "start_datetime",
+            "end_datetime",
+            "all_day",
+            "attendance_mode",
+            "attendance_mode_label",
+            "venue",
+            "venue_display",
+            "off_site_venue",
+            "off_site_address",
+            "meeting_link",
+            "host_group",
+            "chaired_by",
+            "secretary",
+            "quorum",
+            "agenda_summary",
+            "notes",
+            "minutes_status",
+            "minutes_status_label",
+            "minutes_filed_at",
+            "calendar_state",
+            "attendance_summary",
+            "attendance",
+        ]
+        read_only_fields = WorkflowInstanceSerializer.Meta.read_only_fields + [
+            "minutes_status",
+            "minutes_filed_at",
+            "calendar_state",
+            "venue_display",
+            "attendance_summary",
+        ]
+
+    @extend_schema_field(serializers.DictField())
+    def get_attendance_summary(self, obj) -> dict:
+        return obj.attendance_counts()

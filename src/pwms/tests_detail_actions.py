@@ -10,6 +10,7 @@ from .models import (
     Bill,
     DelegationParticipant,
     DelegationReport,
+    EventType,
     Group,
     GroupMembership,
     InternationalAgreement,
@@ -945,3 +946,91 @@ class AddAffordanceOwnershipTests(TestCase):
             self.assertNotContains(response, label)
         # The toolbar agrees, because it uses the same check.
         self.assertNotContains(response, self._update_url())
+
+
+class EventAddTests(TestCase):
+    """Recording a domain event against a record from its own page.
+
+    Events are append-only evidence (``WorkflowEvent``), so the panel only ever
+    adds: there is no edit or delete affordance beside the recorder.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.owner = User.objects.create_user(username="event-owner", password="pw")
+        cls.outsider = User.objects.create_user(
+            username="event-outsider", password="pw"
+        )
+        wt = WorkflowType.objects.get(name="Delegation Report")
+        cls.report = DelegationReport.objects.create(
+            workflow_type=wt,
+            current_state=wt.get_initial_state(),
+            title="Events test report",
+            owner=cls.owner,
+        )
+        cls.event_type = EventType.objects.get(slug="atc-update-published")
+
+    def setUp(self):
+        self.client.force_login(self.owner)
+
+    def _detail_url(self):
+        return reverse(
+            "pwms:delegation_report_detail",
+            kwargs={"public_id": self.report.public_id},
+        )
+
+    def _record_event(self, *, htmx=False, **overrides):
+        target = self.report
+        data = {
+            "content_type": f"{target._meta.app_label}.{target._meta.model_name}",
+            "object_id": target.pk,
+            "event_type": self.event_type.pk,
+            "notes": "",
+            "document_url": "",
+        }
+        data.update(overrides)
+        headers = {"HTTP_HX_REQUEST": "true"} if htmx else {}
+        return self.client.post(reverse("pwms:workflow_events_add"), data, **headers)
+
+    def test_the_events_panel_offers_the_recorder_to_an_editor(self):
+        response = self.client.get(self._detail_url())
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Record event")
+
+    def test_an_event_is_recorded_with_its_type_and_actor(self):
+        response = self._record_event(notes="ATC 2026 No 12, p. 14")
+        self.assertEqual(response.status_code, 200)
+        event = self.report.events().get()
+        self.assertEqual(event.event_type, self.event_type)
+        self.assertEqual(event.actor, self.owner)
+        self.assertEqual(event.origin, "user")
+        self.assertEqual(event.notes, "ATC 2026 No 12, p. 14")
+        self.assertContains(response, "ATC 2026 No 12, p. 14")
+
+    def test_a_recorded_event_lands_on_the_timeline(self):
+        self._record_event(notes="ATC published in the papers.")
+        response = self.client.get(self._detail_url())
+        self.assertContains(response, 'id="pane-timeline"')
+        self.assertContains(response, "ATC published in the papers.")
+
+    def test_the_add_response_refreshes_the_events_tab_counter_out_of_band(self):
+        response = self._record_event(htmx=True)
+        self.assertEqual(response.status_code, 200)
+        # The counter is in the tab bar, outside #events-section, so the add
+        # response has to carry it as an out-of-band swap.
+        self.assertContains(
+            response,
+            '<span class="workflow-tab-count" id="tab-events-count" hx-swap-oob="true">1</span>',
+        )
+
+    def test_recording_an_event_needs_the_edit_right(self):
+        self.client.force_login(self.outsider)
+        response = self._record_event()
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(self.report.events().exists())
+
+    def test_an_event_must_name_a_type(self):
+        response = self._record_event(event_type="")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(self.report.events().exists())

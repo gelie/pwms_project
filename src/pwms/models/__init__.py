@@ -2,6 +2,7 @@ from .attachments import Attachment, AttachmentVersion
 from .base import BaseModel
 from .geography import City, Country
 from .groups import Group
+from .meetings import Meeting, MeetingAttendance
 from .notifications import Notification
 from .permissions import GroupMembership, Role
 from .reports import ReportShare
@@ -13,6 +14,7 @@ from .sharepoint import (
     SharepointToken,
 )
 from .users import User
+from .venues import Building, Venue
 from .workflows import (
     AbstractLegislativeWorkflow,
     Bill,
@@ -23,6 +25,7 @@ from .workflows import (
     EventType,
     InternationalAgreement,
     InternationalResolution,
+    PublicStatus,
     State,
     Transition,
     TransitionCondition,
@@ -44,6 +47,7 @@ __all__ = [
     "BaseModel",
     "Bill",
     "BillVersion",
+    "Building",
     "City",
     "Country",
     "DelegationParticipant",
@@ -54,7 +58,10 @@ __all__ = [
     "GroupMembership",
     "InternationalAgreement",
     "InternationalResolution",
+    "Meeting",
+    "MeetingAttendance",
     "Notification",
+    "PublicStatus",
     "ReportShare",
     "Role",
     "SharepointDrive",
@@ -67,6 +74,7 @@ __all__ = [
     "TransitionCondition",
     "TransitionLog",
     "User",
+    "Venue",
     "WorkflowEvent",
     "WorkflowGroupAccess",
     "WorkflowNote",

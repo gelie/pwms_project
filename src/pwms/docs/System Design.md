@@ -85,7 +85,9 @@ pwms_project/                     # repo root (git) — run manage.py from here
     │   ├── attachments.py        # Attachment, AttachmentVersion
     │   ├── notifications.py      # Notification (bell + delivery log)
     │   ├── reports.py            # ReportShare
-    │   └── workflows.py          # engine + instances + RBAC + events
+    │   ├── workflows.py          # engine + instances + RBAC + events
+    │   ├── meetings.py          # Meeting + MeetingAttendance (the Events workflow)
+    │   └── venues.py            # Building + Venue (on-premises venue catalogue)
     ├── api/
     │   ├── urls.py               # DRF router + token / audit routes
     │   ├── views.py              # API root, token views, resource viewsets
@@ -98,12 +100,13 @@ pwms_project/                     # repo root (git) — run manage.py from here
     ├── services/
     │   ├── permissions.py        # unified permission resolver (UI + API)
     │   ├── attachments.py        # SharePoint attachment service
-    │   ├── history.py            # merged TransitionLog + auditlog timeline
+    │   ├── history.py            # merged TransitionLog + WorkflowEvent + auditlog timeline
+    │   ├── meetings_io.py        # meeting CSV/XLSX import + export
     │   └── progress.py           # where a record sits in its state machine
     ├── management/commands/      # sync, jobs, diagrams (see Management Commands)
     ├── utils/                    # audit_helpers.py, sharepoint.py, diagrams.py
     ├── migrations/
-    ├── tests*.py                 # tests, tests_api, tests_notifications, tests_reports, …
+    ├── tests*.py                 # tests, tests_api, tests_meetings, tests_notifications, …
     └── docs/                     # this documentation
 ```
 
@@ -126,6 +129,12 @@ pwms_project/                     # repo root (git) — run manage.py from here
 | `/pwms/alerts/` , `/pwms/alerts/{public_id}/` | alerts page and open/read state | session |
 | `/pwms/reports/…` | report builder, HTMX preview, export, share | session + RBAC |
 | `/pwms/reports/shared/{token}/` | read-only shared report (token-addressed) | token |
+| `/pwms/meetings/` (`?view=month|week|day` , `&week_start=`) , `/pwms/meetings/calendar/` , `/pwms/meetings/calendar.json` | meeting calendar dashboard (colour-coded month/week/day layouts, configurable week start), its HTMX calendar body, and the JSON feed | session |
+| `/pwms/meetings/new/` (`?date=`, `?time=`) , `/pwms/meetings/{public_id}/` (`/edit/`, `/delete/`) | meeting create (prefilled from a calendar day) / detail / edit / delete | session + RBAC |
+| `/pwms/meetings/export/` (`?format=csv\|xlsx`) , `/pwms/meetings/import/` , `/pwms/meetings/import/template/` | meeting CSV/XLSX export download, bulk import (upsert), and the blank import template — see [Meetings Import & Export](./Meetings%20Import%20%26%20Export.md) | session + RBAC |
+| `/pwms/meetings/{public_id}/attendance/…` | add an invitee / record / remove an attendee, regenerate the register, and email the summary | session + RBAC |
+| `/pwms/meetings/{public_id}/agenda/` , `/pwms/meetings/{public_id}/agenda/edit/` | the agenda panel and its inline (HTMX) rich-text editor | session + RBAC |
+| `/pwms/meetings/{public_id}/minutes/` | advance the minutes status (draft / filed / approved) | session + RBAC |
 | `/pwms/*-search/` | HTMX search fragments (users, groups, reports, countries, cities) | session |
 | `/api/` | DRF API root (token endpoints, resource index, audit routes) | session/token/basic |
 | `/api/auth/token/` (+ `refresh/` , `revoke/`) | obtain / rotate / revoke an API token | – (obtain) / token |
@@ -133,6 +142,7 @@ pwms_project/                     # repo root (git) — run manage.py from here
 | `/api/groups/lookup/?name=…` | group details + member roster by (partial) name | session/token/basic + RBAC |
 | `/api/{workflow-types,states,transitions}/…` | workflow registry (CRUD) | session/token/basic + RBAC |
 | `/api/{delegation-reports,resolutions,agreements,bills}/…` | workflow instances + `transitions` / `transition` / `events` / `audit` actions | session/token/basic + RBAC |
+| `/api/meetings/…` | meetings + `mine` / `calendar` / `attendance` / `attendance/add` / `attendance/record` / `minutes` actions | session/token/basic + RBAC |
 | `/api/{resolutions,agreements,bills}/{public_id}/audit/` | auditlog CRUD history for one instrument | session/token/basic |
 | `/api/auth/login/` , `/api/auth/logout/` | DRF browsable-API auth | – |
 | `/api/schema/` , `/api/docs/` , `/api/redoc/` | OpenAPI schema + Swagger/ReDoc | public (docs) |
@@ -196,6 +206,12 @@ that is:
 - **`Bill`** — `bill_number`, `short_title`, `bill_type`, `house_of_origin`,
   sponsor and responsible committee, with `public_status` derived from the state
   and a preserved `BillVersion` history.
+- **`Meeting`** — the Events workflow: `meeting_type` (House Plenary, committee,
+  administration, …), `start_datetime` / `end_datetime`, an on-premises `venue`
+  (a room in a `Building`) or free-text `off_site_venue` / `off_site_address`, an
+  `attendance_mode` (on the premises / hybrid / virtual), the convener
+  `host_group`, chair/secretary and `quorum`, with the agenda and minutes carried
+  as attachments and attendance recorded on the `MeetingAttendance` child rows.
 
 Helpers on the base provide lifecycle navigation:
 
@@ -264,10 +280,13 @@ single entry point the UI and API both call: `resolve(user, resource, action)`,
 It dispatches by resource type — workflow instances go through `can(...)` above,
 other models fall back to a conservative default or a registered resolver —
 adds the superuser bypass, grants `manage` to anyone holding the global
-`Role.can_manage_permissions` capability, and treats two people named on a
+`Role.can_manage_permissions` capability, and treats people named on a
 workflow instance as implicitly authorised — its **owner** may always
 view/edit/delete it and its **assignee** may always view it (assignment confers
-reading rights only). The DRF audit endpoint consumes it via
+reading rights only). A **meeting** additionally grants **view** to anyone on its
+attendance register, so an invited committee member outside the unit that
+administers the register can still open the meeting they were asked to attend.
+The DRF audit endpoint consumes it via
 `WorkflowViewPermission` (`pwms/api/permissions.py`).
 
 ---

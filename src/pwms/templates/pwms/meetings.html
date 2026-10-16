@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Meetings{% endblock title %}
+{% block content %}
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:workflows" %}">Workflows</a>
+      </li>
+      <li class="breadcrumb-item active" aria-current="page">Meetings</li>
+    </ol>
+  </nav>
+
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="mb-0">
+      {% lucide "calendar-days" size=22 %} Meetings
+    </h1>
+    {% if can_create_meeting %}
+      <a class="meeting-fab"
+         href="{{ new_meeting_url }}"
+         aria-label="New meeting"
+         title="New meeting">{% lucide "plus" size=24 %}</a>
+    {% endif %}
+    <div class="d-flex flex-wrap gap-2">
+      <div class="dropdown">
+        <button class="btn btn-outline-secondary dropdown-toggle"
+                type="button"
+                data-bs-toggle="dropdown"
+                aria-expanded="false">{% lucide "download" size=16 %} Export</button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li>
+            <a class="dropdown-item" href="{{ export_urls.xlsx }}">Excel workbook (.xlsx)</a>
+          </li>
+          <li>
+            <a class="dropdown-item" href="{{ export_urls.csv }}">Comma-separated (.csv)</a>
+          </li>
+        </ul>
+      </div>
+      {% if can_create_meeting %}
+        <a class="btn btn-outline-secondary" href="{% url "pwms:meeting_import" %}">
+          {% lucide "upload" size=16 %} Import
+        </a>
+      {% endif %}
+        <!--<a class="btn btn-primary" href="{{ new_meeting_url }}">
+          {% lucide "plus" size=18 %} New meeting
+        </a>-->
+
+    </div>
+  </div>
+
+  {% if upcoming_meetings %}
+    <section class="meeting-upcoming" aria-label="Next up">
+      <h2 class="meeting-upcoming__title">{% lucide "clock" size=16 %} Next up</h2>
+      <ul class="meeting-upcoming__list">
+        {% for meeting in upcoming_meetings %}
+          <li class="meeting-upcoming__card" style="--event-color: {{ meeting.color }}">
+            <a class="meeting-upcoming__link" href="{% url "pwms:meeting_detail" meeting.public_id %}">
+              <span class="meeting-upcoming__when">
+                {{ meeting.start_datetime|date:"D j M" }} · {{ meeting.start_datetime|date:"H:i" }}
+              </span>
+              <span class="meeting-upcoming__name">{{ meeting.title }}</span>
+              <span class="meeting-upcoming__meta">
+                {{ meeting.get_meeting_type_display }}
+                {% if meeting.venue_display %}· {{ meeting.venue_display }}{% endif %}
+              </span>
+            </a>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+  {% endif %}
+
+  <!--{# The toolbar and the calendar travel together: HTMX fetches the full page and
+     swaps just this region, so the active view/layout and the period stay in
+     step. Without JavaScript every control is an ordinary link or GET form. #}-->
+  <div id="meeting-calendar-region">
+    <div class="meeting-toolbar">
+      <form class="meeting-toolbar__filters"
+            method="get"
+            role="search"
+            hx-get="{% url "pwms:meetings" %}"
+            hx-target="#meeting-calendar-region"
+            hx-select="#meeting-calendar-region"
+            hx-swap="outerHTML"
+            hx-push-url="true">
+        <input type="hidden" name="view" value="{{ view }}">
+        {% if view == "month" %}
+          <input type="hidden" name="month" value="{{ anchor|date:"Y-m" }}">
+        {% else %}
+          <input type="hidden" name="day" value="{{ anchor|date:"Y-m-d" }}">
+        {% endif %}
+        <label class="visually-hidden" for="meeting-search">Search meetings</label>
+        <input class="form-control form-control-sm"
+               id="meeting-search"
+               type="search"
+               name="q"
+               value="{{ query }}"
+               placeholder="Title, reference or venue">
+        <label class="visually-hidden" for="meeting-type">Meeting type</label>
+        <select class="form-select form-select-sm w-50" id="meeting-type" name="type">
+          <option value="">All types</option>
+          {% for value, label in meeting_type_choices %}
+            <option value="{{ value }}"
+                    {% if value == selected_type %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        <div class="form-check form-check-inline mb-0">
+          <input class="form-check-input"
+                 type="checkbox"
+                 id="meeting-mine"
+                 name="mine"
+                 value="1"
+                 {% if mine_only %}checked{% endif %}>
+          <label class="form-check-label small" for="meeting-mine">Mine</label>
+        </div>
+        <label class="small text-body-secondary mb-0" for="meeting-week-start">Week starts</label>
+        <select class="form-select form-select-sm w-50" id="meeting-week-start" name="week_start">
+          {% for option in week_start_options %}
+            <option value="{{ option.value }}"
+                    {% if option.value == week_start %}selected{% endif %}>{{ option.label }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn btn-sm btn-outline-secondary" type="submit">Apply</button>
+        {% if has_filters %}
+          <a class="btn btn-sm btn-link"
+             href="{% url "pwms:meetings" %}?view={{ view }}&week_start={{ week_start }}">Clear</a>
+        {% endif %}
+      </form>
+      <div class="btn-group meeting-toolbar__views" role="group" aria-label="Calendar view">
+        {% for name, url in view_urls.items %}
+          <a class="btn btn-outline-secondary{% if name == view %} active{% endif %}"
+             href="{{ url }}"
+             hx-get="{{ url }}"
+             hx-target="#meeting-calendar-region"
+             hx-select="#meeting-calendar-region"
+             hx-swap="outerHTML"
+             hx-push-url="true"
+             {% if name == view %}aria-current="page"{% endif %}>{{ name|capfirst }}</a>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% include "pwms/partials/meetings/calendar.html" %}
+  </div>
+
+  <p class="small text-body-secondary mt-3">
+    Need this in another system?
+    <a href="{{ calendar_json_url }}?start={{ anchor|date:"Y-m-d" }}">Calendar feed (JSON)</a>.
+  </p>
+
+  <!--{% if can_create_meeting %}
+    <a class="meeting-fab"
+       href="{{ new_meeting_url }}"
+       aria-label="New meeting"
+       title="New meeting">{% lucide "plus" size=24 %}</a>
+  {% endif %}-->
+{% endblock content %}

@@ -35,7 +35,9 @@ from ..models import (
     DelegationReport,
     InternationalAgreement,
     InternationalResolution,
+    Meeting,
 )
+from ..utils.richtext import rich_text_to_text
 from .exports import CONTENT_TYPES, logo_data_uri
 
 #: Formats a single instrument document is offered in.
@@ -110,7 +112,7 @@ def _common_facts(instance, children):
         _field("Title", instance.title),
         _field("Workflow type", instance.workflow_type.name),
         _field("Current state", state.name),
-        _field("Public status", state.get_public_name_display()),
+        _field("Public status", state.public_status.name),
         _field("Priority", instance.get_priority_display()),
         _field("Owner", _name(instance.owner)),
         _field("Assigned to", _name(instance.assigned_to) or "—"),
@@ -256,11 +258,51 @@ def _bill_notes(instance):
     return [("Notes / sub-events", instance.notes)]
 
 
+def _meeting_sections(instance):
+    return [
+        {
+            "title": "Meeting",
+            "fields": [
+                _field("Meeting type", instance.get_meeting_type_display()),
+                _field("Reference", instance.reference_number or "—"),
+                _field("Starts", _stamp(instance.start_datetime) or "—"),
+                _field(
+                    "Ends",
+                    "All day"
+                    if instance.all_day
+                    else (_stamp(instance.end_datetime) or "—"),
+                ),
+                _field("Attendance", instance.get_attendance_mode_display()),
+                _field("Venue", instance.venue_display or "—"),
+                _field(
+                    "Convener",
+                    str(instance.host_group) if instance.host_group else "—",
+                ),
+                _field("Chairperson", _name(instance.chaired_by) or "—"),
+                _field("Secretary", _name(instance.secretary) or "—"),
+                _field(
+                    "Quorum",
+                    str(instance.quorum) if instance.quorum is not None else "—",
+                ),
+                _field("Minutes", instance.get_minutes_status_display()),
+            ],
+        }
+    ]
+
+
+def _meeting_notes(instance):
+    return [
+        ("Agenda", rich_text_to_text(instance.agenda_summary)),
+        ("Notes / follow-up", instance.notes),
+    ]
+
+
 _TYPE_SECTIONS = {
     DelegationReport: _delegation_sections,
     InternationalResolution: _resolution_sections,
     InternationalAgreement: _agreement_sections,
     Bill: _bill_sections,
+    Meeting: _meeting_sections,
 }
 
 _TYPE_NOTES = {
@@ -268,6 +310,7 @@ _TYPE_NOTES = {
     InternationalResolution: _resolution_notes,
     InternationalAgreement: _agreement_notes,
     Bill: _bill_notes,
+    Meeting: _meeting_notes,
 }
 
 
@@ -361,11 +404,41 @@ def _bill_tables(instance):
     ]
 
 
+def _meeting_tables(instance):
+    register = instance.attendances.select_related("user", "recorded_by").all()
+    return [
+        {
+            "title": f"Attendance register ({register.count()})",
+            "headers": [
+                "Person",
+                "Capacity",
+                "Required",
+                "RSVP",
+                "Attendance",
+                "Recorded by",
+            ],
+            "rows": [
+                [
+                    _cell(attendance.display_name),
+                    _cell(attendance.get_capacity_display()),
+                    _cell("Yes" if attendance.is_required else "No"),
+                    _cell(attendance.get_rsvp_status_display()),
+                    _cell(attendance.get_attendance_status_display()),
+                    _cell(_name(attendance.recorded_by) or "—"),
+                ]
+                for attendance in register
+            ],
+            "empty": "Nobody is on the register.",
+        }
+    ]
+
+
 _TYPE_TABLES = {
     DelegationReport: _delegation_tables,
     InternationalResolution: _resolution_tables,
     InternationalAgreement: _agreement_tables,
     Bill: _bill_tables,
+    Meeting: _meeting_tables,
 }
 
 

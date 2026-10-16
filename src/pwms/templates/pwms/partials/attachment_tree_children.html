@@ -16,12 +16,12 @@ Context: attachment_content_type, attachment_object_id, plus one of
       <button type="button"
               class="btn btn-link btn-sm p-0 text-decoration-none"
               aria-label="Expand {{ drive.name }}"
-              hx-get="{% url "pwms:attachment_tree_children" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}&drive_id={{ drive.drive_id|urlencode }}"
+              hx-get="{% url "pwms:attachment_tree_children" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}&drive_id={{ drive.drive_id|urlencode }}&default_type={{ attachment_default_type|urlencode }}"
               hx-target="#drive-{{ drive.pk }}-children"
               hx-swap="innerHTML">{% lucide "chevron-right" size=14 %}</button>
       <button type="button"
               class="btn btn-link btn-sm p-0 text-decoration-none text-truncate"
-              hx-get="{% url "pwms:attachment_folder" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}&drive_id={{ drive.drive_id|urlencode }}&folder_id=root&folder_name=Root"
+              hx-get="{% url "pwms:attachment_folder" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}&drive_id={{ drive.drive_id|urlencode }}&folder_id=root&folder_name=Root&default_type={{ attachment_default_type|urlencode }}"
               hx-target="#attachment-folder-contents"
               hx-swap="innerHTML">{% lucide "hard-drive" size=14 %} {{ drive.name }}</button>
     </div>
@@ -34,12 +34,12 @@ Context: attachment_content_type, attachment_object_id, plus one of
       <button type="button"
               class="btn btn-link btn-sm p-0 text-decoration-none"
               aria-label="Expand {{ folder.name }}"
-              hx-get="{% url "pwms:attachment_tree_children" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}&drive_id={{ attachment_drive_id|urlencode }}&folder_id={{ folder.id|urlencode }}"
+              hx-get="{% url "pwms:attachment_tree_children" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}&drive_id={{ attachment_drive_id|urlencode }}&folder_id={{ folder.id|urlencode }}&default_type={{ attachment_default_type|urlencode }}"
               hx-target="#folder-{{ folder.id }}-children"
               hx-swap="innerHTML">{% lucide "chevron-right" size=14 %}</button>
       <button type="button"
               class="btn btn-link btn-sm p-0 text-decoration-none text-truncate"
-              hx-get="{% url "pwms:attachment_folder" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}&drive_id={{ attachment_drive_id|urlencode }}&folder_id={{ folder.id|urlencode }}&folder_name={{ folder.name|urlencode }}&parent_folder_id={{ attachment_parent_folder_id|urlencode }}"
+              hx-get="{% url "pwms:attachment_folder" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}&drive_id={{ attachment_drive_id|urlencode }}&folder_id={{ folder.id|urlencode }}&folder_name={{ folder.name|urlencode }}&parent_folder_id={{ attachment_parent_folder_id|urlencode }}&default_type={{ attachment_default_type|urlencode }}"
               hx-target="#attachment-folder-contents"
               hx-swap="innerHTML">{% lucide "folder" size=14 %} {{ folder.name }}</button>
     </div>

@@ -9,10 +9,17 @@ from .models import (
     Group,
     GroupMembership,
     InternationalResolution,
+    PublicStatus,
     Role,
     State,
     WorkflowType,
 )
+
+
+def make_state(**kwargs):
+    """A ``State`` with a default public status, for these ad-hoc test machines."""
+    kwargs.setdefault("public_status", PublicStatus.objects.get(name="New"))
+    return State.objects.create(**kwargs)
 
 
 class ReferralViewTests(TestCase):
@@ -59,7 +66,7 @@ class ReferralViewTests(TestCase):
     def _locked_resolution(self):
         """A resolution in a state that forbids referrals, owned by the editor."""
         wt = WorkflowType.objects.create(name="UI Locked Referral Type")
-        state = State.objects.create(
+        state = make_state(
             workflow_type=wt, name="Locked", is_initial=True, allows_referrals=False
         )
         return InternationalResolution.objects.create(

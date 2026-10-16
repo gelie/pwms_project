@@ -1,7 +1,10 @@
+from uuid import UUID
+
 from django.contrib.auth import authenticate, get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Q
 from django.http import Http404
+from django.utils.dateparse import parse_date
 from drf_spectacular.utils import (
     OpenApiParameter,
     OpenApiTypes,
@@ -23,6 +26,9 @@ from ..models import (
     GroupMembership,
     InternationalAgreement,
     InternationalResolution,
+    Meeting,
+    MeetingAttendance,
+    PublicStatus,
     Role,
     State,
     Transition,
@@ -45,12 +51,18 @@ from .serializers import (
     GroupWithMembersSerializer,
     InternationalAgreementSerializer,
     InternationalResolutionSerializer,
+    MeetingAttendanceAddSerializer,
+    MeetingAttendanceRecordSerializer,
+    MeetingAttendanceSerializer,
+    MeetingSerializer,
     MembershipSerializer,
+    PublicStatusSerializer,
     RoleSerializer,
     StateSerializer,
     TransitionLogSerializer,
     TransitionSerializer,
     UserDetailSerializer,
+    UserMembershipSerializer,
     UserSerializer,
     WorkflowEventSerializer,
     WorkflowTransitionRequestSerializer,
@@ -96,12 +108,14 @@ def api_root(request):
             ("roles", "role"),
             ("memberships", "membership"),
             ("workflow-types", "workflow-type"),
+            ("public-statuses", "public-status"),
             ("states", "state"),
             ("transitions", "transition"),
             ("delegation-reports", "delegation-report"),
             ("resolutions", "resolution"),
             ("agreements", "agreement"),
             ("bills", "bill"),
+            ("meetings", "meeting"),
         )
     }
     return Response(
@@ -371,10 +385,187 @@ class UserViewSet(ResourceViewSet):
         """Return the record of the user making the request."""
         return Response(self.get_serializer(request.user).data)
 
+    @extend_schema(
+        summary="A user's group memberships",
+        description=(
+            "Every group membership held by the user (looked up by username), "
+            "newest first. Filter by whether it is current (`active`), whether it "
+            "was in force on a date (`as_of`), its start/end (`start_after`, "
+            "`start_before`, `end_after`, `end_before`) and by what it grants "
+            "(`group`, `role`, `group_type`)."
+        ),
+        parameters=[
+            OpenApiParameter(
+                "active",
+                OpenApiTypes.BOOL,
+                OpenApiParameter.QUERY,
+                description="Only current (true) or ended (false) memberships.",
+            ),
+            OpenApiParameter(
+                "as_of",
+                OpenApiTypes.DATE,
+                OpenApiParameter.QUERY,
+                description="Memberships in force on this date (YYYY-MM-DD).",
+            ),
+            OpenApiParameter(
+                "start_after",
+                OpenApiTypes.DATE,
+                OpenApiParameter.QUERY,
+                description="Memberships that started on or after this date.",
+            ),
+            OpenApiParameter(
+                "start_before",
+                OpenApiTypes.DATE,
+                OpenApiParameter.QUERY,
+                description="Memberships that started on or before this date.",
+            ),
+            OpenApiParameter(
+                "end_after",
+                OpenApiTypes.DATE,
+                OpenApiParameter.QUERY,
+                description="Memberships that ended on or after this date.",
+            ),
+            OpenApiParameter(
+                "end_before",
+                OpenApiTypes.DATE,
+                OpenApiParameter.QUERY,
+                description="Memberships that ended on or before this date.",
+            ),
+            OpenApiParameter(
+                "group",
+                OpenApiTypes.UUID,
+                OpenApiParameter.QUERY,
+                description="Only memberships of this group (its public_id).",
+            ),
+            OpenApiParameter(
+                "role",
+                OpenApiTypes.STR,
+                OpenApiParameter.QUERY,
+                description="Only memberships in this role (its slug).",
+            ),
+            OpenApiParameter(
+                "group_type",
+                OpenApiTypes.STR,
+                OpenApiParameter.QUERY,
+                description="Only memberships whose group is of this type.",
+            ),
+            OpenApiParameter(
+                "ordering",
+                OpenApiTypes.STR,
+                OpenApiParameter.QUERY,
+                description=(
+                    "start_date (default, descending), end_date, is_active, "
+                    "group__name, role__name."
+                ),
+            ),
+        ],
+        responses=UserMembershipSerializer(many=True),
+    )
+    @action(detail=True, methods=["get"])
+    def memberships(self, request, username=None):
+        user = self.get_object()
+        queryset = GroupMembership.objects.filter(user=user).select_related(
+            "group", "role"
+        )
+        queryset = self._filter_memberships(queryset, request.query_params)
+        queryset = queryset.order_by(*self._membership_ordering(request.query_params))
+
+        page = self.paginate_queryset(queryset)
+        serializer = UserMembershipSerializer(
+            page if page is not None else queryset, many=True
+        )
+        if page is not None:
+            return self.get_paginated_response(serializer.data)
+        return Response(serializer.data)
+
+    @staticmethod
+    def _membership_date(params, name):
+        """Parse an ISO-date query parameter, or raise a 400."""
+        raw = params.get(name)
+        if not raw:
+            return None
+        value = parse_date(raw)
+        if value is None:
+            raise ValidationError({name: "Expected an ISO date (YYYY-MM-DD)."})
+        return value
+
+    @classmethod
+    def _membership_ordering(cls, params):
+        """Resolve the ``ordering`` query parameter to a safe ``order_by`` tuple."""
+        allowed = {
+            "start_date",
+            "end_date",
+            "is_active",
+            "created_at",
+            "group__name",
+            "role__name",
+        }
+        raw = params.get("ordering")
+        if not raw:
+            return ("-start_date", "-id")
+        fields = []
+        for token in raw.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            if token.lstrip("-") not in allowed:
+                raise ValidationError(
+                    {"ordering": f"Order by one of: {', '.join(sorted(allowed))}."}
+                )
+            fields.append(token)
+        return tuple(fields) or ("-start_date", "-id")
+
+    def _filter_memberships(self, queryset, params):
+        """Apply the supported membership filters from the query string."""
+        raw_active = (params.get("active") or "").strip().lower()
+        if raw_active:
+            if raw_active in {"1", "true", "yes", "on"}:
+                queryset = queryset.filter(is_active=True)
+            elif raw_active in {"0", "false", "no", "off"}:
+                queryset = queryset.filter(is_active=False)
+            else:
+                raise ValidationError({"active": "Use true or false."})
+
+        as_of = self._membership_date(params, "as_of")
+        if as_of is not None:
+            queryset = queryset.filter(start_date__lte=as_of).filter(
+                Q(end_date__isnull=True) | Q(end_date__gte=as_of)
+            )
+
+        for name, lookup in (
+            ("start_after", "start_date__gte"),
+            ("start_before", "start_date__lte"),
+            ("end_after", "end_date__gte"),
+            ("end_before", "end_date__lte"),
+        ):
+            value = self._membership_date(params, name)
+            if value is not None:
+                queryset = queryset.filter(**{lookup: value})
+
+        group = (params.get("group") or "").strip()
+        if group:
+            queryset = queryset.filter(group__public_id=_parse_uuid("group", group))
+        role = (params.get("role") or "").strip()
+        if role:
+            queryset = queryset.filter(role__slug=role)
+        group_type = (params.get("group_type") or "").strip()
+        if group_type:
+            queryset = queryset.filter(group__group_type=group_type)
+
+        return queryset
+
 
 def _query_bool(value) -> bool:
     """Interpret a query-string flag (``?flag=true``) leniently."""
     return str(value).lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_uuid(name, value):
+    """Validate a UUID query parameter, or raise a 400 field error."""
+    try:
+        return UUID(value)
+    except TypeError, ValueError:
+        raise ValidationError({name: "Expected a UUID."})
 
 
 class GroupViewSet(ResourceViewSet):
@@ -479,10 +670,19 @@ class WorkflowTypeViewSet(ResourceViewSet):
 class StateViewSet(ResourceViewSet):
     """The states making up each workflow type's machine."""
 
-    queryset = State.objects.select_related("workflow_type").all()
+    queryset = State.objects.select_related("workflow_type", "public_status").all()
     serializer_class = StateSerializer
     search_fields = ["name", "slug", "description"]
     ordering_fields = ["workflow_type", "order", "name"]
+
+
+class PublicStatusViewSet(ResourceViewSet):
+    """The shared public-status vocabulary a state publishes as (BRS §12)."""
+
+    queryset = PublicStatus.objects.all()
+    serializer_class = PublicStatusSerializer
+    search_fields = ["name", "slug", "description"]
+    ordering_fields = ["order", "name"]
 
 
 class TransitionViewSet(ResourceViewSet):
@@ -647,3 +847,270 @@ class BillViewSet(WorkflowInstanceViewSet):
     serializer_class = BillSerializer
     search_fields = ["title", "short_title", "bill_number"]
     ordering_fields = ["created_at", "updated_at", "deadline", "priority"]
+
+
+# ===========================================================================
+# Meetings (the Events workflow)
+# ===========================================================================
+
+
+class MeetingViewSet(WorkflowInstanceViewSet):
+    """Parliamentary meetings, with their attendance register and minutes.
+
+    Beyond the shared workflow-instance behaviour (list scoped to what the caller
+    may view, ``transitions`` / ``transition`` / ``events`` / ``audit``), this
+    exposes the meeting detail the calendar and the register need:
+
+    * ``GET /api/meetings/`` — filter by ``meeting_type``, ``mine=1`` (the caller),
+      ``member=<username>``, ``start`` / ``end`` (dates) and free-text ``search``;
+    * ``GET /api/meetings/mine/`` — the caller's meetings *by membership*
+      (attendance register, convener group, chair/secretary, owner/assignee);
+    * ``GET /api/meetings/calendar/`` — a date-window feed for a calendar UI;
+    * ``GET /api/meetings/{public_id}/`` — the detail, attendance included;
+    * ``GET|POST /api/meetings/{public_id}/attendance/`` — read the register, or
+      add a person; ``.../attendance/record/`` records RSVP/attendance;
+    * ``POST /api/meetings/{public_id}/minutes/`` — advance the minutes status.
+    """
+
+    queryset = Meeting.objects.select_related(
+        "workflow_type",
+        "current_state",
+        "owner",
+        "assigned_to",
+        "host_group",
+        "chaired_by",
+        "secretary",
+        "venue",
+        "venue__building",
+    ).all()
+    serializer_class = MeetingSerializer
+    search_fields = [
+        "title",
+        "reference_number",
+        "venue__name",
+        "venue__building__name",
+        "off_site_venue",
+        "off_site_address",
+    ]
+    ordering_fields = [
+        "start_datetime",
+        "created_at",
+        "updated_at",
+        "deadline",
+        "priority",
+    ]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        params = self.request.query_params
+        meeting_type = params.get("meeting_type")
+        if meeting_type:
+            queryset = queryset.filter(meeting_type=meeting_type)
+        start = params.get("start")
+        if start:
+            parsed = parse_date(start)
+            if parsed is not None:
+                queryset = queryset.filter(start_datetime__date__gte=parsed)
+        end = params.get("end")
+        if end:
+            parsed = parse_date(end)
+            if parsed is not None:
+                queryset = queryset.filter(start_datetime__date__lte=parsed)
+        member = params.get("member")
+        if member:
+            user = User.objects.filter(username__iexact=member).first()
+            if user is not None:
+                queryset = queryset.for_member(user)
+        if params.get("mine") in ("1", "true", "yes"):
+            queryset = queryset.for_member(self.request.user)
+        return queryset
+
+    def perform_create(self, serializer):
+        super().perform_create(serializer)
+        # The API mirrors the web create: the register is generated from the
+        # hosting group and the meeting's audience is alerted.
+        from ..notifications import notify_meeting_created
+
+        meeting = serializer.instance
+        if meeting.host_group_id is not None:
+            meeting.regenerate_attendance(actor=self.request.user)
+        notify_meeting_created(meeting, actor=self.request.user)
+
+    def perform_update(self, serializer):
+        previous_host_group_id = serializer.instance.host_group_id
+        meeting = serializer.save()
+        # Only a change of hosting group re-generates, so an unrelated edit does
+        # not re-add a generated row that was deliberately removed.
+        if meeting.host_group_id != previous_host_group_id:
+            meeting.regenerate_attendance(actor=self.request.user)
+
+    @extend_schema(
+        summary="My meetings by membership",
+        description=(
+            "Meetings the caller is a party to by membership: on the attendance "
+            "register, convener of the group, chair/secretary, owner or assignee. "
+            "Still scoped to what the caller may view."
+        ),
+    )
+    @action(detail=False, methods=["get"])
+    def mine(self, request):
+        queryset = self.filter_queryset(
+            Meeting.objects.for_member(request.user).select_related(
+                "workflow_type", "current_state", "owner", "host_group"
+            )
+        )
+        visible = visible_instances(request.user, queryset)
+        page = self.paginate_queryset(visible)
+        if page is not None:
+            return self.get_paginated_response(
+                self.get_serializer(page, many=True).data
+            )
+        return Response(self.get_serializer(visible, many=True).data)
+
+    @extend_schema(
+        summary="Calendar feed",
+        parameters=[
+            OpenApiParameter("start", OpenApiTypes.DATE, OpenApiParameter.QUERY),
+            OpenApiParameter("end", OpenApiTypes.DATE, OpenApiParameter.QUERY),
+        ],
+        responses={200: OpenApiTypes.OBJECT},
+    )
+    @action(detail=False, methods=["get"])
+    def calendar(self, request):
+        """A date-window feed of meetings, permission-scoped, for a calendar UI."""
+        queryset = self.get_queryset()
+        visible = visible_instances(request.user, queryset)
+        payload = [
+            {
+                "public_id": str(meeting.public_id),
+                "title": meeting.title,
+                "meeting_type": meeting.meeting_type,
+                "start_datetime": meeting.start_datetime.isoformat()
+                if meeting.start_datetime
+                else None,
+                "end_datetime": meeting.end_datetime.isoformat()
+                if meeting.end_datetime
+                else None,
+                "all_day": meeting.all_day,
+                "state": meeting.current_state.name if meeting.current_state_id else "",
+                "calendar_state": meeting.calendar_state,
+                "url": meeting.get_absolute_url(),
+            }
+            for meeting in visible
+        ]
+        return Response({"count": len(payload), "results": payload})
+
+    @extend_schema(summary="Attendance register")
+    @action(detail=True, methods=["get"])
+    def attendance(self, request, public_id=None):
+        meeting = self.get_object()
+        serializer = MeetingAttendanceSerializer(
+            meeting.attendances_active(), many=True
+        )
+        return Response(serializer.data)
+
+    @extend_schema(
+        summary="Add an attendee",
+        request=MeetingAttendanceAddSerializer,
+        responses={201: MeetingAttendanceSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="attendance/add")
+    def attendance_add(self, request, public_id=None):
+        meeting = self.get_object()
+        payload = MeetingAttendanceAddSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        user = None
+        user_id = payload.validated_data.get("user")
+        if user_id:
+            user = User.objects.filter(pk=user_id, is_active=True).first()
+            if user is None:
+                raise ValidationError({"user": "No such active user."})
+            if meeting.attendances.filter(user=user).exists():
+                raise ValidationError(
+                    {"user": "That person is already on the register."}
+                )
+        attendance = MeetingAttendance.objects.create(
+            meeting=meeting,
+            user=user,
+            guest_name=payload.validated_data.get("guest_name", ""),
+            guest_email=payload.validated_data.get("guest_email", ""),
+            capacity=payload.validated_data["capacity"],
+            is_required=payload.validated_data["is_required"],
+        )
+        return Response(
+            MeetingAttendanceSerializer(attendance).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @extend_schema(
+        summary="Record RSVP / attendance",
+        request=MeetingAttendanceRecordSerializer,
+        responses={200: MeetingAttendanceSerializer},
+    )
+    @action(detail=True, methods=["post"], url_path="attendance/record")
+    def attendance_record(self, request, public_id=None):
+        meeting = self.get_object()
+        payload = MeetingAttendanceRecordSerializer(data=request.data)
+        payload.is_valid(raise_exception=True)
+        attendance = meeting.attendances.filter(
+            public_id=payload.validated_data["attendance"]
+        ).first()
+        if attendance is None:
+            raise ValidationError({"attendance": "No such attendee on this meeting."})
+        note = payload.validated_data.get("note", "")
+        rsvp_status = payload.validated_data.get("rsvp_status")
+        status_value = payload.validated_data.get("attendance_status")
+        if rsvp_status:
+            attendance.respond(rsvp_status, note=note or None)
+        if status_value:
+            attendance.record(
+                status_value,
+                actor=request.user,
+                ip_address=request.META.get("REMOTE_ADDR"),
+                note=note or None,
+            )
+        return Response(MeetingAttendanceSerializer(attendance).data)
+
+    @extend_schema(
+        summary="Regenerate the attendance register",
+        description=(
+            "Rebuild the register from the hosting group's active members, "
+            "keeping the invitees added by hand."
+        ),
+        request=None,
+        responses={200: MeetingAttendanceSerializer(many=True)},
+    )
+    @action(detail=True, methods=["post"], url_path="attendance/regenerate")
+    def attendance_regenerate(self, request, public_id=None):
+        meeting = self.get_object()
+        if meeting.host_group_id is None:
+            raise ValidationError(
+                {"host_group": "Set a hosting group before regenerating."}
+            )
+        meeting.regenerate_attendance(actor=request.user)
+        serializer = MeetingAttendanceSerializer(
+            meeting.attendances_active(), many=True
+        )
+        return Response(serializer.data)
+
+    @extend_schema(
+        summary="Advance the minutes status",
+        request=OpenApiTypes.OBJECT,
+        responses={200: MeetingSerializer},
+    )
+    @action(detail=True, methods=["post"])
+    def minutes(self, request, public_id=None):
+        meeting = self.get_object()
+        value = (request.data.get("status") or "").strip()
+        if value == "draft":
+            meeting.minutes_status = "draft"
+            meeting.save(update_fields=["minutes_status", "updated_at"])
+        elif value == "filed":
+            meeting.record_minutes_filed(actor=request.user)
+        elif value == "approved":
+            meeting.record_minutes_approved(
+                actor=request.user, comment=request.data.get("comment", "")
+            )
+        else:
+            raise ValidationError({"status": "Unknown minutes status."})
+        return Response(self.get_serializer(meeting).data)

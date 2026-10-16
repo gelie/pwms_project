@@ -1209,6 +1209,11 @@ html.password-toggle-ready .password-toggle {
     color: light-dark(#5b5240, #d3ccc0);
 }
 
+.badge-timeline--event {
+    background-color: var(--theme-brown);
+    color: light-dark(#fff, #121212);
+}
+
 /* ------------------------------------------------------------------ *
    Progress tab: a completion ring and the state sequence.
 
@@ -1444,6 +1449,674 @@ html.password-toggle-ready .password-toggle {
 
 @media (prefers-reduced-motion: reduce) {
     .site-message {
+        transition: none;
+    }
+}
+
+/* --- Rich-text editor (static/js/rich-text.js) ------------------------- */
+/* Wraps a textarea[data-rich-text] into a toolbar + contenteditable surface;
+   the textarea itself is hidden but still submits the formatted value. */
+.rich-text {
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: var(--bs-border-radius, 0.375rem);
+    background: var(--bs-body-bg, #fff);
+}
+
+.rich-text-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.125rem;
+    padding: 0.25rem;
+    border-bottom: 1px solid var(--bs-border-color, #dee2e6);
+    background: var(--bs-tertiary-bg, #f8f9fa);
+    border-radius: var(--bs-border-radius, 0.375rem) var(--bs-border-radius, 0.375rem) 0 0;
+}
+
+.rich-text-toolbar button {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    border-radius: 0.25rem;
+    padding: 0.15rem 0.45rem;
+    line-height: 1.4;
+    font-size: 0.85rem;
+}
+
+.rich-text-toolbar button:hover,
+.rich-text-toolbar button:focus-visible {
+    background: var(--bs-secondary-bg, #e9ecef);
+}
+
+.rich-text-editor {
+    min-height: 10rem;
+    max-height: 32rem;
+    overflow-y: auto;
+    padding: 0.5rem 0.75rem;
+}
+
+.rich-text-editor:focus {
+    outline: none;
+}
+
+.rich-text-editor h2 {
+    font-size: 1.25rem;
+}
+
+.rich-text-editor h3 {
+    font-size: 1.1rem;
+}
+
+.rich-text-editor ul,
+.rich-text-editor ol {
+    padding-left: 1.5rem;
+}
+
+.rich-text-editor blockquote {
+    margin-left: 0;
+    padding-left: 0.75rem;
+    border-left: 3px solid var(--bs-border-color, #dee2e6);
+    color: var(--bs-secondary-color, #6c757d);
+}
+
+.rich-text-source {
+    display: none;
+}
+
+/* --- Meeting attendance register toggle (partials/meetings/attendance.html) --- */
+/* The register collapses behind a button whose chevron flips when it is open. */
+.meeting-attendance-chevron {
+    display: inline-flex;
+    transition: transform 0.15s ease;
+}
+
+.meeting-attendance-toggle[aria-expanded="true"] .meeting-attendance-chevron {
+    transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .meeting-attendance-chevron {
+        transition: none;
+    }
+}
+
+/* --- Meetings calendar (views.meetings, partials/meetings/*) -------------- */
+/* Every event carries its meeting-type colour as the `--event-color` custom
+   property (set inline from Meeting.color); the rules below only ever read it,
+   so no colour is hardcoded here. Colour is used as an accent plus a tint mixed
+   against the current surface, which keeps the chips readable in both themes. */
+
+/* Toolbar: layout switcher + filters */
+.meeting-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3.75rem;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    padding: 0.5rem 0;
+}
+
+.meeting-toolbar__filters {
+    flex: 1;
+    display: flex;
+    /*flex-wrap: wrap;*/
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.meeting-toolbar__filters .form-control-sm,
+.meeting-toolbar__filters .form-select-sm {
+    /*min-width: 9rem;*/
+}
+
+/* "Next up" strip along the top of the page */
+.meeting-upcoming {
+    margin-bottom: 1.25rem;
+}
+
+.meeting-upcoming__title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.5rem;
+    color: var(--bs-secondary-color);
+    font-size: 0.8rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.meeting-upcoming__list {
+    display: flex;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0 0.1rem 0.35rem;
+    overflow-x: auto;
+    list-style: none;
+}
+
+.meeting-upcoming__card {
+    flex: 0 0 auto;
+    min-width: 13rem;
+    max-width: 17rem;
+    border: 1px solid var(--bs-border-color);
+    border-left: 4px solid var(--event-color, var(--theme-green));
+    border-radius: 0.5rem;
+    background: var(--bs-body-bg);
+}
+
+.meeting-upcoming__link {
+    display: block;
+    padding: 0.6rem 0.75rem;
+    color: inherit;
+    text-decoration: none;
+}
+
+.meeting-upcoming__link:hover,
+.meeting-upcoming__link:focus-visible {
+    background: var(--bs-tertiary-bg);
+}
+
+.meeting-upcoming__when {
+    display: block;
+    color: var(--bs-secondary-color);
+    font-size: 0.72rem;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+
+.meeting-upcoming__name {
+    display: block;
+    margin: 0.15rem 0;
+    font-weight: 600;
+}
+
+.meeting-upcoming__meta {
+    display: block;
+    color: var(--bs-secondary-color);
+    font-size: 0.78rem;
+}
+
+/* Calendar shell + period navigation */
+.meeting-calendar {
+    overflow: hidden;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 0.6rem;
+    background: var(--bs-body-bg);
+}
+
+.meeting-calendar__nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1rem;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.65rem 0.85rem;
+    border-bottom: 1px solid var(--bs-border-color);
+    background: var(--bs-tertiary-bg);
+}
+
+.meeting-calendar__nav-left {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.meeting-calendar__period {
+    margin: 0 0.25rem;
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+/* Colour legend (meeting types on show) */
+.meeting-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.85rem;
+    margin: 0;
+    padding: 0;
+    color: var(--bs-secondary-color);
+    font-size: 0.78rem;
+    list-style: none;
+}
+
+.meeting-legend__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.meeting-legend__dot {
+    flex: 0 0 auto;
+    width: 0.7rem;
+    height: 0.7rem;
+    border-radius: 50%;
+    background: var(--event-color, var(--theme-green));
+}
+
+/* Event chip (month cells, all-day strip, day panel) */
+.meeting-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    overflow: hidden;
+    padding: 0.12rem 0.35rem;
+    border-left: 3px solid var(--event-color, var(--theme-green));
+    border-radius: 0.3rem;
+    background: color-mix(in srgb, var(--event-color, var(--theme-green)) 12%, var(--bs-body-bg));
+    color: var(--bs-body-color);
+    font-size: 0.75rem;
+    line-height: 1.3;
+    text-decoration: none;
+    white-space: nowrap;
+}
+
+.meeting-chip:hover,
+.meeting-chip:focus-visible {
+    background: color-mix(in srgb, var(--event-color, var(--theme-green)) 24%, var(--bs-body-bg));
+    color: var(--bs-body-color);
+}
+
+.meeting-chip__time {
+    flex: 0 0 auto;
+    color: var(--bs-secondary-color);
+    font-variant-numeric: tabular-nums;
+}
+
+.meeting-chip__title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.meeting-chip--past {
+    opacity: 0.75;
+}
+
+.meeting-chip--cancelled {
+    text-decoration: line-through;
+}
+
+.meeting-chip--running {
+    box-shadow: 0 0 0 1px var(--event-color, var(--theme-green));
+}
+
+/* Month layout */
+.meeting-month__head,
+.meeting-month__grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.meeting-month__head {
+    border-bottom: 1px solid var(--bs-border-color);
+}
+
+.meeting-month__weekday {
+    padding: 0.4rem 0.5rem;
+    color: var(--bs-secondary-color);
+    font-size: 0.72rem;
+    letter-spacing: 0.05em;
+    text-align: center;
+    text-transform: uppercase;
+}
+
+.meeting-month__grid {
+    gap: 1px;
+    background: var(--bs-border-color);
+}
+
+.meeting-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-height: 6.5rem;
+    padding: 0.3rem 0.35rem 0.35rem;
+    background: var(--bs-body-bg);
+}
+
+.meeting-cell--outside {
+    background: var(--bs-tertiary-bg);
+}
+
+.meeting-cell--outside .meeting-cell__day {
+    color: var(--bs-tertiary-color);
+}
+
+.meeting-cell--selected {
+    box-shadow: inset 0 0 0 2px var(--theme-gold);
+}
+
+.meeting-cell__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.25rem;
+}
+
+.meeting-cell__day {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 50%;
+    color: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.meeting-cell__day:hover,
+.meeting-cell__day:focus-visible {
+    background: var(--bs-secondary-bg);
+}
+
+.meeting-cell--today .meeting-cell__day {
+    background: var(--theme-green);
+    color: #fff;
+}
+
+.meeting-cell__add {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.35rem;
+    height: 1.35rem;
+    border-radius: 50%;
+    color: var(--bs-secondary-color);
+    text-decoration: none;
+    opacity: 0.3;
+    transition: opacity 0.12s ease, background-color 0.12s ease;
+}
+
+.meeting-cell:hover .meeting-cell__add,
+.meeting-time__day:hover .meeting-cell__add,
+.meeting-cell__add:focus-visible {
+    opacity: 1;
+}
+
+.meeting-cell__add:hover {
+    background: var(--bs-secondary-bg);
+    color: var(--bs-body-color);
+}
+
+.meeting-cell__events {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    overflow: hidden;
+}
+
+/* Week/day layout: a shared time axis, one column per day */
+.meeting-time {
+    overflow-x: auto;
+}
+
+.meeting-time__head,
+.meeting-time__allday,
+.meeting-time__body {
+    display: grid;
+    grid-template-columns: 3.5rem minmax(0, 1fr);
+}
+
+.meeting-time__head,
+.meeting-time__allday,
+.meeting-time__body {
+    min-width: 38rem;
+}
+
+.meeting-time__head {
+    border-bottom: 1px solid var(--bs-border-color);
+}
+
+.meeting-time__days,
+.meeting-time__allday-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--cal-days, 1), minmax(0, 1fr));
+}
+
+.meeting-time__day {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.3rem;
+    padding: 0.4rem 0.3rem;
+    border-left: 1px solid var(--bs-border-color);
+    text-align: center;
+}
+
+.meeting-time__day.is-weekend {
+    background: var(--bs-tertiary-bg);
+}
+
+.meeting-time__day-date {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.3rem;
+    color: inherit;
+    text-decoration: none;
+}
+
+.meeting-time__day-name {
+    color: var(--bs-secondary-color);
+    font-size: 0.72rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.meeting-time__day-num {
+    font-weight: 600;
+}
+
+.meeting-time__day.is-today .meeting-time__day-num {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 50%;
+    background: var(--theme-green);
+    color: #fff;
+}
+
+.meeting-time__allday {
+    border-bottom: 1px solid var(--bs-border-color);
+    background: var(--bs-tertiary-bg);
+}
+
+.meeting-time__allday-label {
+    padding: 0.3rem 0.4rem;
+    color: var(--bs-secondary-color);
+    font-size: 0.7rem;
+    text-align: right;
+}
+
+.meeting-time__allday-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.2rem;
+    border-left: 1px solid var(--bs-border-color);
+}
+
+.meeting-time__gutter {
+    display: flex;
+    flex-direction: column;
+}
+
+.meeting-time__hour {
+    height: var(--cal-hour-px, 44px);
+    padding-right: 0.4rem;
+    color: var(--bs-secondary-color);
+    font-size: 0.7rem;
+    text-align: right;
+    transform: translateY(-0.5em);
+}
+
+.meeting-time__grid {
+    display: grid;
+    grid-template-columns: repeat(var(--cal-days, 1), minmax(0, 1fr));
+    height: calc(var(--cal-hours, 12) * var(--cal-hour-px, 44px));
+    background-image: repeating-linear-gradient(
+        to bottom,
+        var(--bs-border-color) 0,
+        var(--bs-border-color) 1px,
+        transparent 1px,
+        transparent var(--cal-hour-px, 44px)
+    );
+}
+
+.meeting-time__col {
+    position: relative;
+    border-left: 1px solid var(--bs-border-color);
+}
+
+.meeting-time__col.is-weekend {
+    background: var(--bs-tertiary-bg);
+}
+
+.meeting-event {
+    position: absolute;
+    top: var(--top, 0%);
+    left: calc(var(--lane, 0) * 100% / var(--lanes, 1) + 1px);
+    display: flex;
+    flex-direction: column;
+    width: calc(100% / var(--lanes, 1) - 2px);
+    height: var(--height, 0%);
+    min-height: 1.35rem;
+    overflow: hidden;
+    padding: 0.15rem 0.35rem;
+    border-left: 3px solid var(--event-color, var(--theme-green));
+    border-radius: 0.3rem;
+    background: color-mix(in srgb, var(--event-color, var(--theme-green)) 16%, var(--bs-body-bg));
+    color: var(--bs-body-color);
+    font-size: 0.72rem;
+    line-height: 1.25;
+    text-decoration: none;
+}
+
+.meeting-event:hover,
+.meeting-event:focus-visible {
+    background: color-mix(in srgb, var(--event-color, var(--theme-green)) 28%, var(--bs-body-bg));
+    color: var(--bs-body-color);
+}
+
+.meeting-event__time {
+    color: var(--bs-secondary-color);
+    font-variant-numeric: tabular-nums;
+}
+
+.meeting-event__title {
+    overflow: hidden;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Day panel (month layout) */
+.meeting-day-panel {
+    padding: 0.75rem 0.85rem;
+    border-top: 1px solid var(--bs-border-color);
+}
+
+.meeting-day-panel__title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.4rem;
+    font-size: 0.9rem;
+}
+
+.meeting-day-panel__link {
+    margin-left: auto;
+    font-size: 0.78rem;
+}
+
+.meeting-day-panel__item {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: flex-start;
+    gap: 0.5rem;
+}
+
+.meeting-day-panel__body {
+    min-width: 0;
+}
+
+/* Event popover (static/js/meeting-calendar.js) */
+.meeting-popover {
+    position: absolute;
+    z-index: 1080;
+    width: 16rem;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid var(--bs-border-color);
+    border-top: 3px solid var(--event-color, var(--theme-green));
+    border-radius: 0.5rem;
+    background: var(--bs-body-bg);
+    box-shadow: 0 0.5rem 1.25rem rgba(0, 0, 0, 0.18);
+}
+
+.meeting-popover__title {
+    margin: 0 0 0.4rem;
+    font-weight: 600;
+}
+
+.meeting-popover__row {
+    display: flex;
+    gap: 0.5rem;
+    margin: 0.15rem 0;
+    font-size: 0.82rem;
+}
+
+.meeting-popover__label {
+    flex: 0 0 5.5rem;
+    color: var(--bs-secondary-color);
+}
+
+.meeting-popover__link {
+    display: inline-block;
+    margin-top: 0.5rem;
+    font-weight: 600;
+}
+
+/* Big round "add meeting" button */
+.meeting-fab {
+    /*position: fixed;*/
+    right: 1.5rem;
+    top: 12.5rem;
+    z-index: 1040;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3.4rem;
+    height: 3.4rem;
+    border-radius: 50%;
+    background: var(--theme-green);
+    color: #fff;
+    box-shadow: 0 0.4rem 1rem rgba(0, 0, 0, 0.28);
+    text-decoration: none;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+
+.meeting-fab:hover,
+.meeting-fab:focus-visible {
+    color: #fff;
+    transform: translateY(-2px);
+    box-shadow: 0 0.6rem 1.4rem rgba(0, 0, 0, 0.32);
+}
+
+@media (max-width: 767.98px) {
+    .meeting-cell {
+        min-height: 4.5rem;
+    }
+
+    .meeting-month__weekday {
+        font-size: 0.62rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .meeting-cell__add,
+    .meeting-fab {
         transition: none;
     }
 }

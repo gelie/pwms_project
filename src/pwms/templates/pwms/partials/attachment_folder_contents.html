@@ -45,7 +45,7 @@ Context: attachment_drive, attachment_files, attachment_folder_id,
             <input type="hidden" name="folder_id" value="{{ attachment_folder_id }}">
             <input type="hidden" name="folder_name" value="{{ attachment_folder_name }}">
             <input type="hidden" name="parent_folder_id" value="{{ attachment_parent_folder_id }}">
-            <input type="hidden" name="type" value="document">
+            <input type="hidden" name="type" value="{{ attachment_default_type|default:"document" }}">
             <button type="submit" class="btn btn-sm btn-primary text-nowrap">{% lucide "paperclip" size=14 %} Attach</button>
           </form>
         </li>
@@ -81,7 +81,8 @@ Context: attachment_drive, attachment_files, attachment_folder_id,
       <div class="col-6 col-md-3">
         <select class="form-select" name="type" aria-label="Attachment type">
           {% for value, label in attachment_types %}
-            <option value="{{ value }}" {% if value == "document" %}selected{% endif %}>{{ label }}</option>
+            <option value="{{ value }}"
+                    {% if value == attachment_default_type %}selected{% elif not attachment_default_type and value == "document" %}selected{% endif %}>{{ label }}</option>
           {% endfor %}
         </select>
       </div>
