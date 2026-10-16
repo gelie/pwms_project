@@ -84,6 +84,7 @@ pointing at them) survive.
 | Command | Purpose | Status |
 | --- | --- | --- |
 | `import_groups` | import group names from a CSV/text list as `Group` records under a parent group | ✅ live |
+| `generate_group_tree` | render the group MPTT hierarchy as a Graphviz/Mermaid diagram, optionally rooted at one group | ✅ live — see below |
 | `compare_org_hierarchy` | diff PWMS's group hierarchy against the tree Oracle's supervisor chain implies | ✅ live — see below |
 
 Key options: `--parent NAME_OR_SLUG` (required) is the group the names hang
@@ -130,6 +131,42 @@ how many weakly-evidenced edges it dropped. `--dry-run` previews the result.
 | --- | --- |
 | `--infer-org-parents` | nest each org unit under the unit its manager reports into |
 | `--infer-min-votes N` | reports required to corroborate an edge (default 2) |
+
+### Group hierarchy diagrams
+
+`Group` is an MPTT model, so the whole tree already lives in every row's
+`tree_id` / `lft` / `rght` / `level` columns. `generate_group_tree` reads those
+columns and renders the hierarchy with Graphviz — one node per group, coloured
+by a family derived from `group_type`, under a title banner with a legend and a
+provenance footer. By default it draws **every** root group and its descendants;
+`--group` roots the drawing at a single group and renders only its subtree.
+
+```bash
+python manage.py generate_group_tree --group "IRPD"
+python manage.py generate_group_tree --group-type committee --active-only
+python manage.py generate_group_tree --group "IRPD" --format png --text
+```
+
+| Option | Effect |
+| --- | --- |
+| `--group NAME_OR_SLUG` | root the tree at one group; only its descendants are drawn |
+| `--format {dot,png,svg,pdf}` | image format (default `svg`); PNG is rendered at 200 dpi |
+| `--output-dir DIR` | where images are written (default `GROUP_TREE_OUTPUT_DIR`) |
+| `--group-type TYPE` | only include these types; repeat for several |
+| `--active-only` | drop groups with `is_active = False` |
+| `--max-depth N` | stop `N` levels below each drawn root (`0` = roots only) |
+| `--rankdir {TB,LR,BT,RL}` | graph direction (default `TB`) |
+| `--show-members` | annotate each node with its distinct active member count |
+| `--text` | also print an indented text tree to stdout |
+| `--filename STEM` | override the output filename stem |
+| `--mermaid-dir DIR` | where Mermaid `.md` is written (default `--output-dir`) |
+| `--no-mermaid` | skip the Mermaid Markdown export |
+
+Filtering re-parents around excluded nodes: a kept group whose ancestors are
+filtered out is promoted to a root rather than dropped, so `--group-type section`
+still shows every section even when its parent division is left out. The
+rendered file is an operator/inspection artefact — nothing in the site serves it
+yet.
 
 ## Committee scraping
 

@@ -1,10 +1,11 @@
 import json
+import shutil
 import tempfile
 from datetime import date, timedelta
 from importlib import import_module
 from io import StringIO
 from pathlib import Path
-from unittest import mock
+from unittest import mock, skipUnless
 
 from auditlog.context import set_actor
 from auditlog.models import LogEntry
@@ -26,6 +27,9 @@ from django_flatpickr.widgets import DatePickerInput, DateTimePickerInput
 
 from .management.commands.compare_org_hierarchy import (
     Command as CompareOrgHierarchyCommand,
+)
+from .management.commands.generate_group_tree import (
+    Command as GenerateGroupTreeCommand,
 )
 from .management.commands.sync_groups_oracle import (
     Command as SyncGroupsOracleCommand,
@@ -4961,3 +4965,163 @@ class DirectoryPaginationTests(TestCase):
 
         sql = " ".join(query["sql"] for query in captured.captured_queries)
         self.assertIn("LIMIT 10", sql.upper())
+
+
+class GenerateGroupTreeCommandTests(TestCase):
+    """The group-hierarchy diagram command (``generate_group_tree``).
+
+    Tree structure is asserted against the pruned in-memory forest, which needs
+    no Graphviz; the render itself runs under ``skipUnless`` so the suite still
+    passes on a host without the ``dot`` binary.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        Group.objects.all().delete()
+        cls.gov = Group.objects.create(name="Tree Gov", group_type="legislature")
+        cls.parl = Group.objects.create(
+            name="Tree Parliament", group_type="parliament", parent=cls.gov
+        )
+        cls.na = Group.objects.create(
+            name="Tree NA", group_type="house", parent=cls.parl
+        )
+        cls.pc = Group.objects.create(
+            name="Tree PC", group_type="portfolio_committee", parent=cls.na
+        )
+        cls.admin = Group.objects.create(
+            name="Tree Admin", group_type="administration", parent=cls.gov
+        )
+        cls.div = Group.objects.create(
+            name="Tree Div", short_name="DIV", group_type="division", parent=cls.admin
+        )
+        cls.sec = Group.objects.create(
+            name="Tree Sec", group_type="section", parent=cls.div
+        )
+        cls.retired = Group.objects.create(
+            name="Tree Retired", group_type="section", parent=cls.admin, is_active=False
+        )
+
+    def _forest(self, group=None, group_types=None, active_only=False, max_depth=None):
+        return GenerateGroupTreeCommand()._build_forest(
+            group, group_types, active_only, max_depth
+        )
+
+    def _ids(self, forest):
+        return [node.id for node in GenerateGroupTreeCommand()._all_nodes(forest)]
+
+    def _node(self, forest, group_id):
+        """The freshly-loaded instance of ``group_id`` inside ``forest``.
+
+        The class-level ``cls`` attributes are separate Python objects; the
+        pruned-tree links (``_children`` / ``_tree_parent``) live on the
+        instances ``_build_forest`` loaded, so assertions must read those.
+        """
+        for node in GenerateGroupTreeCommand()._all_nodes(forest):
+            if node.id == group_id:
+                return node
+        raise AssertionError(f"group {group_id} not present in the forest")
+
+    def test_no_group_draws_every_root_and_descendant(self):
+        forest = self._forest()
+        self.assertEqual([n.id for n in forest], [self.gov.id])
+        self.assertEqual(
+            set(self._ids(forest)),
+            {
+                self.gov.id,
+                self.parl.id,
+                self.na.id,
+                self.pc.id,
+                self.admin.id,
+                self.div.id,
+                self.sec.id,
+                self.retired.id,
+            },
+        )
+
+    def test_group_scopes_to_that_subtree(self):
+        forest = self._forest(group="Tree NA")
+        self.assertEqual([n.id for n in forest], [self.na.id])
+        self.assertEqual(set(self._ids(forest)), {self.na.id, self.pc.id})
+
+    def test_group_matches_slug_as_well_as_name(self):
+        # The reference is resolved by slug, exactly as --group accepts it.
+        self.assertEqual(self.na.slug, "tree-na")
+        forest = self._forest(group=self.na.slug)
+        self.assertEqual([n.id for n in forest], [self.na.id])
+
+    def test_group_type_filter_reparents_around_excluded_nodes(self):
+        forest = self._forest(group="Tree Gov", group_types=["section", "division"])
+        # The division survives although its ancestors do not, so it becomes a
+        # root; its section stays attached. The retired section's parent is
+        # excluded too, so it is promoted to a root rather than dropped.
+        self.assertEqual({n.id for n in forest}, {self.div.id, self.retired.id})
+        self.assertEqual(
+            [n.id for n in self._node(forest, self.div.id)._children], [self.sec.id]
+        )
+
+    def test_active_only_drops_inactive_groups(self):
+        forest = self._forest(active_only=True)
+        self.assertNotIn(self.retired.id, self._ids(forest))
+
+    def test_max_depth_prunes_below_the_root(self):
+        forest = self._forest(group="Tree Gov", max_depth=1)
+        self.assertEqual(
+            set(self._ids(forest)), {self.gov.id, self.parl.id, self.admin.id}
+        )
+        self.assertEqual(self._node(forest, self.parl.id)._children, [])
+        self.assertEqual(self._node(forest, self.admin.id)._children, [])
+
+    def test_unknown_group_type_raises(self):
+        with self.assertRaises(CommandError):
+            call_command("generate_group_tree", "--group-type", "nonsense")
+
+    def test_unknown_group_raises(self):
+        with self.assertRaises(CommandError):
+            call_command("generate_group_tree", "--group", "No Such Group")
+
+    def test_ambiguous_group_reference_raises(self):
+        Group.objects.create(name="Tree Twin", group_type="division", parent=self.admin)
+        Group.objects.create(name="Tree Twin", group_type="division", parent=self.gov)
+        with self.assertRaises(CommandError):
+            call_command("generate_group_tree", "--group", "Tree Twin")
+
+    @skipUnless(shutil.which("dot"), "Graphviz 'dot' binary not installed")
+    def test_render_writes_svg_and_mermaid(self):
+        Group.objects.create(name="Tree Outsider", group_type="party")
+        member = get_user_model().objects.create_user(
+            username="tree-member", password="pw"
+        )
+        GroupMembership.objects.create(
+            user=member,
+            group=self.div,
+            role=Role.objects.create(name="Tree Member"),
+            is_active=True,
+        )
+
+        tmp = tempfile.mkdtemp()
+        call_command(
+            "generate_group_tree",
+            "--group",
+            "Tree Gov",
+            "--show-members",
+            "--output-dir",
+            tmp,
+            stdout=StringIO(),
+        )
+
+        svg_path = Path(tmp) / "tree_gov.svg"
+        md_path = Path(tmp) / "tree_gov.md"
+        self.assertTrue(svg_path.exists())
+        self.assertTrue(md_path.exists())
+
+        svg = svg_path.read_text()
+        self.assertIn("Tree Div", svg)  # in scope
+        self.assertIn("DIV", svg)  # short name rendered beneath the node name
+        self.assertIn("1 members", svg)  # member count from --show-members
+        self.assertNotIn("Tree Outsider", svg)  # a sibling root is out of scope
+        self.assertIn("Legend", svg)
+
+        mermaid = md_path.read_text()
+        self.assertIn("flowchart TD", mermaid)
+        self.assertIn("classDef", mermaid)
+        self.assertIn("--> ", mermaid)
