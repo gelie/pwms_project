@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}
+  {% if query %}Search: {{ query }}{% else %}Search{% endif %}
+{% endblock title %}
+{% block content %}
+  <div class="page-header">
+    <h1>Search</h1>
+    <p class="mb-0">
+      {% if query %}
+        {{ total }} result{{ total|pluralize }} for “{{ query }}”.
+      {% else %}
+        Search every register you can access — instruments, meetings and groups.
+      {% endif %}
+    </p>
+  </div>
+  <form class="row g-2 align-items-end mb-4" method="get" role="search">
+    <div class="col-12 col-lg-6">
+      <label class="visually-hidden" for="search-page-input">Search</label>
+      <input class="form-control"
+             id="search-page-input"
+             type="search"
+             name="q"
+             value="{{ query }}"
+             placeholder="Search instruments, meetings and groups">
+    </div>
+    <div class="col-auto">
+      <button class="btn btn-primary" type="submit">Search</button>
+    </div>
+  </form>
+  {% include "pwms/partials/global_search_results.html" with standalone=True %}
+{% endblock content %}

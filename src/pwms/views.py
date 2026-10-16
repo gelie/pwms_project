@@ -14,6 +14,7 @@ from django.contrib.auth.views import LoginView as BaseLoginView
 from django.contrib.auth.views import LogoutView as BaseLogoutView
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Case, CharField, IntegerField, Q, Value, When
 from django.http import (
@@ -116,6 +117,7 @@ from .services.permissions import (
     visible_instances,
 )
 from .services.progress import machine_for, workflow_progress
+from .services.search import count_hits, search_site
 from .utils.diagrams import workflow_type_diagram_path
 
 logger = logging.getLogger(__name__)
@@ -403,38 +405,96 @@ def workflows(request):
     return render(request, "pwms/workflows.html", context)
 
 
+def _text_search(query, *fields):
+    """A ``Q`` matching every whitespace-separated token of ``query`` in any field.
+
+    Token-AND rather than one substring: "john smith" finds a person whose first
+    name is John and surname Smith, and each token may land in a different field.
+    That is the free-text behaviour the listings used to implement in Python,
+    expressed as a database predicate so the page can be sliced with
+    ``LIMIT``/``OFFSET``. A blank query yields an empty ``Q``, matching anything.
+    """
+    match = Q()
+    for token in query.split():
+        token_match = Q()
+        for field in fields:
+            token_match |= Q(**{f"{field}__icontains": token})
+        match &= token_match
+    return match
+
+
+def _directory_page_sizes():
+    """The page sizes the directory listings offer, smallest first.
+
+    The configured default is folded in, so a deployment that sets a size the
+    choices do not list still offers it (and it stays the selected one).
+    """
+    return sorted({*settings.DIRECTORY_PAGE_SIZES, settings.DIRECTORY_PAGE_SIZE})
+
+
+def _directory_page_size(request):
+    """The page size for this request: an offered ``per_page``, else the default."""
+    raw = request.GET.get("per_page", "")
+    if raw.isdigit() and int(raw) in _directory_page_sizes():
+        return int(raw)
+    return settings.DIRECTORY_PAGE_SIZE
+
+
+def _directory_page(request, queryset):
+    """Paginate a queryset in the database, and hand its links the filters.
+
+    Returns the context a directory template needs: ``page_obj`` (the requested
+    page, sliced by the database rather than after reading every row),
+    ``page_range`` (the page numbers to offer, elided when there are many),
+    ``base_query`` (the filters as a query string with ``page`` stripped),
+    ``per_page`` and ``page_sizes`` (for the "Per page" control). Page links
+    append ``page=N`` to ``base_query``, so moving page keeps the filters and the
+    filters themselves (submitted without ``page``) reset to the first page.
+    ``get_page`` tolerates a missing, non-numeric or out-of-range ``page`` rather
+    than raising, so the listing cannot 404 on a hand-edited URL.
+    """
+    per_page = _directory_page_size(request)
+    paginator = Paginator(queryset, per_page)
+    page_obj = paginator.get_page(request.GET.get("page"))
+    params = request.GET.copy()
+    params.pop("page", None)
+    return {
+        "page_obj": page_obj,
+        # Called here because a template cannot pass arguments to a method.
+        "page_range": paginator.get_elided_page_range(page_obj.number),
+        "base_query": params.urlencode(),
+        "per_page": per_page,
+        "page_sizes": _directory_page_sizes(),
+    }
+
+
 def all_groups(request):
     """List every group in the organisational hierarchy (sign-in required).
 
-    The list is narrowed by a free-text name filter (matched against the name
-    and short name, as in the admin) and a group-type filter. The type options
-    are derived from the groups on the page rather than the full choice list,
-    so the filter cannot advertise a type no group uses.
+    The list is narrowed by a free-text name filter (matched against the name and
+    short name, as in the admin) and a group-type filter, both applied in the
+    database so only the requested page's rows are read. The type options are
+    derived from the types in use rather than the full choice list, so the filter
+    cannot advertise a type no group uses.
     """
-    groups = list(Group.objects.select_related("parent").order_by("name"))
+    groups = Group.objects.select_related("parent").order_by("name")
 
     query = request.GET.get("q", "").strip()
     type_filter = request.GET.get("type", "")
 
-    needle = query.lower()
-    filtered = [
-        group
-        for group in groups
-        if (
-            not needle
-            or needle in group.name.lower()
-            or needle in group.short_name.lower()
-        )
-        and (not type_filter or group.group_type == type_filter)
-    ]
+    if query:
+        groups = groups.filter(_text_search(query, "name", "short_name"))
+    if type_filter:
+        groups = groups.filter(group_type=type_filter)
 
+    in_use = set(Group.objects.values_list("group_type", flat=True))
     context = {
-        "groups": filtered,
+        **_directory_page(request, groups),
         "query": query,
         "type_choices": [
             (value, label)
             for value, label in Group.GROUP_TYPE_CHOICES
-            if any(group.group_type == value for group in groups)
+            if value in in_use
         ],
         "has_filters": bool(query or type_filter),
     }
@@ -476,6 +536,108 @@ def group_detail(request, pk):
         "child_groups": group.children.order_by("name"),
     }
     return render(request, "pwms/group-detail.html", context)
+
+
+def user_detail(request, pk):
+    """Show one person's profile: who they are and the groups they belong to.
+
+    A directory card, not an HR record. The User model also holds identity and
+    personnel fields (ID number, date of birth, gender, employee id, supervisor,
+    termination date, identity source) that are deliberately left off the page:
+    it is readable by any signed-in user — the same audience that may view a
+    group's member list — so only the professional details are shown.
+    """
+    person = get_object_or_404(User.objects.select_related("department"), pk=pk)
+    memberships = (
+        person.get_groups_with_roles()
+        .select_related("group__parent", "role")
+        .annotate(
+            status=Case(
+                When(is_active=False, then=Value("Ended")),
+                When(end_date__lt=timezone.localdate(), then=Value("Ended")),
+                default=Value("Active"),
+                output_field=CharField(),
+            )
+        )
+        .order_by("-is_active", "-start_date", "group__name", "role__name")
+    )
+    context = {
+        "person": person,
+        "memberships": memberships,
+        # Current groups the person sits in; ended rows still show below, but the
+        # headline and the status badges count only the live ones.
+        "active_membership_count": sum(1 for m in memberships if m.status == "Active"),
+        "current_portfolio": person.current_portfolio,
+    }
+    return render(request, "pwms/user-detail.html", context)
+
+
+#: Kind filter for the people directory: value -> a ``Q`` narrowing to that kind.
+PEOPLE_KIND_FILTERS = {
+    "mp": Q(is_mp=True),
+    "staff": Q(is_staff_member=True),
+}
+
+#: Status filter: value -> a ``Q`` narrowing to that status.
+PEOPLE_STATUS_FILTERS = {
+    "active": Q(is_active=True),
+    "former": Q(is_active=False),
+}
+
+
+def people(request):
+    """Browsable directory of the people in PWMS (sign-in required).
+
+    Mirrors the group list: a free-text filter (name, username, position or
+    department) plus kind and status selects, all applied in the database so only
+    the requested page's rows are read. Current accounts show by default, so
+    former staff do not clutter the browse — they stay reachable through the
+    status filter and from any record that names them.
+    """
+    everyone = User.objects.select_related("department").order_by(
+        "last_name", "first_name", "username"
+    )
+
+    query = request.GET.get("q", "").strip()
+    kind = request.GET.get("kind", "")
+    status = request.GET.get("status", "active")
+
+    kind_q = PEOPLE_KIND_FILTERS.get(kind)
+    if kind_q is not None:
+        everyone = everyone.filter(kind_q)
+    status_q = PEOPLE_STATUS_FILTERS.get(status)
+    if status_q is not None:
+        everyone = everyone.filter(status_q)
+    if query:
+        everyone = everyone.filter(
+            _text_search(
+                query,
+                "first_name",
+                "last_name",
+                "username",
+                "positiondesc",
+                "department__name",
+            )
+        )
+
+    context = {
+        **_directory_page(request, everyone),
+        "query": query,
+        "kind": kind,
+        "status": status,
+        "kind_choices": (
+            ("", "All people"),
+            ("mp", "Members of Parliament"),
+            ("staff", "Staff"),
+        ),
+        "status_choices": (
+            ("active", "Current only"),
+            ("all", "Current and former"),
+            ("former", "Former only"),
+        ),
+        "has_filters": bool(query or kind or status != "active"),
+    }
+    return render(request, "pwms/all-people.html", context)
 
 
 # --- Workflow instance CRUD -------------------------------------------------
@@ -2126,6 +2288,28 @@ def city_search(request):
         template_name="pwms/partials/city_search_results.html",
         context={"cities": cities.order_by("-population", "name")[:20]},
     )
+
+
+def global_search(request):
+    """Site-wide search across every register the reader may see.
+
+    Returns the categorized results fragment for an HTMX request, which the
+    header swaps into its search panel, and a full results page otherwise — so
+    the box still works, and its results are still linkable, without JavaScript.
+    """
+    query = request.GET.get("q", "").strip()
+    categories = search_site(request.user, query)
+    context = {
+        "query": query,
+        "categories": categories,
+        "total": count_hits(categories),
+    }
+    template_name = (
+        "pwms/partials/global_search_results.html"
+        if request.headers.get("HX-Request") == "true"
+        else "pwms/search-results.html"
+    )
+    return render(request, template_name, context)
 
 
 # --- Attachments (SharePoint documents) -------------------------------------

@@ -2,12 +2,42 @@
 <div class="site-header">
   <div id="top-nav">
     <div class="search-wrapper container">
-      <form action="">
-        <div>
-          <input type="text" class="form-control search" placeholder="Search...">
-          {% comment %} <a href="#" rel="noopener noreferrer">{% lucide "search" %}</a> {% endcomment %}
-        </div>
-      </form>
+      {% if user.is_authenticated %}
+        {% comment %}
+          Global search. The form is an ordinary GET to the results page, so it
+          works without JavaScript and every result is linkable; HTMX runs the
+          same endpoint as the reader types and swaps the categorized fragment
+          into the panel below the box. The panel is closed again — by the script
+          that toggles it, and by the fragment rendering nothing when the query
+          is cleared.
+        {% endcomment %}
+        <form action="{% url "pwms:global_search" %}" method="get" role="search">
+          <div class="global-search position-relative" data-global-search>
+            <label class="visually-hidden" for="global-search-input">Search PWMS</label>
+            <input id="global-search-input"
+                   type="search"
+                   name="q"
+                   class="form-control search"
+                   placeholder="Search…"
+                   autocomplete="off"
+                   value="{{ request.GET.q|default:"" }}"
+                   aria-controls="global-search-results"
+                   hx-get="{% url "pwms:global_search" %}"
+                   hx-trigger="input changed delay:300ms"
+                   hx-target="#global-search-results"
+                   hx-swap="innerHTML"
+                   hx-indicator="#global-search-indicator">
+            <span id="global-search-indicator"
+                  class="htmx-indicator spinner-border spinner-border-sm global-search-spinner"
+                  role="status"
+                  aria-hidden="true"></span>
+            <div id="global-search-results"
+                 class="global-search-results d-none"
+                 aria-live="polite"></div>
+          </div>
+          <button type="submit" class="visually-hidden">Search</button>
+        </form>
+      {% endif %}
     </div>
   </div>
   <div id="middle-topbar">
