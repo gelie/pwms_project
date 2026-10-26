@@ -1,7 +1,8 @@
 {% load static %}
 {% load django_htmx %}
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="light">
+{# Theme toggle is currently disabled: the site is pinned to light below. #}
+<html lang="en" data-bs-theme="light" data-theme="light">
   <head>
     <meta charset="UTF-8">
     <meta name="description"
@@ -27,8 +28,13 @@
     {% block extra_head %}
     {% endblock extra_head %}
     {% htmx_script %}
-    {# Not deferred: sets <html data-theme> during parsing, before the first paint. #}
-    <script src="{% static "js/theme.js" %}"></script>
+    {% comment %}
+      Theme toggle disabled: the site is pinned to light via the data-theme="light"
+      attribute on the html element above, so theme.js is not loaded and no theme
+      preference is stored. To re-enable, restore this script and the .theme-toggle
+      button in navbar.html.
+      <script src="{% static "js/theme.js" %}"></script>
+    {% endcomment %}
     <script src="{% static "js/bootstrap.bundle.min.js" %}" defer></script>
     {# Depends on the Bootstrap bundle above (deferred scripts run in order). #}
     <script src="{% static "js/workflow-tabs.js" %}" defer></script>
