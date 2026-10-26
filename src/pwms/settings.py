@@ -407,6 +407,9 @@ WORKFLOW_DIAGRAM_DIRS = [
 # in GitHub and VS Code. Override per run with `--mermaid-dir` / `--no-mermaid`.
 WORKFLOW_DIAGRAM_DOCS_DIR = BASE_DIR / "src/pwms/docs"
 
+# Group hierarchy diagrams rendered by `manage.py generate_group_tree`.
+GROUP_TREE_OUTPUT_DIR = BASE_DIR / "src/pwms/diagrams"
+
 # === LDAP / Active Directory authentication ===
 #
 # Active Directory holds the credentials; PWMS holds the identity record that
