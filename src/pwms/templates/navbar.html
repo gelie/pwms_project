@@ -172,14 +172,18 @@
                   </ul>
                 </div>
               {% endif %}
-              <button type="button"
-                      class="theme-toggle auth-item"
-                      aria-label="Toggle colour theme"
-                      title="Toggle colour theme (auto, light, dark)">
-                <span class="theme-icon theme-icon-when-auto">{% lucide "sun-moon" size=20 %}</span>
-                <span class="theme-icon theme-icon-when-light">{% lucide "sun" size=20 %}</span>
-                <span class="theme-icon theme-icon-when-dark">{% lucide "moon" size=20 %}</span>
-              </button>
+              {% comment %}
+                Theme toggle disabled. To re-enable, remove these comment tags and restore
+                the theme.js script include in base.html.
+                <button type="button"
+                        class="theme-toggle auth-item"
+                        aria-label="Toggle colour theme"
+                        title="Toggle colour theme (auto, light, dark)">
+                  <span class="theme-icon theme-icon-when-auto">{% lucide "sun-moon" size=20 %}</span>
+                  <span class="theme-icon theme-icon-when-light">{% lucide "sun" size=20 %}</span>
+                  <span class="theme-icon theme-icon-when-dark">{% lucide "moon" size=20 %}</span>
+                </button>
+              {% endcomment %}
             </div>
           </div>
         </div>
