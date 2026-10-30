@@ -70,6 +70,7 @@ class UserOut(Schema):
     employee_type: str
     positiondesc: str
     department: GroupRef | None = None
+    supervisor: UserRef | None = None
     is_active: bool
     is_mp: bool
     is_staff_member: bool

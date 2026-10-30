@@ -48,8 +48,13 @@ All commands live in `pwms/management/commands/` and run as:
 > even though it writes nothing. A manager
 > absent from the feed, or whose id is not stored, leaves the line **untouched**
 > rather than clearing it. Disable with `--skip-supervisors`.
-> (`User.department` and `User.positiondesc` are still not written — the group
-> membership maintained by `MembershipSyncService` is the link the sync keeps.)
+>
+> **Profile fields.** `User.positiondesc` is written from the ERP
+> `POSITIONDESC`, and `User.department` is linked to the child org group
+> (`CHILD_ORG_NAME`, falling back to `PARENT_ORG_NAME`). An org name that cannot
+> be resolved leaves any existing department link untouched rather than clearing
+> it. Roles remain on `GroupMembership` — the sync resolves the post from
+> `positiondesc` there, so `User` does not need a separate role foreign key.
 
 ## SharePoint (Graph) sync
 
