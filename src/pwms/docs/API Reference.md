@@ -8,6 +8,7 @@ The API is intentionally narrow. Three resource families are available:
 | Resource | Collection | Detail | Scope |
 | --- | --- | --- | --- |
 | Users | `GET /api/v1/users/` | `GET /api/v1/users/{public_id}/` | `users:read` |
+| Groups | `GET /api/v1/groups/` | `GET /api/v1/groups/{public_id}/` | `groups:read` |
 | Memberships | `GET /api/v1/memberships/` | `GET /api/v1/memberships/{public_id}/` | `memberships:read` |
 | Bills | `GET /api/v1/bills/` | `GET /api/v1/bills/{public_id}/` | `bills:read` |
 | Search | `GET /api/v1/search/` | — | any of the three scopes |
@@ -164,6 +165,7 @@ endpoint checks the one it needs:
 | Scope | Grants |
 | --- | --- |
 | `users:read` | `GET /api/v1/users/`, `GET /api/v1/users/{public_id}/` |
+| `groups:read` | `GET /api/v1/groups/`, `GET /api/v1/groups/{public_id}/` |
 | `memberships:read` | `GET /api/v1/memberships/`, `GET /api/v1/memberships/{public_id}/` |
 | `bills:read` | `GET /api/v1/bills/`, `GET /api/v1/bills/{public_id}/` |
 
@@ -172,6 +174,9 @@ families it is allowed to read; naming an out-of-scope resource in `resources`
 returns `403`. `GET /api/v1/` describes the API and lists only the resources the
 calling key can use; `GET /api/v1/me/` returns the registration's own name,
 scopes and rate limit.
+
+The seeded partner registrations do not include `groups:read`; grant it in the
+admin if a partner needs the group register.
 
 ---
 
@@ -205,7 +210,7 @@ Authorization: Bearer <access_token>
 | Query parameter | Meaning |
 | --- | --- |
 | `q` | **Required**, at least 2 characters, case-insensitive. |
-| `resources` | Optional comma-separated subset of `users`, `memberships`, `bills`; defaults to every resource the key may read. A resource outside the key's scopes is a `403`. |
+| `resources` | Optional comma-separated subset of `users`, `groups`, `memberships`, `bills`; defaults to every resource the key may read. A resource outside the key's scopes is a `403`. |
 | `limit` | Per-group page size; default `10`, capped by `EXTERNAL_API_MAX_PAGE_SIZE` (`100`). |
 | `offset` | Per-group offset; default `0`. |
 
@@ -220,12 +225,17 @@ own):
 ```json
 {
   "query": "alice",
-  "resources": ["users", "memberships"],
+  "resources": ["users", "groups", "memberships"],
   "skipped": ["bills"],
   "users": {
     "count": 1, "limit": 10, "offset": 0,
     "next": null, "previous": null,
     "results": [ … ]
+  },
+  "groups": {
+    "count": 0, "limit": 10, "offset": 0,
+    "next": null, "previous": null,
+    "results": []
   },
   "memberships": {
     "count": 1, "limit": 10, "offset": 0,
@@ -241,7 +251,7 @@ own):
 ```
 
 `skipped` lists the known resource groups that were not searched, either because
-`resources` excluded them or because the key has no scope for them. The three
+`resources` excluded them or because the key has no scope for them. The four
 result keys are always present; inaccessible/excluded groups are empty pages.
 
 ### Users
@@ -263,6 +273,28 @@ Exposed fields: `public_id`, `username`, `title`, `first_name`, `middle_name`,
 Deliberately **not** exposed: identity numbers, date of birth, gender, bio,
 avatar and the subordinate/reports list. The supervisor's own manager is not
 expanded, so the reference cannot recurse.
+
+### Groups
+
+| Query parameter | Meaning |
+| --- | --- |
+| `search` | Case-insensitive across the group fields below. |
+| `search_fields` | Comma-separated subset of `name`, `short_name`, `slug`, `description`, `parent`, `contact_email`, `contact_phone`, `location`. |
+| `group_type` | Any group type, e.g. `house`, `committee`, `portfolio_committee`, `administration`, `division`, `section`, `party`, `ministry`, `department`. |
+| `parent` | A group `public_id`, name, short name or slug; returns that group's direct children. |
+| `is_active` | Boolean filter. |
+| `ordering` | `name` (default), `group_type`, `start_date`, `end_date`, `created_at`; prefix with `-` to reverse. |
+
+Exposed fields: `public_id`, `name`, `slug`, `short_name`, `group_type`,
+`parent` (nested group reference), `full_path`, `description`, `start_date`,
+`end_date`, `is_active`, `contact_email`, `contact_phone`, `location` and
+`memberships`.
+
+`memberships` is a nested list of the group's membership rows (current and
+ended), each with `public_id`, `user` (`public_id`, `username`, `display_name`),
+`role` (`name`, `slug`), `start_date`, `end_date` and `is_active`. Internal
+membership `notes` are not exposed. Both the list and detail endpoints include
+the nested memberships.
 
 ### Memberships
 

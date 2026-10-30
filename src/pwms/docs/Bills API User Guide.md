@@ -33,7 +33,7 @@ The interactive reference — including every field — is at
 ## 2. Get an access token
 
 ```bash
-curl -s -X POST "https://pwms.example.gov.za/api/v1/auth/token/" \
+curl -s -X POST "https://workflows-dev.parliament.gov.za/api/v1/auth/token/" \
   -H "Content-Type: application/json" \
   -d '{"client_id": "YOUR_CLIENT_ID", "client_secret": "YOUR_SECRET"}'
 ```

@@ -15,6 +15,7 @@ from django.db import models
 
 class Scope(models.TextChoices):
     USERS_READ = "users:read", "Read users"
+    GROUPS_READ = "groups:read", "Read groups"
     MEMBERSHIPS_READ = "memberships:read", "Read memberships"
     BILLS_READ = "bills:read", "Read bills"
 
@@ -24,4 +25,6 @@ class Scope(models.TextChoices):
 ALL_SCOPES: tuple[str, ...] = tuple(Scope.values)
 
 #: Scopes that only read data. Kept as a guard for future write scopes.
-READ_SCOPES = frozenset({Scope.USERS_READ, Scope.MEMBERSHIPS_READ, Scope.BILLS_READ})
+READ_SCOPES = frozenset(
+    {Scope.USERS_READ, Scope.GROUPS_READ, Scope.MEMBERSHIPS_READ, Scope.BILLS_READ}
+)

@@ -342,7 +342,7 @@ class ScopedResourceTests(ApiTestCase):
             last_name="Dlamini",
         )
         cls.group, _ = Group.objects.get_or_create(
-            name="Portfolio Committee", group_type="committee"
+            name="API Test Committee", group_type="committee"
         )
         cls.user.department = cls.group
         cls.user.supervisor = cls.colleague
@@ -376,6 +376,7 @@ class ScopedResourceTests(ApiTestCase):
         for path in (
             "/api/v1/",
             "/api/v1/users/",
+            "/api/v1/groups/",
             "/api/v1/memberships/",
             "/api/v1/bills/",
         ):
@@ -404,13 +405,123 @@ class ScopedResourceTests(ApiTestCase):
             f"/api/v1/users/{self.user.public_id}/", **self.auth(token)
         )
         self.assertEqual(detail.status_code, 200)
-        self.assertEqual(detail.json()["department"]["name"], "Portfolio Committee")
+        self.assertEqual(detail.json()["department"]["name"], "API Test Committee")
         self.assertEqual(detail.json()["supervisor"]["display_name"], "Brian Dlamini")
 
         blocked = self.client.get("/api/v1/memberships/", **self.auth(token))
         self.assertEqual(blocked.status_code, 403)
+        blocked = self.client.get("/api/v1/groups/", **self.auth(token))
+        self.assertEqual(blocked.status_code, 403)
         blocked = self.client.get("/api/v1/bills/", **self.auth(token))
         self.assertEqual(blocked.status_code, 403)
+
+    def test_groups_scope_reads_groups_with_nested_memberships(self):
+        token, _ = self.access_token([Scope.GROUPS_READ])
+
+        listing = self.client.get(
+            f"/api/v1/groups/?{urlencode({'search': self.group.name})}",
+            **self.auth(token),
+        )
+        self.assertEqual(listing.status_code, 200)
+        payload = listing.json()
+        self.assertEqual(payload["count"], 1)
+        record = payload["results"][0]
+        self.assertEqual(record["name"], "API Test Committee")
+        self.assertEqual(record["group_type"], "committee")
+        self.assertEqual(record["full_path"], "API Test Committee")
+        self.assertEqual(len(record["memberships"]), 1)
+        member = record["memberships"][0]
+        self.assertEqual(member["user"]["username"], "alice")
+        self.assertEqual(member["role"]["slug"], "member")
+        self.assertTrue(member["is_active"])
+        self.assertNotIn("notes", member)
+
+        detail = self.client.get(
+            f"/api/v1/groups/{self.group.public_id}/", **self.auth(token)
+        )
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["memberships"][0]["user"]["username"], "alice")
+
+        root = self.client.get("/api/v1/", **self.auth(token)).json()
+        self.assertEqual(
+            {resource["name"] for resource in root["resources"]}, {"groups", "search"}
+        )
+
+        for path in ("/api/v1/users/", "/api/v1/memberships/", "/api/v1/bills/"):
+            blocked = self.client.get(path, **self.auth(token))
+            self.assertEqual(blocked.status_code, 403, path)
+
+    def test_group_search_filters_and_search_fields(self):
+        child, _ = Group.objects.get_or_create(
+            name="API Health Subcommittee",
+            parent=self.group,
+            group_type="committee",
+            defaults={"location": "API Test Location"},
+        )
+        token, _ = self.access_token([Scope.GROUPS_READ])
+
+        by_type = self.client.get(
+            f"/api/v1/groups/?{urlencode({'search': 'API', 'group_type': 'committee'})}",
+            **self.auth(token),
+        )
+        self.assertEqual(by_type.json()["count"], 2)
+
+        by_name = self.client.get(
+            f"/api/v1/groups/?{urlencode({'search': 'API Health'})}",
+            **self.auth(token),
+        )
+        self.assertEqual(by_name.json()["count"], 1)
+        self.assertEqual(by_name.json()["results"][0]["name"], child.name)
+        self.assertEqual(
+            by_name.json()["results"][0]["parent"]["name"], self.group.name
+        )
+
+        by_field = self.client.get(
+            f"/api/v1/groups/?{urlencode({'search': 'API Test Location', 'search_fields': 'location'})}",
+            **self.auth(token),
+        )
+        self.assertEqual(by_field.json()["count"], 1)
+
+        miss = self.client.get(
+            f"/api/v1/groups/?{urlencode({'search': 'API Test Committee', 'search_fields': 'location'})}",
+            **self.auth(token),
+        )
+        self.assertEqual(miss.json()["count"], 0)
+
+        by_parent_name = self.client.get(
+            f"/api/v1/groups/?{urlencode({'parent': self.group.name})}",
+            **self.auth(token),
+        )
+        self.assertEqual(by_parent_name.json()["count"], 1)
+        self.assertEqual(by_parent_name.json()["results"][0]["name"], child.name)
+
+        by_parent_id = self.client.get(
+            f"/api/v1/groups/?{urlencode({'parent': str(self.group.public_id)})}",
+            **self.auth(token),
+        )
+        self.assertEqual(by_parent_id.json()["count"], 1)
+
+        inactive = self.client.get(
+            f"/api/v1/groups/?{urlencode({'is_active': 'false', 'search': 'API'})}",
+            **self.auth(token),
+        )
+        self.assertEqual(inactive.json()["count"], 0)
+
+    def test_unified_search_includes_groups(self):
+        token, _ = self.access_token([Scope.GROUPS_READ])
+        response = self.client.get(
+            f"/api/v1/search/?{urlencode({'q': 'API Test'})}", **self.auth(token)
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["resources"], ["groups"])
+        self.assertEqual(payload["groups"]["count"], 1)
+        self.assertEqual(
+            payload["groups"]["results"][0]["memberships"][0]["user"]["username"],
+            "alice",
+        )
+        self.assertEqual(payload["users"]["count"], 0)
 
     def test_memberships_scope_reads_memberships_and_nothing_else(self):
         token, _ = self.access_token([Scope.MEMBERSHIPS_READ])
@@ -465,7 +576,7 @@ class ScopedResourceTests(ApiTestCase):
         payload = response.json()
         self.assertEqual(payload["query"], "alice")
         self.assertEqual(payload["resources"], ["users", "memberships"])
-        self.assertEqual(payload["skipped"], ["bills"])
+        self.assertEqual(payload["skipped"], ["groups", "bills"])
         self.assertEqual(payload["users"]["count"], 1)
         self.assertEqual(payload["memberships"]["count"], 1)
         self.assertEqual(payload["users"]["results"][0]["username"], "alice")
@@ -493,7 +604,7 @@ class ScopedResourceTests(ApiTestCase):
         self.assertEqual(by_email.json()["users"]["count"], 1)
 
         by_group = self.client.get(
-            f"/api/v1/search/?{urlencode({'q': 'Portfolio'})}", **self.auth(token)
+            f"/api/v1/search/?{urlencode({'q': 'API Test'})}", **self.auth(token)
         )
         counts = by_group.json()
         self.assertEqual(counts["memberships"]["count"], 1)
@@ -552,7 +663,7 @@ class ScopedResourceTests(ApiTestCase):
             )
             self.assertEqual(response.json()["count"], 1, value)
 
-        for value in ("Portfolio Committee", str(self.group.public_id)):
+        for value in ("API Test Committee", str(self.group.public_id)):
             response = self.client.get(
                 f"/api/v1/memberships/?{urlencode({'group': value})}",
                 **self.auth(token),

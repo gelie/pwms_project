@@ -51,10 +51,10 @@ ContentType-linked RBAC layer, and everything that happens to an instrument is
   and scheduled delivery.
 - **Authentication** — Active Directory (LDAP) sign-in that falls back to the
   local database, so the app boots and signs in without a directory.
-- **External API** (Django-Ninja) for registered partner applications, with
+- **PWMS API** (Django-Ninja) for registered partner applications, with
   client-id/secret authentication, 15-minute access tokens and rotating
   24-hour refresh tokens, per-resource scopes, usage logs and per-key throttling.
-  It exposes read-only **users**, **memberships** and **bills**, plus a
+  It exposes read-only **users**, **groups**, **memberships** and **bills**, plus a
   **cross-resource search** endpoint and **OpenAPI / Swagger** docs. The previous
   DRF API under `/api/` has been retired.
 - **Admin, background jobs, management commands** for sync (Oracle/legacy), scraping, notifications and diagram generation.
@@ -123,7 +123,7 @@ The self-documentation lives in [`pwms/docs/`](src/pwms/docs/):
 ## Quickstart
 
 Requirements: Python ≥ 3.14, [uv](https://docs.astral.sh/uv/), PostgreSQL and
-Redis. Redis backs the shared cache used by the external API's per-key
+Redis. Redis backs the shared cache used by the PWMS API's per-key
 throttling; leave `REDIS_URL` blank to fall back to an in-process cache (fine for
 single-process development, not for production).
 
@@ -148,7 +148,7 @@ IDNO_HMAC_KEY=change-me-too
 # keys are required. IDNO_ENC_KEY must be a Fernet key — generate one with:
 #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 IDNO_ENC_KEY=change-me-too
-# External API: access tokens live 15 minutes, refresh tokens 24 hours; the
+# PWMS API: access tokens live 15 minutes, refresh tokens 24 hours; the
 # token endpoint is rate-limited per client IP.
 EXTERNAL_API_ACCESS_TOKEN_TTL_MINUTES=15
 EXTERNAL_API_REFRESH_TOKEN_TTL_MINUTES=1440

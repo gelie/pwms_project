@@ -145,9 +145,9 @@ pwms_project/                     # repo root (git) — run manage.py from here
 | `/api/v1/` | external API root (resources visible to the calling key) | bearer token |
 | `/api/v1/me/` | the calling client registration, scopes and rate limit | bearer token |
 | `/api/v1/auth/token/` (`refresh/`, `revoke/`) | obtain / rotate / revoke a token pair | – (IP-throttled) |
-| `/api/v1/{users,memberships,bills}/` | read-only resource lists, filtered and paginated; `search`/`search_fields` match multiple fields | bearer token + scope |
-| `/api/v1/{users,memberships,bills}/{public_id}/` | read-only resource detail | bearer token + scope |
-| `/api/v1/search/` | cross-resource search over users, memberships and bills (scoped, paginated groups) | bearer token + any read scope |
+| `/api/v1/{users,groups,memberships,bills}/` | read-only resource lists, filtered and paginated; `search`/`search_fields` match multiple fields | bearer token + scope |
+| `/api/v1/{users,groups,memberships,bills}/{public_id}/` | read-only resource detail | bearer token + scope |
+| `/api/v1/search/` | cross-resource search over users, groups, memberships and bills (scoped, paginated groups) | bearer token + any read scope |
 | `/api/v1/docs` , `/api/v1/openapi.json` | Swagger UI + OpenAPI document | public (docs) |
 
 ---
@@ -344,7 +344,7 @@ sequenceDiagram
   is the only API. It is aimed at registered partner applications rather than
   interactive users: app registrations, scopes, tokens, usage logs and
   throttling live in that app, and the endpoints are read-only for **users**,
-  **memberships** and **bills**.
+  **groups**, **memberships** and **bills**.
 - Credentials are an application `client_id`/`client_secret`, exchanged for a
   **15-minute signed access token** and a **24-hour, single-use refresh token**.
   Access tokens are re-validated against the client's active flag and current

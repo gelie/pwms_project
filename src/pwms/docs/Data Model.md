@@ -948,7 +948,7 @@ the delivery job's "due" query.
 
 ---
 
-## 10. External API — `pwms/api/models.py`
+## 10. PWMS API — `pwms/api/models.py`
 
 A small, self-contained credential and observability layer for the partner API.
 

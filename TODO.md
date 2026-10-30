@@ -1,7 +1,7 @@
 # Engineering backlog
 
 Current-state backlog for PWMS. This reconciles an earlier assessment against the
-repository as it actually stands (2026-10-30) and folds in the external API work.
+repository as it actually stands (2026-10-30) and folds in the PWMS API work.
 
 Verified facts used below: 48 migrations, 13 test modules, 656 tests, `ruff check`
 reports 104 findings (27 auto-fixable), `views.py` 2 643 lines,
@@ -23,7 +23,8 @@ reports 104 findings (27 auto-fixable), `views.py` 2 643 lines,
       registers partner applications in the admin (name, description, contact,
       scopes, per-key rate limit), issues **15-minute access tokens** and
       **rotating 24-hour refresh tokens**, and exposes read-only **users**,
-      **memberships** and **bills** under `/api/v1/`, each gated by a scope.
+      **groups**, **memberships** and **bills** under `/api/v1/`, each gated by
+      a scope.
       The old `/api/` DRF viewsets, token endpoints, `authtoken` tables,
       `purge_tokens` command, DRF middleware exemption and drf-spectacular schema
       are removed; so are the `djangorestframework` / `drf-spectacular`
@@ -38,9 +39,13 @@ reports 104 findings (27 auto-fixable), `views.py` 2 643 lines,
       `memberships:read`), Main Website (`bills:read`) and eNominations
       (`memberships:read`); secrets are issued by rotating them in the admin or
       with `manage.py rotate_api_secret <client_id>`.
+- [x] **Group endpoints added.** `GET /api/v1/groups/` and `/groups/{public_id}/`
+      expose the group register, multi-field search/filters (`group_type`,
+      `parent`, `is_active`, `ordering`) and nested memberships. Guarded by the
+      new `groups:read` scope; granted per application in the admin.
 - [x] **Redis-backed shared cache.** `CACHES` selects Django's Redis backend
       whenever `REDIS_URL` is set (default blank → `LocMemCache` for bare
-      checkouts/tests). External API throttling now uses atomic fixed-window
+      checkouts/tests). PWMS API throttling now uses atomic fixed-window
       counters (`cache.add` + `cache.incr`) keyed by client id, so the limit is
       exact across gunicorn workers; both throttles fail open with a logged error
       if Redis is unreachable. CI runs a `redis:7` service.

@@ -11,13 +11,13 @@ from uuid import UUID
 
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import NinjaAPI, Router
 from ninja.errors import HttpError
 
-from ..models import Bill, GroupMembership, User
+from ..models import Bill, Group, GroupMembership, User
 from .auth import api_auth, require_scope
 from .models import ApiClient
 from .schemas import (
@@ -25,6 +25,8 @@ from .schemas import (
     BillPage,
     ClientInfoOut,
     ErrorOut,
+    GroupOut,
+    GroupPage,
     MembershipOut,
     MembershipPage,
     RefreshRequest,
@@ -40,6 +42,7 @@ from .schemas import (
 from .scopes import Scope
 from .search import (
     BILL_SEARCH_FIELDS,
+    GROUP_SEARCH_FIELDS,
     MEMBERSHIP_SEARCH_FIELDS,
     USER_SEARCH_FIELDS,
     apply_search,
@@ -60,7 +63,7 @@ from .tokens import (
 _DUMMY_SECRET_HASH = make_password("not-a-real-secret")
 
 api = NinjaAPI(
-    title="PWMS External API",
+    title="PWMS API",
     version="1.0.0",
     description=(
         "Read-only API for registered partner applications. Obtain an access "
@@ -70,7 +73,7 @@ api = NinjaAPI(
         f"minutes; refresh tokens live for "
         f"{settings.EXTERNAL_API_REFRESH_TOKEN_TTL_MINUTES} minutes and rotate on "
         "use. Each key only sees the scopes it was registered for. "
-        "Use `GET /search/` to search users, memberships and bills in one call."
+        "Use `GET /search/` to search users, groups, memberships and bills in one call."
     ),
     urls_namespace="api",
     auth=api_auth,
@@ -79,6 +82,7 @@ api = NinjaAPI(
 
 auth_router = Router(tags=["Authentication"], auth=None)
 users_router = Router(tags=["Users"])
+groups_router = Router(tags=["Groups"])
 memberships_router = Router(tags=["Memberships"])
 bills_router = Router(tags=["Bills"])
 
@@ -153,7 +157,16 @@ def _bill_queryset():
     )
 
 
-SEARCH_RESOURCES = ("users", "memberships", "bills")
+def _group_queryset():
+    memberships = GroupMembership.objects.select_related("user", "role").order_by(
+        "-start_date"
+    )
+    return Group.objects.select_related("parent").prefetch_related(
+        Prefetch("members", queryset=memberships, to_attr="api_memberships")
+    )
+
+
+SEARCH_RESOURCES = ("users", "groups", "memberships", "bills")
 
 
 def _token_pair(client: ApiClient, refresh_token: str | None = None) -> dict:
@@ -239,6 +252,8 @@ def api_root(request):
     resources = []
     if principal.has_scope(Scope.USERS_READ):
         resources.append(ResourceLink(name="users", url="/api/v1/users/"))
+    if principal.has_scope(Scope.GROUPS_READ):
+        resources.append(ResourceLink(name="groups", url="/api/v1/groups/"))
     if principal.has_scope(Scope.MEMBERSHIPS_READ):
         resources.append(ResourceLink(name="memberships", url="/api/v1/memberships/"))
     if principal.has_scope(Scope.BILLS_READ):
@@ -247,7 +262,7 @@ def api_root(request):
         resources.append(ResourceLink(name="search", url="/api/v1/search/"))
 
     return {
-        "api": "PWMS External API",
+        "api": "PWMS API",
         "version": "1.0.0",
         "client": principal.client.name,
         "scopes": list(principal.scopes),
@@ -327,6 +342,63 @@ def list_users(
 def get_user(request, public_id: UUID):
     require_scope(request, Scope.USERS_READ)
     return get_object_or_404(_user_queryset(), public_id=public_id)
+
+
+# ---------------------------------------------------------------------------
+# Groups
+# ---------------------------------------------------------------------------
+
+GROUP_ORDERING = {"name", "group_type", "start_date", "end_date", "created_at"}
+
+
+def _group_ordering(value: str) -> str:
+    field = value.removeprefix("-")
+    if field not in GROUP_ORDERING:
+        return "name"
+    return value
+
+
+@groups_router.get(
+    "/",
+    response={200: GroupPage, 400: ErrorOut, 403: ErrorOut},
+    summary="List groups",
+)
+def list_groups(
+    request,
+    limit: int = 20,
+    offset: int = 0,
+    search: str = "",
+    search_fields: str | None = None,
+    group_type: str | None = None,
+    parent: str | None = None,
+    is_active: bool | None = None,
+    ordering: str = "name",
+):
+    require_scope(request, Scope.GROUPS_READ)
+
+    queryset = apply_search(
+        _group_queryset(), search, GROUP_SEARCH_FIELDS, search_fields
+    )
+    if group_type:
+        queryset = queryset.filter(group_type=group_type)
+    if parent:
+        queryset = queryset.filter(group_filter_q("parent", parent))
+    if is_active is not None:
+        queryset = queryset.filter(is_active=is_active)
+
+    return _paginate(
+        request, queryset.order_by(_group_ordering(ordering)), limit, offset
+    )
+
+
+@groups_router.get(
+    "/{public_id}/",
+    response={200: GroupOut, 403: ErrorOut, 404: ErrorOut},
+    summary="Retrieve a group with its memberships",
+)
+def get_group(request, public_id: UUID):
+    require_scope(request, Scope.GROUPS_READ)
+    return get_object_or_404(_group_queryset(), public_id=public_id)
 
 
 # ---------------------------------------------------------------------------
@@ -495,7 +567,7 @@ def _parse_search_resources(raw_resources: str, accessible: list[str]) -> list[s
 @api.get(
     "/search/",
     response={200: SearchOut, 400: ErrorOut, 403: ErrorOut},
-    summary="Search users, memberships and bills",
+    summary="Search users, groups, memberships and bills",
 )
 def search(request, q: str, resources: str = "", limit: int = 10, offset: int = 0):
     """Search every resource the key may read, across all of its text fields.
@@ -512,6 +584,7 @@ def search(request, q: str, resources: str = "", limit: int = 10, offset: int = 
     accessible = []
     for name, scope in (
         ("users", Scope.USERS_READ),
+        ("groups", Scope.GROUPS_READ),
         ("memberships", Scope.MEMBERSHIPS_READ),
         ("bills", Scope.BILLS_READ),
     ):
@@ -527,6 +600,7 @@ def search(request, q: str, resources: str = "", limit: int = 10, offset: int = 
         "resources": selected,
         "skipped": [name for name in SEARCH_RESOURCES if name not in selected],
         "users": _empty_page(limit, offset),
+        "groups": _empty_page(limit, offset),
         "memberships": _empty_page(limit, offset),
         "bills": _empty_page(limit, offset),
     }
@@ -539,6 +613,10 @@ def search(request, q: str, resources: str = "", limit: int = 10, offset: int = 
             limit,
             offset,
         )
+
+    if "groups" in selected:
+        queryset = apply_search(_group_queryset(), term, GROUP_SEARCH_FIELDS)
+        payload["groups"] = _paginate(request, queryset.order_by("name"), limit, offset)
 
     if "memberships" in selected:
         queryset = apply_search(_membership_queryset(), term, MEMBERSHIP_SEARCH_FIELDS)
@@ -561,5 +639,6 @@ def search(request, q: str, resources: str = "", limit: int = 10, offset: int = 
 
 api.add_router("/auth", auth_router)
 api.add_router("/users", users_router)
+api.add_router("/groups", groups_router)
 api.add_router("/memberships", memberships_router)
 api.add_router("/bills", bills_router)

@@ -15,7 +15,7 @@ from datetime import date, datetime
 from uuid import UUID
 
 from ninja import Schema
-from pydantic import ConfigDict
+from pydantic import ConfigDict, Field
 
 
 class ErrorOut(Schema):
@@ -117,6 +117,55 @@ class MembershipPage(Schema):
 
 
 # ---------------------------------------------------------------------------
+# Groups
+# ---------------------------------------------------------------------------
+
+
+class GroupMemberOut(Schema):
+    """One membership nested inside a group."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    public_id: UUID
+    user: UserRef
+    role: RoleRef
+    start_date: date
+    end_date: date | None = None
+    is_active: bool
+
+
+class GroupOut(Schema):
+    model_config = ConfigDict(from_attributes=True)
+
+    public_id: UUID
+    name: str
+    slug: str
+    short_name: str
+    group_type: str
+    parent: GroupRef | None = None
+    full_path: str
+    description: str
+    start_date: date | None = None
+    end_date: date | None = None
+    is_active: bool
+    contact_email: str
+    contact_phone: str
+    location: str
+    memberships: list[GroupMemberOut] = Field(
+        default_factory=list, validation_alias="api_memberships"
+    )
+
+
+class GroupPage(Schema):
+    count: int
+    limit: int
+    offset: int
+    next: str | None = None
+    previous: str | None = None
+    results: list[GroupOut]
+
+
+# ---------------------------------------------------------------------------
 # Bills
 # ---------------------------------------------------------------------------
 
@@ -167,6 +216,7 @@ class SearchOut(Schema):
     resources: list[str]
     skipped: list[str]
     users: UserPage
+    groups: GroupPage
     memberships: MembershipPage
     bills: BillPage
 
