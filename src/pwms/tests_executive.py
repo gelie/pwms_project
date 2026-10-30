@@ -619,3 +619,120 @@ class OracleSyncSupervisorTests(TestCase):
         self.assertEqual(
             self.command.stats["supervisors_linked"], 1
         )  # ...but previewed
+
+
+class OracleSyncProfileTests(TestCase):
+    """The ERP profile fields are written alongside the identity fields."""
+
+    def setUp(self):
+        self.command = Command()
+        self.command._membership_sync = MembershipSyncService(
+            group_cache={},
+            role_cache={},
+            strip_group_code_prefix=self.command.strip_group_code_prefix,
+            normalize_role_name=self.command.normalize_role_name,
+        )
+
+    @staticmethod
+    def _row(
+        *,
+        username,
+        idno="",
+        positiondesc="Administrative Officer",
+        child_org="",
+        parent_org="",
+    ):
+        """A full 15-column fetcher row."""
+        return (
+            "Mr",
+            "Mkhize",
+            "Zwelini",
+            "",
+            f"{username}@parliament.gov.za",
+            idno,
+            "Male",
+            positiondesc,
+            "Staff",
+            "",
+            username,
+            child_org,
+            parent_org,
+            "",
+            "",
+        )
+
+    def _sync(self, row, *, by_username, by_id=None):
+        self.command.process_single_user(
+            idno=row[5],
+            oracle_user=row,
+            existing_users=by_id or {},
+            existing_users_by_username=by_username,
+            existing_memberships={},
+            force_update=False,
+        )
+
+    def test_positiondesc_and_department_are_written_on_update(self):
+        department = Group.objects.create(
+            name="Sync Test Section", group_type="section"
+        )
+        user = User.objects.create_user(
+            username="z.mkhize", password="pw", identity_source="erp"
+        )
+
+        self._sync(
+            self._row(
+                username="z.mkhize",
+                idno="9001015800085",
+                positiondesc="Senior Administrative Officer",
+                child_org="Sync Test Section",
+            ),
+            by_username={"z.mkhize": user},
+        )
+
+        user.refresh_from_db()
+        self.assertEqual(user.positiondesc, "Senior Administrative Officer")
+        self.assertEqual(user.department_id, department.pk)
+
+    def test_new_user_gets_positiondesc_and_department(self):
+        department = Group.objects.create(
+            name="Sync Test Division", group_type="division"
+        )
+
+        self._sync(
+            self._row(
+                username="new.person",
+                idno="8001015800085",
+                positiondesc="Committee Secretary",
+                parent_org="Sync Test Division",
+            ),
+            by_username={},
+        )
+
+        user = User.objects.get(username="new.person")
+        self.assertEqual(user.positiondesc, "Committee Secretary")
+        self.assertEqual(user.department_id, department.pk)
+
+    def test_unresolved_department_leaves_existing_link_untouched(self):
+        existing = Group.objects.create(
+            name="Sync Existing Department", group_type="department"
+        )
+        user = User.objects.create_user(
+            username="z.mkhize",
+            password="pw",
+            identity_source="erp",
+            department=existing,
+            positiondesc="Old Position",
+        )
+
+        self._sync(
+            self._row(
+                username="z.mkhize",
+                positiondesc="New Position",
+                child_org="Unknown Sync Unit",
+            ),
+            by_username={"z.mkhize": user},
+        )
+
+        user.refresh_from_db()
+        self.assertEqual(user.positiondesc, "New Position")
+        self.assertEqual(user.department_id, existing.pk)

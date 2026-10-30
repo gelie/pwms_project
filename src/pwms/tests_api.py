@@ -345,7 +345,8 @@ class ScopedResourceTests(ApiTestCase):
             name="Portfolio Committee", group_type="committee"
         )
         cls.user.department = cls.group
-        cls.user.save(update_fields=["department"])
+        cls.user.supervisor = cls.colleague
+        cls.user.save(update_fields=["department", "supervisor"])
         cls.role, _ = Role.objects.get_or_create(name="Member")
         cls.membership = GroupMembership.objects.create(
             user=cls.user, group=cls.group, role=cls.role
@@ -395,6 +396,7 @@ class ScopedResourceTests(ApiTestCase):
         record = payload["results"][0]
         self.assertEqual(record["username"], "alice")
         self.assertEqual(record["display_name"], "Alice Molefe")
+        self.assertEqual(record["supervisor"]["username"], "brian")
         self.assertNotIn("idno_encrypted", record)
         self.assertNotIn("date_of_birth", record)
 
@@ -403,6 +405,7 @@ class ScopedResourceTests(ApiTestCase):
         )
         self.assertEqual(detail.status_code, 200)
         self.assertEqual(detail.json()["department"]["name"], "Portfolio Committee")
+        self.assertEqual(detail.json()["supervisor"]["display_name"], "Brian Dlamini")
 
         blocked = self.client.get("/api/v1/memberships/", **self.auth(token))
         self.assertEqual(blocked.status_code, 403)

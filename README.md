@@ -106,6 +106,7 @@ The self-documentation lives in [`pwms/docs/`](src/pwms/docs/):
 | [Technical Stack](src/pwms/docs/Technical%20Stack.md) | Frameworks, libraries, config, environment |
 | [API Reference](src/pwms/docs/API%20Reference.md) | Endpoints, auth, schema/docs URLs |
 | [Bills API User Guide](src/pwms/docs/Bills%20API%20User%20Guide.pdf) ([HTML](src/pwms/docs/Bills%20API%20User%20Guide.html), [Markdown](src/pwms/docs/Bills%20API%20User%20Guide.md)) | One-page end-user guide for consuming the Bills API |
+| [Users API User Guide](src/pwms/docs/Users%20API%20User%20Guide.pdf) ([HTML](src/pwms/docs/Users%20API%20User%20Guide.html), [Markdown](src/pwms/docs/Users%20API%20User%20Guide.md)) | One-page end-user guide for consuming the Users API |
 | [Search Lookups](src/pwms/docs/Search%20Lookups.md) | HTMX search pickers and the country → city cascade |
 | [Meetings Import & Export](src/pwms/docs/Meetings%20Import%20%26%20Export.md) | The CSV/XLSX format the Meetings calendar imports and exports |
 | [Management Commands](src/pwms/docs/Management%20Commands.md) | Every `manage.py` command and its purpose |

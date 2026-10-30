@@ -95,8 +95,8 @@ Django user with parliamentary profile fields:
 | `employee_type` | staff / member / graduate |
 | `identity_source` | `erp` (owned by `sync_users_oracle`) or `local` (owned by PWMS — e.g. Ministers appointed from outside the ERP) |
 | `employee_id` | ERP `EMPLOYEEID` (unique, nullable); `SUPERVISORID` resolves to a User through it |
-| `positiondesc`, `supervisor` (self FK) | reporting |
-| `department` (FK `Group`) | home department |
+| `positiondesc`, `supervisor` (self FK) | reporting; `positiondesc` is written from the ERP |
+| `department` (FK `Group`) | home department; `sync_users_oracle` links it to the child org group, falling back to the parent |
 | `date_of_birth`, `date_joined_parliament`, `termination_date` | lifecycle |
 | `idno_encrypted`, `idno_hmac` | ID number stored encrypted; HMAC (key from `IDNO_HMAC_KEY`) enables unique lookup |
 | `is_mp`, `is_staff_member`, `is_active` | flags |

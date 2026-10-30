@@ -9,6 +9,9 @@ Key optimizations:
 - Batch processing with efficient queries
 - Org groups/roles are looked up from cache; MP party + house-members groups
   (and the MP/Staff roles) are created on demand when missing
+- Writes the ERP ``POSITIONDESC`` to ``User.positiondesc`` and links
+  ``User.department`` to the child org group (falling back to the parent org),
+  so the profile reflects the same assignment that drives the memberships
 - Optimized for speed (target: <2 minutes for 1600+ users)
 - Users whose ``identity_source`` is not ``erp`` are managed in PWMS (Ministers
   appointed from outside the ERP, scraper placeholders, admin accounts): the
@@ -301,6 +304,33 @@ class Command(OracleSyncBase):
             normalize_role_name=self.normalize_role_name,
         )
 
+    def _resolve_department_group(
+        self, child_org_name: str | None, parent_org_name: str | None
+    ) -> Group | None:
+        """Resolve the user's home department from the Oracle org pair.
+
+        Oracle's ``CHILD_ORG_NAME`` is the most specific unit (the section or
+        cost centre); ``PARENT_ORG_NAME`` is its parent division. Prefer the
+        child, fall back to the parent, and use the same sanitised names as the
+        group cache. An unknown name simply leaves the existing department
+        untouched rather than clearing a manually maintained link.
+        """
+        for raw_name in (child_org_name, parent_org_name):
+            name = self.strip_group_code_prefix((raw_name or "").strip())
+            if not name:
+                continue
+
+            group = self._group_cache.get(name)
+            if group is not None:
+                return group
+
+            group = Group.objects.filter(name=name).first()
+            if group is not None:
+                self._group_cache[name] = group
+                return group
+
+        return None
+
     def process_user_batch(
         self,
         batch_users: list,
@@ -387,6 +417,7 @@ class Command(OracleSyncBase):
         # Strip to match _row_value() (which trims the supervisor chain), so a
         # VARCHAR the ERP pads with spaces still compares equal.
         employee_id = (employee_id or "").strip() or None
+        positiondesc = (positiondesc or "").strip()
 
         name_data = self.normalize_name_fields(oracle_user)
         is_mp = employeetype == "Member"
@@ -412,6 +443,8 @@ class Command(OracleSyncBase):
             )
             return
 
+        department = self._resolve_department_group(child_org_name, parent_org_name)
+
         if user:
             changes = []
             if user.username.lower() != username.lower():
@@ -430,6 +463,13 @@ class Command(OracleSyncBase):
                 changes.append(f"is_mp: {user.is_mp} -> {is_mp}")
             if user.employee_id != employee_id:
                 changes.append(f"employee_id: {user.employee_id} -> {employee_id}")
+            if user.positiondesc != positiondesc:
+                changes.append(
+                    f"positiondesc: {user.positiondesc!r} -> {positiondesc!r}"
+                )
+            if department is not None and user.department_id != department.pk:
+                previous = user.department.name if user.department_id else "—"
+                changes.append(f"department: {previous} -> {department.name}")
 
             if changes or force_update:
                 if not dry_run:
@@ -446,6 +486,9 @@ class Command(OracleSyncBase):
                     user.is_active = True
                     user.set_idno(idno or "")
                     user.employee_id = employee_id
+                    user.positiondesc = positiondesc
+                    if department is not None:
+                        user.department = department
                     user.save()
 
                     if self.fix_bad_password_hash(user):
@@ -479,6 +522,8 @@ class Command(OracleSyncBase):
                     is_mp=is_mp,
                     is_active=True,
                     employee_id=employee_id,
+                    positiondesc=positiondesc,
+                    department=department,
                 )
                 user.set_idno(idno or "")
                 user.save(update_fields=["idno_encrypted", "idno_hmac"])
@@ -500,6 +545,8 @@ class Command(OracleSyncBase):
                     is_mp=is_mp,
                     is_active=True,
                     employee_id=employee_id,
+                    positiondesc=positiondesc,
+                    department=department,
                 )
                 user.id = -1
 

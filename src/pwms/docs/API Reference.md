@@ -16,8 +16,9 @@ There are no write endpoints: `POST`, `PUT`, `PATCH` and `DELETE` return
 `405 Method Not Allowed`. Ninja's interactive docs are served at
 `/api/v1/docs` and the raw OpenAPI document at `/api/v1/openapi.json`.
 
-> For a printable walkthrough for partner applications, see the
-> [Bills API User Guide (PDF)](./Bills%20API%20User%20Guide.pdf).
+> For printable walkthroughs for partner applications, see the
+> [Bills API User Guide (PDF)](./Bills%20API%20User%20Guide.pdf) and the
+> [Users API User Guide (PDF)](./Users%20API%20User%20Guide.pdf).
 
 ---
 
@@ -255,11 +256,13 @@ result keys are always present; inaccessible/excluded groups are empty pages.
 
 Exposed fields: `public_id`, `username`, `title`, `first_name`, `middle_name`,
 `last_name`, `display_name`, `email`, `employee_type`, `positiondesc`,
-`department` (nested group reference), `is_active`, `is_mp`, `is_staff_member`,
-`constituency`, `party_affiliation`, `phone`.
+`department` (nested group reference), `supervisor` (nested user reference:
+`public_id`, `username`, `display_name`), `is_active`, `is_mp`,
+`is_staff_member`, `constituency`, `party_affiliation`, `phone`.
 
 Deliberately **not** exposed: identity numbers, date of birth, gender, bio,
-avatar, supervisor/subordinate chain.
+avatar and the subordinate/reports list. The supervisor's own manager is not
+expanded, so the reference cannot recurse.
 
 ### Memberships
 

@@ -29,22 +29,24 @@ meant to be read by people who will not be reading the code.
 | [Quick Reference Card](./Quick%20Reference%20Card.html) ([PDF](./Quick%20Reference%20Card.pdf)) | A printable one-page A4 wall card for the section: the three lifecycles, creating records, transitions, referrals, documents, reports, alerts, meetings, and who to escalate to |
 | [UAT Form](./UAT%20Form.html) ([PDF](./UAT%20Form.pdf), [workbook](./UAT%20Form.xlsx)) | The user acceptance testing form: 38 IRPD scenarios with acceptance criteria (10 of them critical), a defect log, the expected-behaviour list, the acceptance decision and sign-off — plus the results workbook the section fills in, which rolls the results up |
 | [Bills API User Guide](./Bills%20API%20User%20Guide.html) ([PDF](./Bills%20API%20User%20Guide.pdf), [Markdown](./Bills%20API%20User%20Guide.md)) | A one-page guide for partner applications: obtaining access tokens, listing and filtering bills, paging, common errors and practical tips |
+| [Users API User Guide](./Users%20API%20User%20Guide.html) ([PDF](./Users%20API%20User%20Guide.pdf), [Markdown](./Users%20API%20User%20Guide.md)) | A one-page guide for partner applications: obtaining access tokens, listing and filtering users, nested department/supervisor references, paging and common errors |
 
 ### Regenerating the generated files
 
-The quick-reference card, the UAT form and the Bills API guide are generated
-from their HTML source, and the UAT workbook is generated from the form; the
-PDFs and the workbook are **generated, not hand-edited**. After changing any HTML
-file, rebuild what depends on it with WeasyPrint and `build_uat_workbook` (both
-are project dependencies) and check the result before committing — the card and
-the Bills API guide must each stay a single A4 page, the form's tables must still
-repeat their header rows across page breaks, and the workbook must build from the
-form without error:
+The quick-reference card, the UAT form, the Bills API guide and the Users API
+guide are generated from their HTML source, and the UAT workbook is generated
+from the form; the PDFs and the workbook are **generated, not hand-edited**.
+After changing any HTML file, rebuild what depends on it with WeasyPrint and
+`build_uat_workbook` (both are project dependencies) and check the result before
+committing — the card and both API guides must each stay a single A4 page, the
+form's tables must still repeat their header rows across page breaks, and the
+workbook must build from the form without error:
 
 ```bash
 .venv/bin/python -c "from weasyprint import HTML; d = HTML(filename='src/pwms/docs/Quick Reference Card.html').render(); print('pages:', len(d.pages)); d.write_pdf('src/pwms/docs/Quick Reference Card.pdf')"
 .venv/bin/python -c "from weasyprint import HTML; d = HTML(filename='src/pwms/docs/UAT Form.html').render(); print('pages:', len(d.pages)); d.write_pdf('src/pwms/docs/UAT Form.pdf')"
 .venv/bin/python -c "from weasyprint import HTML; d = HTML(filename='src/pwms/docs/Bills API User Guide.html').render(); print('pages:', len(d.pages)); d.write_pdf('src/pwms/docs/Bills API User Guide.pdf')"
+.venv/bin/python -c "from weasyprint import HTML; d = HTML(filename='src/pwms/docs/Users API User Guide.html').render(); print('pages:', len(d.pages)); d.write_pdf('src/pwms/docs/Users API User Guide.pdf')"
 .venv/bin/python manage.py build_uat_workbook
 ```
 

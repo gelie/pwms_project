@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>PWMS Users API — User Guide</title>
+    <style>
+      @page { size: A4 portrait; margin: 8mm; }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        color: #111;
+        font-family: "DejaVu Sans", "Liberation Sans", "Helvetica Neue", Arial, sans-serif;
+        font-size: 7.6pt;
+        line-height: 1.28;
+      }
+
+      header {
+        border-bottom: 2px solid #1F4E9C;
+        padding-bottom: 1.2mm;
+        margin-bottom: 2mm;
+      }
+      h1 { margin: 0; font-size: 14pt; color: #1F4E9C; letter-spacing: -0.3pt; }
+      .sub { margin: 0.4mm 0 0; font-size: 7.4pt; color: #555; }
+
+      .cols { column-count: 2; column-gap: 5mm; }
+
+      section { break-inside: avoid; margin-bottom: 2.1mm; }
+
+      h2 {
+        margin: 0 0 0.9mm;
+        padding: 0.5mm 1.2mm;
+        font-size: 8.2pt;
+        color: #fff;
+        background: #1F4E9C;
+        border-radius: 0.8mm;
+      }
+
+      p { margin: 0 0 0.8mm; }
+      ul { margin: 0 0 0.8mm; padding-left: 3.2mm; }
+      li { margin-bottom: 0.55mm; }
+
+      table { width: 100%; border-collapse: collapse; font-size: 7pt; }
+      th, td {
+        border-bottom: 1px solid #d7dce6;
+        padding: 0.35mm 0.6mm;
+        text-align: left;
+        vertical-align: top;
+      }
+      th { background: #eef3fb; color: #163A73; font-weight: bold; }
+
+      code {
+        font-family: "DejaVu Sans Mono", "Liberation Mono", monospace;
+        font-size: 6.8pt;
+      }
+
+      pre {
+        margin: 0.7mm 0;
+        padding: 1mm 1.2mm;
+        background: #f3f5f9;
+        border-left: 2px solid #1F4E9C;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-family: "DejaVu Sans Mono", "Liberation Mono", monospace;
+        font-size: 6.6pt;
+        line-height: 1.25;
+      }
+
+      .note {
+        padding: 0.8mm 1.2mm;
+        margin-top: 0.8mm;
+        background: #fff6db;
+        border-left: 2px solid #efbd47;
+      }
+
+      .screen-only {
+        max-width: 210mm;
+        margin: 5mm auto 2mm;
+        padding: 2mm 3mm;
+        background: #eef3fb;
+        border: 1px solid #c8d8ef;
+        border-radius: 1mm;
+        font-size: 8.5pt;
+        color: #333;
+      }
+
+      @media screen {
+        body { background: #e9e9ec; padding-bottom: 8mm; }
+        header, .cols {
+          max-width: 210mm;
+          margin-left: auto;
+          margin-right: auto;
+          background: #fff;
+        }
+        header { padding: 5mm 8mm 2mm; margin-top: 3mm; }
+        .cols { padding: 0 8mm 6mm; box-shadow: 0 1mm 4mm rgba(0, 0, 0, .18); }
+      }
+
+      @media print {
+        .screen-only { display: none; }
+      }
+    </style>
+  </head>
+  <body>
+    <p class="screen-only">
+      <strong>Printing:</strong> A4, portrait, scale 100%, background graphics on.
+      This guide is one page; the interactive reference is at
+      <code>/api/v1/docs</code>.
+    </p>
+
+    <header>
+      <h1>PWMS Users API — User Guide</h1>
+      <p class="sub">
+        Read-only parliamentary user register · API v1 · for approved partner
+        applications
+      </p>
+    </header>
+
+    <main class="cols">
+      <section>
+        <h2>Before you start</h2>
+        <p>Your PWMS administrator gives you:</p>
+        <ul>
+          <li>the base address, e.g. <code>https://pwms.example.gov.za</code></li>
+          <li>a <strong>client ID</strong> and <strong>client secret</strong></li>
+          <li>the <strong><code>users:read</code></strong> scope</li>
+        </ul>
+        <p>
+          Keep the secret private. If it is exposed, ask for it to be rotated.
+          The API is read-only: you cannot create, edit or deactivate users.
+          Interactive documentation: <code>/api/v1/docs</code>.
+        </p>
+      </section>
+
+      <section>
+        <h2>1. Get an access token</h2>
+        <pre>POST /api/v1/auth/token/
+curl -s -X POST "$BASE/api/v1/auth/token/" \
+  -H "Content-Type: application/json" \
+  -d '{"client_id":"YOUR_ID","client_secret":"YOUR_SECRET"}'</pre>
+        <p>
+          The response contains <code>access_token</code>,
+          <code>refresh_token</code>, <code>expires_in</code> (900 seconds) and
+          <code>refresh_expires_in</code> (86400 seconds).
+        </p>
+        <ul>
+          <li>
+            <strong>Access token:</strong> 15 minutes. Send it as
+            <code>Authorization: Bearer &lt;token&gt;</code> on every call.
+          </li>
+          <li>
+            <strong>Refresh token:</strong> 24 hours, single use. Exchange it at
+            <code>POST /api/v1/auth/token/refresh/</code> with
+            <code>{"refresh_token":"…"}</code> to get a new pair.
+          </li>
+          <li>
+            On <code>401</code>, refresh (or obtain a new pair), then retry once.
+          </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>2. Endpoints</h2>
+        <table>
+          <tr><th>Method and path</th><th>What it returns</th></tr>
+          <tr>
+            <td><code>GET /api/v1/users/</code></td>
+            <td>List, search and filter users</td>
+          </tr>
+          <tr>
+            <td><code>GET /api/v1/users/{public_id}/</code></td>
+            <td>One user by their UUID</td>
+          </tr>
+          <tr>
+            <td><code>GET /api/v1/search/</code></td>
+            <td>Combined search; use <code>resources=users</code></td>
+          </tr>
+          <tr>
+            <td><code>GET /api/v1/me/</code></td>
+            <td>Your client ID and scopes (not a person)</td>
+          </tr>
+        </table>
+        <p>Every request needs <code>Authorization: Bearer &lt;access_token&gt;</code>.</p>
+      </section>
+
+      <section>
+        <h2>3. Filters</h2>
+        <table>
+          <tr><th>Parameter</th><th>Use</th></tr>
+          <tr>
+            <td><code>search</code></td>
+            <td>Case-insensitive substring across all searchable fields</td>
+          </tr>
+          <tr>
+            <td><code>search_fields</code></td>
+            <td>Comma-separated subset of the searchable fields (below)</td>
+          </tr>
+          <tr>
+            <td><code>is_active</code></td>
+            <td><code>true</code> / <code>false</code></td>
+          </tr>
+          <tr>
+            <td><code>is_mp</code></td>
+            <td><code>true</code> / <code>false</code> — Members of Parliament</td>
+          </tr>
+          <tr>
+            <td><code>is_staff_member</code></td>
+            <td><code>true</code> / <code>false</code> — staff members</td>
+          </tr>
+          <tr>
+            <td><code>department</code></td>
+            <td>Group UUID, name, short name or slug</td>
+          </tr>
+          <tr>
+            <td><code>ordering</code></td>
+            <td><code>last_name</code> (default), <code>first_name</code>, <code>username</code>, <code>date_joined</code>; prefix with <code>-</code> to reverse</td>
+          </tr>
+          <tr>
+            <td><code>limit</code> / <code>offset</code></td>
+            <td>Page size (default 20, max 100) / records to skip</td>
+          </tr>
+        </table>
+        <p>
+          <strong>Searchable fields:</strong> <code>username</code>,
+          <code>first_name</code>, <code>middle_name</code>, <code>last_name</code>,
+          <code>email</code>, <code>positiondesc</code>, <code>department</code>,
+          <code>constituency</code>, <code>party_affiliation</code>,
+          <code>phone</code>.
+        </p>
+      </section>
+
+      <section>
+        <h2>4. Example requests</h2>
+        <pre># Active Members of Parliament, by surname
+curl -sG "$BASE/api/v1/users/" \
+  -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode "is_active=true" \
+  --data-urlencode "is_mp=true" \
+  --data-urlencode "ordering=last_name"
+
+# Search by first and last name
+curl -sG "$BASE/api/v1/users/" \
+  -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode "search=Alice Molefe" \
+  --data-urlencode "search_fields=first_name,last_name"
+
+# Users in a department
+curl -sG "$BASE/api/v1/users/" \
+  -H "Authorization: Bearer $TOKEN" \
+  --data-urlencode "department=Portfolio Committee on Health"
+
+# One user
+curl -s "$BASE/api/v1/users/PUBLIC_ID/" \
+  -H "Authorization: Bearer $TOKEN"</pre>
+        <p class="note">
+          Use <code>curl -G --data-urlencode</code> (or your library's query
+          parameters) for names with spaces or punctuation.
+        </p>
+      </section>
+
+      <section>
+        <h2>5. Pages and fields</h2>
+        <p>
+          A list response is a page with <code>count</code>, <code>limit</code>,
+          <code>offset</code>, <code>next</code>, <code>previous</code> and
+          <code>results</code>. Follow <code>next</code> until it is
+          <code>null</code>; the links keep your search and filters.
+        </p>
+        <p>
+          Each user includes <code>public_id</code>, <code>username</code>,
+          <code>title</code>, <code>first_name</code>, <code>middle_name</code>,
+          <code>last_name</code>, <code>display_name</code>, <code>email</code>,
+          <code>employee_type</code>, <code>positiondesc</code>,
+          <code>department</code>, <code>supervisor</code>,
+          <code>is_active</code>, <code>is_mp</code>,
+          <code>is_staff_member</code>, <code>constituency</code>,
+          <code>party_affiliation</code> and <code>phone</code>.
+        </p>
+        <p>
+          <code>department</code> is a nested object with <code>public_id</code>,
+          <code>name</code>, <code>short_name</code> and <code>group_type</code>.
+          <code>supervisor</code> is a nested object with
+          <code>public_id</code>, <code>username</code> and
+          <code>display_name</code>; it is <code>null</code> when no manager is
+          recorded, and the supervisor's own manager is not expanded.
+        </p>
+        <p>
+          Identity numbers, date of birth, gender, bio/avatar and the list of
+          direct reports are deliberately not exposed.
+        </p>
+      </section>
+
+      <section>
+        <h2>6. Common responses</h2>
+        <table>
+          <tr><th>Status</th><th>Meaning and action</th></tr>
+          <tr><td><code>200</code></td><td>Success</td></tr>
+          <tr><td><code>400</code></td><td>Invalid parameter; correct the request</td></tr>
+          <tr><td><code>401</code></td><td>Missing/expired token; refresh or get a new pair</td></tr>
+          <tr><td><code>403</code></td><td>Key lacks <code>users:read</code>; contact the administrator</td></tr>
+          <tr><td><code>404</code></td><td>No user with that <code>public_id</code></td></tr>
+          <tr><td><code>429</code></td><td>Rate limit; wait for <code>Retry-After</code>, then retry</td></tr>
+        </table>
+      </section>
+
+      <section>
+        <h2>7. Practical tips</h2>
+        <ul>
+          <li>Refresh before the 15-minute access token expires; handle <code>401</code> once.</li>
+          <li>Send booleans as <code>true</code> / <code>false</code>, e.g. <code>is_mp=true</code>.</li>
+          <li>Use the <code>public_id</code>, not an internal ID or a username, as the stable identifier.</li>
+          <li>Request only the page size you need; 20–50 keeps responses fast.</li>
+          <li>Each key has a requests-per-minute limit (60 by default; your registration may differ).</li>
+          <li>The token endpoint is limited to 20 requests per minute per IP address.</li>
+          <li>Contact the PWMS administrator if a person is missing or you need another scope.</li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>
