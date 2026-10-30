@@ -17,12 +17,11 @@ class SiteLoginRequiredMiddleware(LoginRequiredMiddleware):
     into an HTML redirect:
 
     * ``admin`` - the Django admin has its own login page and staff checks.
-    * ``rest_framework`` / ``pwms_api`` - API namespaces answer anonymous clients
-      with 401/403 rather than a 302 to the site login. (DRF already opts its own
-      views out; this covers the browsable-API auth pages.)
+    * ``api`` - the partner API authenticates bearer tokens itself and
+      answers anonymous clients with 401/403 rather than a 302 to the site login.
     """
 
-    exempt_namespaces = frozenset({"admin", "rest_framework", "pwms_api"})
+    exempt_namespaces = frozenset({"admin", "api"})
 
     def process_view(self, request, view_func, view_args, view_kwargs):
         match = request.resolver_match

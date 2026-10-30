@@ -1,7 +1,7 @@
 # Engineering backlog
 
 Current-state backlog for PWMS. This reconciles an earlier assessment against the
-repository as it actually stands (2026-10-12) and folds in the DRF API work.
+repository as it actually stands (2026-10-30) and folds in the external API work.
 
 Verified facts used below: 48 migrations, 13 test modules, 656 tests, `ruff check`
 reports 104 findings (27 auto-fixable), `views.py` 2 643 lines,
@@ -19,24 +19,31 @@ reports 104 findings (27 auto-fixable), `views.py` 2 643 lines,
       the `Makefile` exposes `make lint / migrate-check / test / coverage / check`.
 - [x] **Coverage is measured** in CI (`coverage run --source=pwms`), though not
       yet enforced (no `fail_under`).
-- [x] **REST API fleshed out.** Token authentication (`rest_framework.authtoken`:
-      obtain / refresh / revoke under `/api/auth/token/`) and resource endpoints
-      for users, groups, roles, memberships, the workflow registry
-      (types / states / transitions) and every workflow instance, plus per-instance
-      `transitions` / `transition` / `events` / `audit` actions. RBAC reuses
-      `pwms.services.permissions`; see `docs/API Reference.md`.
-      **Note:** this added the `authtoken` tables, so a one-off
-      `python manage.py migrate` is required on deploy (migration count now 48).
-- [x] **django-ninja spike removed.** The `/ninja/` prototype, its test module,
-      its URL, its middleware exemption and the `django-ninja` dependency
-      (pyproject + lock) are gone; DRF is the single API stack.
-- [x] **API tokens expire.** `pwms.api.authentication.ExpiringTokenAuthentication`
-      enforces an absolute TTL (`TOKEN_TTL_DAYS`, default 30; `0` disables) and
-      `manage.py purge_tokens` deletes the expired rows — closing the "a leaked
-      token is a permanent credential" gap.
-- [x] **Credential endpoint rate-limited.** `POST /api/auth/token/` carries an
-      IP-scoped anonymous throttle (`pwms.api.throttles.TokenEndpointThrottle`,
-      `TOKEN_THROTTLE_RATE` default `20/min`) → `429` with `Retry-After`.
+- [x] **External Django-Ninja API added; DRF retired.** `pwms/api/`
+      registers partner applications in the admin (name, description, contact,
+      scopes, per-key rate limit), issues **15-minute access tokens** and
+      **rotating 24-hour refresh tokens**, and exposes read-only **users**,
+      **memberships** and **bills** under `/api/v1/`, each gated by a scope.
+      The old `/api/` DRF viewsets, token endpoints, `authtoken` tables,
+      `purge_tokens` command, DRF middleware exemption and drf-spectacular schema
+      are removed; so are the `djangorestframework` / `drf-spectacular`
+      dependencies. See `docs/API Reference.md`.
+- [x] **API usage logging and per-key throttling.** Every `/api/v1/` request
+      appends an `ApiUsageLog` row (client, method/path, status, duration, IP,
+      user agent, throttle flag) and counts against the client's
+      `rate_limit_per_minute`; over-limit requests get `429` with `Retry-After`.
+      The token endpoints carry an additional IP-scoped throttle
+      (`EXTERNAL_API_TOKEN_THROTTLE_RATE`, default `20/min`).
+- [x] **Initial partner registrations seeded.** Parking System (`users:read`,
+      `memberships:read`), Main Website (`bills:read`) and eNominations
+      (`memberships:read`); secrets are issued by rotating them in the admin or
+      with `manage.py rotate_api_secret <client_id>`.
+- [x] **Redis-backed shared cache.** `CACHES` selects Django's Redis backend
+      whenever `REDIS_URL` is set (default blank → `LocMemCache` for bare
+      checkouts/tests). External API throttling now uses atomic fixed-window
+      counters (`cache.add` + `cache.incr`) keyed by client id, so the limit is
+      exact across gunicorn workers; both throttles fail open with a logged error
+      if Redis is unreachable. CI runs a `redis:7` service.
 
 ---
 
@@ -69,15 +76,8 @@ reports 104 findings (27 auto-fixable), `views.py` 2 643 lines,
       this is a real gap.
 - [ ] **No CSP** — the app is HTMX/Bootstrap-heavy; a `django-csp` policy would
       meaningfully reduce XSS blast radius.
-- [ ] **Throttling is partial and per-process** — only the token endpoint is
-      throttled (see above); there is no `DEFAULT_THROTTLE_CLASSES`, so the rest
-      of the API is unthrottled. The counters use Django's cache, so behind
-      several gunicorn workers the `LocMemCache` counts per worker — point
-      `CACHES` at Redis/Memcached for an exact limit, and consider a per-user
-      throttle on the resource API.
-- [ ] **Reconsider `BasicAuthentication`** — session + token only. Combined with no
-      throttle it is credential-stuffing exposure, and the token endpoint now makes
-      Basic largely redundant for clients.
+- [ ] **Secret rotation cadence.** Client secrets are hashed and rotated manually.
+      Consider a scheduled reminder / expiry policy for partner credentials.
 - [ ] **No secret scanning** — `.env` is git-ignored, but there is no
       gitleaks/detect-secrets net given how many secrets live there (LDAP bind
       password, Oracle creds, Graph client secret, two crypto keys).
@@ -146,8 +146,8 @@ reports 104 findings (27 auto-fixable), `views.py` 2 643 lines,
 
 1. Flip the CI gates to hard (`ruff`, `makemigrations --check`) and add
    `fail_under` — nothing else matters as much.
-2. Harden settings — env-driven `ALLOWED_HOSTS`, secure cookies/HSTS/nosniff, CSP,
-   and a shared cache so the token-endpoint throttle counts across workers.
+2. Harden settings — env-driven `ALLOWED_HOSTS`, secure cookies/HSTS/nosniff and
+   CSP. (The shared cache for throttle counters is now Redis-backed.)
 3. Supervise the task worker and alert on a stalled queue — otherwise whole
    shipped features are dead in production.
 4. SharePoint version pinning/restore — the one domain feature with real

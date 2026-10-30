@@ -23,7 +23,7 @@ flowchart TB
     subgraph Django["Django (pwms)"]
         Web["Server-rendered UI<br/>(templates + Bootstrap5 + HTMX)"]
         Admin["Django Admin"]
-        API["DRF API<br/>(pwms.api)"]
+        API["Django-Ninja external API<br/>(pwms.api)"]
         Commands["Management commands / background tasks"]
     end
 
@@ -39,12 +39,17 @@ flowchart TB
         DB[("PWMS schema")]
     end
 
+    subgraph Cache["Redis"]
+        Throttle[("per-key throttle counters")]
+    end
+
     Browser --> Web
     Browser --> API
     Browser --> Admin
 
     Web --> Core
     API --> Core
+    API --> Throttle
     Commands --> Core
     Admin --> Core
 
@@ -89,10 +94,11 @@ pwms_project/                     # repo root (git) — run manage.py from here
     │   ├── meetings.py          # Meeting + MeetingAttendance (the Events workflow)
     │   └── venues.py            # Building + Venue (on-premises venue catalogue)
     ├── api/
-    │   ├── urls.py               # DRF router + token / audit routes
-    │   ├── views.py              # API root, token views, resource viewsets
-    │   ├── serializers.py        # resource + audit serializers
-    │   └── permissions.py        # ResourcePermission (per-viewset RBAC)
+    │   ├── api.py                # NinjaAPI, routers and the read-only endpoints
+    │   ├── models.py             # ApiClient, ApiRefreshToken, ApiUsageLog
+    │   ├── auth.py / tokens.py   # bearer auth, signed access + rotating refresh tokens
+    │   ├── scopes.py             # users:read / memberships:read / bills:read
+    │   └── throttling.py         # per-key rate limit + IP-scoped token throttle
     ├── notifications/            # audience rules, dispatch, bell context
     ├── reporting/                # builder, exports, instruments, sharing
     ├── membership/
@@ -136,16 +142,13 @@ pwms_project/                     # repo root (git) — run manage.py from here
 | `/pwms/meetings/{public_id}/agenda/` , `/pwms/meetings/{public_id}/agenda/edit/` | the agenda panel and its inline (HTMX) rich-text editor | session + RBAC |
 | `/pwms/meetings/{public_id}/minutes/` | advance the minutes status (draft / filed / approved) | session + RBAC |
 | `/pwms/*-search/` | HTMX search fragments (users, groups, reports, countries, cities) | session |
-| `/api/` | DRF API root (token endpoints, resource index, audit routes) | session/token/basic |
-| `/api/auth/token/` (+ `refresh/` , `revoke/`) | obtain / rotate / revoke an API token | – (obtain) / token |
-| `/api/{users,groups,roles,memberships}/…` | identity & structure resources (CRUD; users keyed by `username`, the rest by `public_id`) | session/token/basic + RBAC |
-| `/api/groups/lookup/?name=…` | group details + member roster by (partial) name | session/token/basic + RBAC |
-| `/api/{workflow-types,states,transitions}/…` | workflow registry (CRUD) | session/token/basic + RBAC |
-| `/api/{delegation-reports,resolutions,agreements,bills}/…` | workflow instances + `transitions` / `transition` / `events` / `audit` actions | session/token/basic + RBAC |
-| `/api/meetings/…` | meetings + `mine` / `calendar` / `attendance` / `attendance/add` / `attendance/record` / `minutes` actions | session/token/basic + RBAC |
-| `/api/{resolutions,agreements,bills}/{public_id}/audit/` | auditlog CRUD history for one instrument | session/token/basic |
-| `/api/auth/login/` , `/api/auth/logout/` | DRF browsable-API auth | – |
-| `/api/schema/` , `/api/docs/` , `/api/redoc/` | OpenAPI schema + Swagger/ReDoc | public (docs) |
+| `/api/v1/` | external API root (resources visible to the calling key) | bearer token |
+| `/api/v1/me/` | the calling client registration, scopes and rate limit | bearer token |
+| `/api/v1/auth/token/` (`refresh/`, `revoke/`) | obtain / rotate / revoke a token pair | – (IP-throttled) |
+| `/api/v1/{users,memberships,bills}/` | read-only resource lists, filtered and paginated; `search`/`search_fields` match multiple fields | bearer token + scope |
+| `/api/v1/{users,memberships,bills}/{public_id}/` | read-only resource detail | bearer token + scope |
+| `/api/v1/search/` | cross-resource search over users, memberships and bills (scoped, paginated groups) | bearer token + any read scope |
+| `/api/v1/docs` , `/api/v1/openapi.json` | Swagger UI + OpenAPI document | public (docs) |
 
 ---
 
@@ -286,8 +289,8 @@ view/edit/delete it and its **assignee** may always view it (assignment confers
 reading rights only). A **meeting** additionally grants **view** to anyone on its
 attendance register, so an invited committee member outside the unit that
 administers the register can still open the meeting they were asked to attend.
-The DRF audit endpoint consumes it via
-`WorkflowViewPermission` (`pwms/api/permissions.py`).
+The web UI consumes the same resolver through `require()` and the visibility
+helpers in `pwms/services/permissions.py`.
 
 ---
 
@@ -337,16 +340,20 @@ sequenceDiagram
 
 ## 6. API layer
 
-- **DRF** (`pwms/api/`) is the API: an API root, token auth
-  (`/api/auth/token/`), resource viewsets for users / groups / roles /
-  memberships, the workflow registry and every workflow register, per-instance
-  `transitions` / `transition` / `events` / `audit` actions, the retained
-  audit-history endpoint (`GET /api/{resolutions,agreements,bills}/{public_id}/audit/`),
-  and the browsable renderer.
-- **OpenAPI** is generated by `drf-spectacular` (schema at `/api/schema/`,
-  Swagger `/api/docs/`, ReDoc `/api/redoc/`).
-- The **django-ninja spike** that once sat alongside DRF at `/ninja/` has been
-  removed, and the `django-ninja` dependency went with it.
+- **Django-Ninja external API** (`pwms/api/`, mounted at `/api/v1/`)
+  is the only API. It is aimed at registered partner applications rather than
+  interactive users: app registrations, scopes, tokens, usage logs and
+  throttling live in that app, and the endpoints are read-only for **users**,
+  **memberships** and **bills**.
+- Credentials are an application `client_id`/`client_secret`, exchanged for a
+  **15-minute signed access token** and a **24-hour, single-use refresh token**.
+  Access tokens are re-validated against the client's active flag and current
+  scopes on every request.
+- **OpenAPI** is generated by Django-Ninja (schema at
+  `/api/v1/openapi.json`, Swagger at `/api/v1/docs`).
+- The previous **DRF API** (the old `/api/` routes and their viewsets) and its
+  session/basic/token authentication, `purge_tokens` command and drf-spectacular
+  schema have been removed.
 
 See [API Reference](./API%20Reference.md).
 

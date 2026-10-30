@@ -24,9 +24,9 @@
 | `django-chartjs` | (declared/installed, but not used) charting; the detail page's progress ring is inline SVG + CSS, so no chart library is shipped to the browser yet |
 | `django-htmx` | progressive enhancement / partial-page updates |
 | `django-flatpickr` | date-time pickers in templates/forms |
-| `djangorestframework` (DRF) | REST API layer |
-| `drf-spectacular` | OpenAPI 3 schema + Swagger UI + ReDoc |
-| `django-filter` | (declared) query filtering for DRF-style views |
+| `django-ninja` | external (partner) REST API: typed endpoints, OpenAPI + Swagger docs |
+| `redis` | Redis client for Django's cache backend; backs external-API throttling across gunicorn workers |
+| `django-filter` | (declared) query filtering helper; the Ninja API filters with ORM queries directly |
 | `django-extensions` | (declared; not currently enabled) dev tooling |
 
 ## Documents, data & integrations
@@ -46,9 +46,9 @@
 
 ## Configuration highlights (`src/pwms/settings.py`)
 
-- `INSTALLED_APPS`: core Django + `auditlog`, `background_task`,
-  `rest_framework`, `drf_spectacular`, `chartjs`, `django_flatpickr`, `lucide`,
-  `mptt`, `django_htmx`, `pwms`.
+- `INSTALLED_APPS`: core Django + `auditlog`, `background_task`, `chartjs`,
+  `django_flatpickr`, `lucide`, `mptt`, `django_htmx`, `pwms` and
+  `pwms.api`.
 - `AUTH_USER_MODEL = "pwms.User"`.
 - `AUTHENTICATION_BACKENDS`: `pwms.backends.GracefulLDAPBackend` (Active
   Directory) then `pwms.backends.FallbackModelBackend` (local database). The
@@ -63,22 +63,35 @@
   [API Reference](./API%20Reference.md).
 - `MIDDLEWARE`: `pwms.middleware.SiteLoginRequiredMiddleware` makes every site
   route login-required by default; public pages opt out with the
-  `login_not_required` decorator (home, about, contact). The API, admin and docs
-  namespaces manage their own authentication.
+  `login_not_required` decorator (home, about, contact). The admin and the
+  `api` namespace manage their own authentication.
+  `pwms.api.middleware.ExternalApiUsageLogMiddleware` appends an
+  `ApiUsageLog` row for every `/api/v1/` request.
 - SharePoint Graph: `SHAREPOINT_CLIENT_ID` / `SHAREPOINT_CLIENT_SECRET` /
   `SHAREPOINT_TENANT_ID` (from `CLIENT_ID` / `CLIENT_SECRET` / `TENANT_ID`), with
   the token URL and `.default` scope derived — see
   [SharePoint Sync](./SharePoint%20Sync.md).
-- `REST_FRAMEWORK`: session, **expiring token**
-  (`pwms.api.authentication.ExpiringTokenAuthentication`) and basic
-  authentication, `IsAuthenticated` default, page-number pagination,
-  `drf_spectacular.openapi.AutoSchema`. `TOKEN_TTL_DAYS` (default 30; `0`
-  disables) sets the absolute API-token lifetime, and `manage.py purge_tokens`
-  deletes the expired rows. `POST /api/auth/token/` is the one throttled endpoint
-  (`pwms.api.throttles.TokenEndpointThrottle`, IP-scoped, `TOKEN_THROTTLE_RATE`
-  default `20/min`); there is no `DEFAULT_THROTTLE_CLASSES`, so the rest of the
-  API is unthrottled.
-- `SPECTACULAR_SETTINGS`: OpenAPI title/version for the generated schema.
+- Cache (`CACHES`): when `REDIS_URL` is set (e.g.
+  `redis://127.0.0.1:6379/1`) the stock
+  `django.core.cache.backends.redis.RedisCache` is used, with
+  `CACHE_KEY_PREFIX` (default `pwms`), `CACHE_TIMEOUT` (300s) and
+  `REDIS_SOCKET_TIMEOUT` / `REDIS_CONNECT_TIMEOUT` (2s) — this is what makes the
+  external API's per-key throttle exact across workers. `REDIS_URL` blank falls
+  back to `LocMemCache` for bare checkouts/tests. Token throttling also uses this
+  cache. See [API Reference §5](./API%20Reference.md#5-throttling-and-usage-logs).
+- External API (`pwms/api/`): `EXTERNAL_API_PREFIX` (`/api/v1/`),
+  `EXTERNAL_API_ACCESS_TOKEN_TTL_MINUTES` (default 15) and
+  `EXTERNAL_API_REFRESH_TOKEN_TTL_MINUTES` (default 1440, i.e. 24 hours) set
+  token lifetimes;
+  `EXTERNAL_API_SIGNING_KEY` defaults to `SECRET_KEY`;
+  `EXTERNAL_API_TOKEN_THROTTLE_RATE` (default `20/min`, IP-scoped) protects the
+  token endpoints, while each `ApiClient.rate_limit_per_minute` (new clients
+  default to `EXTERNAL_API_DEFAULT_RATE_LIMIT_PER_MINUTE`, 60) is enforced per
+  key across every resource. `EXTERNAL_API_MAX_PAGE_SIZE` caps list pages
+  (default 100).
+- OpenAPI title/version for the Ninja API live in
+  `pwms/api/api.py`; docs are at `/api/v1/docs` and the schema at
+  `/api/v1/openapi.json`.
 - `auditlog.middleware.AuditlogMiddleware` runs after auth so changes are attributed to the logged-in user.
 - Logging: console/file handler writing to the configured `LOG_DIR` (`pwms.log`).
 - Alerting email (`src/pwms/notifications/`): `MAILERS["default"]` uses the
@@ -97,9 +110,9 @@
   `IDNO_ENC_KEY` (both required - they key the at-rest identity numbers, see
   `User.set_idno`), the optional LDAP set (`AUTH_LDAP_SERVER_URI`,
   `AUTH_LDAP_BIND_DN`, `AUTH_LDAP_BIND_PASSWORD`, `AUTH_LDAP_BASE_DN`,
-  `AUTH_LDAP_START_TLS`), and the optional alerting pair `DEFAULT_FROM_EMAIL`
-  and `PWMS_BASE_URL`, and `TOKEN_TTL_DAYS` (API token lifetime in days;
-  default 30, `0` disables expiry).
+  `AUTH_LDAP_START_TLS`), the optional alerting pair `DEFAULT_FROM_EMAIL`
+  and `PWMS_BASE_URL`, and the external API settings
+  (`EXTERNAL_API_*`) plus `REDIS_URL` / cache settings — see above.
 
 > The app is enabled via a single `AppConfig` (`pwms.apps.PwmsConfig`) whose
 > `ready()` registers the concrete workflow model with `auditlog`. It is the only
@@ -121,7 +134,7 @@
 ## Testing
 
 - Test modules: `pwms/tests.py` (auditing, workflow CRUD, lookups),
-  `pwms/tests_api.py` (DRF API + token auth),
+  `pwms/tests_api.py` (app keys, tokens, scopes, throttling, usage logs),
   `pwms/tests_notifications.py` (alerts + email dispatch),
   `pwms/tests_attachments.py` (SharePoint attachments & versioning),
   `pwms/tests_reports.py` (report builder, exports, sharing, scheduling),
@@ -138,7 +151,10 @@
   pwms.tests_notifications pwms.tests_reports
 ```
 
-- Tests run on a throwaway test database (PostgreSQL test DB).
+- Tests run on a throwaway test database (PostgreSQL test DB). CI also starts a
+  `redis:7` service and sets `REDIS_URL`, so throttling is exercised against the
+  shared cache; locally, leave `REDIS_URL` blank to use the LocMem fallback (or
+  run Redis and set it to exercise the same path).
 
 ## Database reset (development)
 

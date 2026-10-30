@@ -14,8 +14,9 @@ ContentType-linked RBAC layer, and everything that happens to an instrument is
 > Active Directory sign-in with a local fallback, in-app alerts and queued email
 > dispatch, SharePoint document attachments (with version history), a
 > permission-scoped report builder (preview, exports, per-instrument documents,
-> sharing, scheduled delivery), the DRF API (expiring token authentication plus
-> user / membership / workflow endpoints) and OpenAPI docs are in place.
+> sharing, scheduled delivery), the partner-facing Django-Ninja API
+> (scoped app keys with short-lived access/refresh tokens, usage logging and
+> per-key throttling) and OpenAPI docs are in place.
 > Remaining work is tracked in
 > [Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md).
 
@@ -44,16 +45,18 @@ ContentType-linked RBAC layer, and everything that happens to an instrument is
   instrument for House Plenary, committee, administration and other sitting
   types: agendas, minutes and papers as SharePoint documents, an auditable
   attendance register recorded during or after the sitting, **CSV/XLSX import and
-  export**, and REST endpoints (list/detail, "my meetings by membership",
-  attendance, minutes).
+  export**.
 - **Reporting** — a permission-scoped report builder over all four registers with
   xlsx / pdf / html / csv exports, per-instrument formal documents, token sharing
   and scheduled delivery.
 - **Authentication** — Active Directory (LDAP) sign-in that falls back to the
   local database, so the app boots and signs in without a directory.
-- **REST API** (DRF) with token authentication and endpoints for users,
-  memberships, the workflow registry and every workflow register (meetings
-  included), plus **OpenAPI / Swagger / ReDoc** docs.
+- **External API** (Django-Ninja) for registered partner applications, with
+  client-id/secret authentication, 15-minute access tokens and rotating
+  24-hour refresh tokens, per-resource scopes, usage logs and per-key throttling.
+  It exposes read-only **users**, **memberships** and **bills**, plus a
+  **cross-resource search** endpoint and **OpenAPI / Swagger** docs. The previous
+  DRF API under `/api/` has been retired.
 - **Admin, background jobs, management commands** for sync (Oracle/legacy), scraping, notifications and diagram generation.
 
 ---
@@ -74,7 +77,7 @@ pwms_project/                     # repo root — run manage.py from here
     ├── templates/                # server-rendered UI (Bootstrap 5 + HTMX) — auto-discovered
     ├── static/                   # CSS / JS / images — auto-discovered
     ├── models/                   # User, Group, Role, workflows, RBAC, SharePoint, notifications, reports
-    ├── api/                      # DRF API (token auth, resources, audit, OpenAPI)
+    ├── api/             # Django-Ninja partner API (app keys, scopes, tokens, usage logs)
     ├── notifications/            # alerts, audience rules, email dispatch
     ├── reporting/                # report builder, exports, instrument documents, sharing
     ├── membership/               # sync services (e.g. MembershipSyncService)
@@ -102,6 +105,7 @@ The self-documentation lives in [`pwms/docs/`](src/pwms/docs/):
 | [Functional Design](src/pwms/docs/Functional%20Design.md) | What the system does, feature-by-feature |
 | [Technical Stack](src/pwms/docs/Technical%20Stack.md) | Frameworks, libraries, config, environment |
 | [API Reference](src/pwms/docs/API%20Reference.md) | Endpoints, auth, schema/docs URLs |
+| [Bills API User Guide](src/pwms/docs/Bills%20API%20User%20Guide.pdf) ([HTML](src/pwms/docs/Bills%20API%20User%20Guide.html), [Markdown](src/pwms/docs/Bills%20API%20User%20Guide.md)) | One-page end-user guide for consuming the Bills API |
 | [Search Lookups](src/pwms/docs/Search%20Lookups.md) | HTMX search pickers and the country → city cascade |
 | [Meetings Import & Export](src/pwms/docs/Meetings%20Import%20%26%20Export.md) | The CSV/XLSX format the Meetings calendar imports and exports |
 | [Management Commands](src/pwms/docs/Management%20Commands.md) | Every `manage.py` command and its purpose |
@@ -117,7 +121,10 @@ The self-documentation lives in [`pwms/docs/`](src/pwms/docs/):
 
 ## Quickstart
 
-Requirements: Python ≥ 3.14, [uv](https://docs.astral.sh/uv/), PostgreSQL.
+Requirements: Python ≥ 3.14, [uv](https://docs.astral.sh/uv/), PostgreSQL and
+Redis. Redis backs the shared cache used by the external API's per-key
+throttling; leave `REDIS_URL` blank to fall back to an in-process cache (fine for
+single-process development, not for production).
 
 ```bash
 # 1. Install dependencies (editable install adds src/ to the Python path)
@@ -132,15 +139,22 @@ PG_USERNAME=gelie
 PG_PASSWORD=
 PG_HOST=localhost
 PG_PORT=5432
+# Shared cache for external-API throttling. Use redis://host:6379/<db> in
+# deployment, or leave blank to fall back to LocMemCache (single process only).
+REDIS_URL=redis://127.0.0.1:6379/1
 IDNO_HMAC_KEY=change-me-too
 # Identity numbers are stored as a keyed digest plus an encrypted value, so both
 # keys are required. IDNO_ENC_KEY must be a Fernet key — generate one with:
 #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 IDNO_ENC_KEY=change-me-too
-# API tokens expire after this many days (default 30; 0 disables expiry).
-TOKEN_TTL_DAYS=30
-# Anonymous rate limit for POST /api/auth/token/, per client IP (default 20/min).
-TOKEN_THROTTLE_RATE=20/min
+# External API: access tokens live 15 minutes, refresh tokens 24 hours; the
+# token endpoint is rate-limited per client IP.
+EXTERNAL_API_ACCESS_TOKEN_TTL_MINUTES=15
+EXTERNAL_API_REFRESH_TOKEN_TTL_MINUTES=1440
+EXTERNAL_API_TOKEN_THROTTLE_RATE=20/min
+# Default requests/minute for a newly registered API client (per-client override
+# is available in the admin).
+EXTERNAL_API_DEFAULT_RATE_LIMIT_PER_MINUTE=60
 EOF
 
 # 3. Create the schema
@@ -157,7 +171,7 @@ Then open:
 
 - Web app → <http://127.0.0.1:8000/pwms/>
 - Admin → <http://127.0.0.1:8000/admin/>
-- Swagger UI → <http://127.0.0.1:8000/api/docs/>
+- Swagger UI → <http://127.0.0.1:8000/api/v1/docs>
 
 > **Email is queued.** Alert email and scheduled report shares are delivered by
 > `django-background-tasks`, so `python manage.py process_tasks` has to be running
