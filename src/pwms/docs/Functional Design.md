@@ -518,8 +518,8 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
   ([Meetings Import & Export](./Meetings%20Import%20%26%20Export.md)).
 - **Django Admin** for administration (users, groups, roles, memberships,
   workflow definitions, the SharePoint mirror, and notifications — read-only).
-- **External API (Django-Ninja)** for registered partner applications: scoped
-  read-only users, memberships and bills, with app-key authentication,
+- **PWMS API (Django-Ninja)** for registered partner applications: scoped
+  read-only users, groups, memberships and bills, with app-key authentication,
   short-lived access/refresh tokens, usage logs, per-key throttling and
   Swagger docs — see [API Reference](./API%20Reference.md).
 

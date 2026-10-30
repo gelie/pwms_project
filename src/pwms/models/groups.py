@@ -78,6 +78,11 @@ class Group(MPTTModel, BaseModel):
         ancestors = self.get_ancestors(include_self=True)
         return " > ".join([group.name for group in ancestors])
 
+    @property
+    def full_path(self):
+        """The group's name preceded by its ancestors, joined with `` > ``."""
+        return self.get_full_path()
+
     def get_active_members(self):
         from .users import User
 

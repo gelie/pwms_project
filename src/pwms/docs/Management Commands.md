@@ -330,10 +330,10 @@ share takes it out of the queue immediately.
 | `audit_workflow_access` | explain why a user can (or cannot) create or open a workflow type, and flag create roles no active member of the group holds | ✅ live — see below |
 | `show_workflow_hierarchy` | print the parent/child tree of workflow instances | ✅ live — see below |
 | `seed_demo_data` | empty the four workflow registers and reseed them with presentation-ready mock records | ✅ live — see below |
-| `rotate_api_secret` | issue a new secret for a registered external API client and print it once | ✅ live — see below |
+| `rotate_api_secret` | issue a new secret for a registered PWMS API client and print it once | ✅ live — see below |
 | `validate_memberships` | integrity-check group memberships | pending repoint |
 
-### External API client secrets
+### PWMS API client secrets
 
 Partner applications authenticate with a `client_id` / `client_secret` pair;
 PWMS stores only a hash of the secret. A registration created in the admin gets

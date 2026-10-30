@@ -76,10 +76,10 @@
   `django.core.cache.backends.redis.RedisCache` is used, with
   `CACHE_KEY_PREFIX` (default `pwms`), `CACHE_TIMEOUT` (300s) and
   `REDIS_SOCKET_TIMEOUT` / `REDIS_CONNECT_TIMEOUT` (2s) — this is what makes the
-  external API's per-key throttle exact across workers. `REDIS_URL` blank falls
+  PWMS API's per-key throttle exact across workers. `REDIS_URL` blank falls
   back to `LocMemCache` for bare checkouts/tests. Token throttling also uses this
   cache. See [API Reference §5](./API%20Reference.md#5-throttling-and-usage-logs).
-- External API (`pwms/api/`): `EXTERNAL_API_PREFIX` (`/api/v1/`),
+- PWMS API (`pwms/api/`): `EXTERNAL_API_PREFIX` (`/api/v1/`),
   `EXTERNAL_API_ACCESS_TOKEN_TTL_MINUTES` (default 15) and
   `EXTERNAL_API_REFRESH_TOKEN_TTL_MINUTES` (default 1440, i.e. 24 hours) set
   token lifetimes;
@@ -111,7 +111,7 @@
   `User.set_idno`), the optional LDAP set (`AUTH_LDAP_SERVER_URI`,
   `AUTH_LDAP_BIND_DN`, `AUTH_LDAP_BIND_PASSWORD`, `AUTH_LDAP_BASE_DN`,
   `AUTH_LDAP_START_TLS`), the optional alerting pair `DEFAULT_FROM_EMAIL`
-  and `PWMS_BASE_URL`, and the external API settings
+  and `PWMS_BASE_URL`, and the PWMS API settings
   (`EXTERNAL_API_*`) plus `REDIS_URL` / cache settings — see above.
 
 > The app is enabled via a single `AppConfig` (`pwms.apps.PwmsConfig`) whose

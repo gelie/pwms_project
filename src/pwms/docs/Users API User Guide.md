@@ -17,7 +17,7 @@ edit or deactivate users through this API.
 
 Your PWMS administrator will give you:
 
-- the PWMS base address, e.g. `https://pwms.example.gov.za`
+- the PWMS base address, e.g. `https://workflows-dev.parliament.gov.za`
 - a **client ID**
 - a **client secret**
 - the **`users:read`** scope

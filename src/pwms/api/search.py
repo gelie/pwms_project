@@ -30,6 +30,18 @@ USER_SEARCH_FIELDS: dict[str, tuple[str, ...]] = {
     "phone": ("phone",),
 }
 
+#: Groups: name, hierarchy, contact and location fields.
+GROUP_SEARCH_FIELDS: dict[str, tuple[str, ...]] = {
+    "name": ("name",),
+    "short_name": ("short_name",),
+    "slug": ("slug",),
+    "description": ("description",),
+    "parent": ("parent__name",),
+    "contact_email": ("contact_email",),
+    "contact_phone": ("contact_phone",),
+    "location": ("location",),
+}
+
 #: Memberships: match the person, the group and the role independently.
 MEMBERSHIP_SEARCH_FIELDS: dict[str, tuple[str, ...]] = {
     "user_username": ("user__username",),
