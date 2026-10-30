@@ -1,1180 +1,728 @@
+"""Tests for the partner-facing Django-Ninja API (``pwms.api``)."""
+
 import json
-from datetime import date, timedelta
+from datetime import timedelta
 from io import StringIO
 from unittest import mock
+from urllib.parse import urlencode
+from uuid import uuid4
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core import signing
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
-from rest_framework.authtoken.models import Token
-from rest_framework.test import APIClient
 
-from .api.throttles import TokenEndpointThrottle
+from .api.models import ApiClient, ApiRefreshToken, ApiUsageLog
+from .api.scopes import Scope
+from .api.tokens import ACCESS_TOKEN_SALT
 from .models import (
     Bill,
     Group,
     GroupMembership,
-    InternationalAgreement,
-    InternationalResolution,
     PublicStatus,
     Role,
     State,
-    Transition,
     WorkflowType,
 )
 
+User = get_user_model()
 
-def make_state(**kwargs):
-    """A ``State`` with a default public status, for these ad-hoc test machines."""
-    kwargs.setdefault("public_status", PublicStatus.objects.get(name="New"))
-    return State.objects.create(**kwargs)
+TOKEN_URL = "/api/v1/auth/token/"
+REFRESH_URL = "/api/v1/auth/token/refresh/"
+REVOKE_URL = "/api/v1/auth/token/revoke/"
 
 
-class AuditHistoryApiTests(TestCase):
-    """The DRF audit-history endpoint for a workflow instance."""
-
-    @classmethod
-    def setUpTestData(cls):
-        User = get_user_model()
-        cls.user = User.objects.create_user(
-            username="alice", email="alice@example.com", password="pw"
-        )
-        wt = WorkflowType.objects.create(name="Test International Resolution")
-        draft = make_state(workflow_type=wt, name="Drafting", is_initial=True)
-        cls.res = InternationalResolution.objects.create(
-            workflow_type=wt,
-            current_state=draft,
-            resolution_number="IR-1",
-            title="A test resolution",
-            owner=cls.user,
-        )
-        cls.url = reverse("pwms_api:resolution-audit-history", args=[cls.res.public_id])
-
-    def test_endpoint_requires_authentication(self):
-        resp = APIClient().get(self.url)
-        self.assertEqual(resp.status_code, 403)  # DRF: unauthenticated request
-
-    def test_returns_audit_trail_for_instance(self):
-        client = APIClient()
-        client.force_authenticate(user=self.user)
-
-        resp = client.get(self.url)
-        self.assertEqual(resp.status_code, 200)
-
-        payload = resp.json()
-        self.assertIsInstance(payload, list)
-        # Creating the instance in setUpTestData produced an auditlog CREATE entry
-        self.assertTrue(any(entry["action"] == 0 for entry in payload))
-        # Each entry carries actor email + changes
-        self.assertTrue(all("actor_email" in e and "changes" in e for e in payload))
-
-    def test_missing_instance_returns_404(self):
-        from uuid import uuid4
-
-        client = APIClient()
-        client.force_authenticate(user=self.user)
-        url = reverse("pwms_api:resolution-audit-history", args=[uuid4()])
-        resp = client.get(url)
-        self.assertEqual(resp.status_code, 404)
-
-    # --- Browsable API -----------------------------------------------------
-    def test_endpoint_is_browsable_when_authenticated(self):
-        """A browser request renders the DRF browsable API HTML, not raw JSON."""
-        client = APIClient()
-        client.force_authenticate(user=self.user)
-        resp = client.get(self.url, HTTP_ACCEPT="text/html")
-
-        self.assertEqual(resp.status_code, 200)
-        self.assertTrue(resp["Content-Type"].startswith("text/html"))
-        # The browsable page pretty-prints the JSON payload (incl. actor_email)
-        self.assertContains(resp, "actor_email")
-
-    def test_anonymous_browser_request_shows_login_not_raw_401(self):
-        """Anonymous browser users get a browsable 403 page (with login link)."""
-        resp = APIClient().get(self.url, HTTP_ACCEPT="text/html")
-        self.assertEqual(resp.status_code, 403)
-        self.assertTrue(resp["Content-Type"].startswith("text/html"))
-
-    def test_drf_login_and_logout_pages_are_wired(self):
-        """/api/auth/login + /api/auth/logout (rest_framework.urls) render."""
-        login = APIClient().get("/api/auth/login/")
-        self.assertEqual(login.status_code, 200)
-        self.assertContains(login, "username")
-
-        logout = APIClient().get("/api/auth/logout/")
-        self.assertIn(logout.status_code, (200, 405))  # GET shows confirm page
-
-    def test_api_root_indexes_endpoints(self):
-        """GET /api/ returns a JSON index with links to the endpoints."""
-        client = APIClient()
-        client.force_authenticate(user=self.user)
-
-        resp = client.get("/api/")
-        self.assertEqual(resp.status_code, 200)
-
-        payload = resp.json()
-        self.assertIn("resolution-audit-history", payload["endpoints"])
-        audit = payload["endpoints"]["resolution-audit-history"]
-        self.assertEqual(audit["method"], "GET")
-        # reverse() renders the pattern as an absolute URL on this host
-        self.assertTrue(audit["url_pattern"].startswith("http://"))
-        self.assertIn("/api/resolutions/{public_id}/audit/", audit["url_pattern"])
-        self.assertIn("agreement-audit-history", payload["endpoints"])
-        self.assertIn(
-            "/api/agreements/{public_id}/audit/",
-            payload["endpoints"]["agreement-audit-history"]["url_pattern"],
-        )
-        self.assertIn("bill-audit-history", payload["endpoints"])
-        self.assertIn(
-            "/api/bills/{public_id}/audit/",
-            payload["endpoints"]["bill-audit-history"]["url_pattern"],
-        )
-        self.assertTrue(payload["login"].startswith("http://"))
-
-    def test_api_root_is_browsable(self):
-        """A browser request to /api/ renders the DRF browsable index."""
-        client = APIClient()
-        client.force_authenticate(user=self.user)
-
-        resp = client.get("/api/", HTTP_ACCEPT="text/html")
-        self.assertEqual(resp.status_code, 200)
-        self.assertTrue(resp["Content-Type"].startswith("text/html"))
-        self.assertContains(resp, "resolution-audit-history")
-
-    # --- OpenAPI + interactive docs (drf-spectacular) ----------------------
-    def test_openapi_schema_served_publicly(self):
-        """GET /api/schema/ returns a valid OpenAPI document (no auth needed)."""
-        resp = APIClient().get("/api/schema/?format=json")
-        self.assertEqual(resp.status_code, 200)
-        schema = json.loads(resp.content)  # parseable JSON proves JSON renderer
-        self.assertTrue(schema["openapi"].startswith("3."))
-        self.assertTrue(any("resolutions" in path for path in schema["paths"]))
-        # api_root is annotated so it appears in the schema too
-        self.assertIn("/api/", schema["paths"])
-
-    def test_swagger_ui_and_redoc_render(self):
-        """Interactive docs frontends are served."""
-        swagger = APIClient().get("/api/docs/")
-        self.assertEqual(swagger.status_code, 200)
-        self.assertContains(swagger, "swagger-ui")
-
-        redoc = APIClient().get("/api/redoc/")
-        self.assertEqual(redoc.status_code, 200)
-        self.assertContains(redoc, "redoc")
-
-    def test_non_owner_without_access_is_forbidden(self):
-        """An authenticated non-owner with no instance access gets 403."""
-        User = get_user_model()
-        stranger = User.objects.create_user(username="stranger", password="pw")
-
-        client = APIClient()
-        client.force_authenticate(user=stranger)
-
-        resp = client.get(self.url)
-        self.assertEqual(resp.status_code, 403)
-
-
-class AgreementAuditHistoryApiTests(TestCase):
-    """The DRF audit-history endpoint for an InternationalAgreement."""
-
-    @classmethod
-    def setUpTestData(cls):
-        User = get_user_model()
-        cls.user = User.objects.create_user(
-            username="agreement-api", email="agreement-api@example.com", password="pw"
-        )
-        wt = WorkflowType.objects.create(name="Test International Agreement")
-        tabled = make_state(workflow_type=wt, name="Agreement Tabled", is_initial=True)
-        cls.agreement = InternationalAgreement.objects.create(
-            workflow_type=wt,
-            current_state=tabled,
-            title="A test agreement",
-            owner=cls.user,
-        )
-        cls.url = reverse(
-            "pwms_api:agreement-audit-history", args=[cls.agreement.public_id]
-        )
-
-    def test_endpoint_requires_authentication(self):
-        resp = APIClient().get(self.url)
-        self.assertEqual(resp.status_code, 403)  # DRF: unauthenticated request
-
-    def test_returns_audit_trail_for_instance(self):
-        client = APIClient()
-        client.force_authenticate(user=self.user)
-
-        resp = client.get(self.url)
-        self.assertEqual(resp.status_code, 200)
-
-        payload = resp.json()
-        self.assertIsInstance(payload, list)
-        # Creating the instance in setUpTestData produced an auditlog CREATE entry
-        self.assertTrue(any(entry["action"] == 0 for entry in payload))
-        self.assertTrue(all("actor_email" in e and "changes" in e for e in payload))
-
-    def test_missing_instance_returns_404(self):
-        from uuid import uuid4
-
-        client = APIClient()
-        client.force_authenticate(user=self.user)
-        url = reverse("pwms_api:agreement-audit-history", args=[uuid4()])
-        resp = client.get(url)
-        self.assertEqual(resp.status_code, 404)
-
-    def test_non_owner_without_access_is_forbidden(self):
-        """An authenticated non-owner with no instance access gets 403."""
-        User = get_user_model()
-        stranger = User.objects.create_user(
-            username="agreement-stranger", password="pw"
-        )
-
-        client = APIClient()
-        client.force_authenticate(user=stranger)
-
-        resp = client.get(self.url)
-        self.assertEqual(resp.status_code, 403)
-
-
-class BillAuditHistoryApiTests(TestCase):
-    """The DRF audit-history endpoint for a Bill."""
-
-    @classmethod
-    def setUpTestData(cls):
-        User = get_user_model()
-        cls.user = User.objects.create_user(
-            username="bill-api", email="bill-api@example.com", password="pw"
-        )
-        wt = WorkflowType.objects.create(name="Test Bill Type")
-        introduced = make_state(workflow_type=wt, name="Introduced", is_initial=True)
-        cls.bill = Bill.objects.create(
-            workflow_type=wt,
-            current_state=introduced,
-            bill_number="B 7—2026",
-            title="A test bill",
-            owner=cls.user,
-        )
-        cls.url = reverse("pwms_api:bill-audit-history", args=[cls.bill.public_id])
-
-    def test_endpoint_requires_authentication(self):
-        resp = APIClient().get(self.url)
-        self.assertEqual(resp.status_code, 403)  # DRF: unauthenticated request
-
-    def test_returns_audit_trail_for_instance(self):
-        client = APIClient()
-        client.force_authenticate(user=self.user)
-
-        resp = client.get(self.url)
-        self.assertEqual(resp.status_code, 200)
-
-        payload = resp.json()
-        self.assertIsInstance(payload, list)
-        # Creating the instance in setUpTestData produced an auditlog CREATE entry
-        self.assertTrue(any(entry["action"] == 0 for entry in payload))
-        self.assertTrue(all("actor_email" in e and "changes" in e for e in payload))
-
-    def test_missing_instance_returns_404(self):
-        from uuid import uuid4
-
-        client = APIClient()
-        client.force_authenticate(user=self.user)
-        url = reverse("pwms_api:bill-audit-history", args=[uuid4()])
-        resp = client.get(url)
-        self.assertEqual(resp.status_code, 404)
-
-    def test_non_owner_without_access_is_forbidden(self):
-        """An authenticated non-owner with no instance access gets 403."""
-        User = get_user_model()
-        stranger = User.objects.create_user(username="bill-stranger", password="pw")
-
-        client = APIClient()
-        client.force_authenticate(user=stranger)
-
-        resp = client.get(self.url)
-        self.assertEqual(resp.status_code, 403)
-
-
-# ===========================================================================
-# Token authentication
-# ===========================================================================
-
-#: The local directory-less fallback, so ``authenticate()`` never dials AD in
-#: these tests regardless of the host's .env (CI leaves LDAP unconfigured).
-LOCAL_AUTH = override_settings(AUTH_LDAP_SERVER_URI="")
-
-
-class TokenAuthenticationApiTests(TestCase):
-    """Obtaining, using, rotating and revoking API tokens."""
-
-    @classmethod
-    def setUpTestData(cls):
-        cls.user = get_user_model().objects.create_user(
-            username="token-user", email="token@example.com", password="s3cret"
-        )
-
-    def _obtain(self, username="token-user", password="s3cret"):
-        return APIClient().post(
-            "/api/auth/token/",
-            {"username": username, "password": password},
-            format="json",
-        )
-
-    def test_obtain_token_returns_a_usable_key(self):
-        with LOCAL_AUTH:
-            resp = self._obtain()
-
-        self.assertEqual(resp.status_code, 200)
-        payload = resp.json()
-        self.assertEqual(payload["username"], "token-user")
-        self.assertTrue(
-            Token.objects.filter(key=payload["token"], user=self.user).exists()
-        )
-
-        client = APIClient()
-        client.credentials(HTTP_AUTHORIZATION=f"Token {payload['token']}")
-        me = client.get("/api/users/me/")
-        self.assertEqual(me.status_code, 200)
-        self.assertEqual(me.json()["username"], "token-user")
-
-    def test_wrong_password_is_rejected(self):
-        with LOCAL_AUTH:
-            resp = self._obtain(password="nope")
-        self.assertEqual(resp.status_code, 401)
-
-    def test_inactive_account_is_rejected(self):
-        self.user.is_active = False
-        self.user.save(update_fields=["is_active"])
-        try:
-            with LOCAL_AUTH:
-                resp = self._obtain()
-            self.assertEqual(resp.status_code, 401)
-        finally:
-            self.user.is_active = True
-            self.user.save(update_fields=["is_active"])
-
-    def test_anonymous_request_is_forbidden_not_challenged(self):
-        # Session auth leads the authenticator list, so the contract stays 403.
-        self.assertEqual(APIClient().get("/api/users/").status_code, 403)
-
-    def test_rotation_invalidates_the_old_key(self):
-        old = Token.objects.create(user=self.user)
-        client = APIClient()
-        client.credentials(HTTP_AUTHORIZATION=f"Token {old.key}")
-
-        resp = client.post("/api/auth/token/refresh/")
-
-        self.assertEqual(resp.status_code, 200)
-        new_key = resp.json()["token"]
-        self.assertNotEqual(new_key, old.key)
-        self.assertFalse(Token.objects.filter(key=old.key).exists())
-        self.assertTrue(Token.objects.filter(key=new_key, user=self.user).exists())
-
-    def test_revoke_removes_the_token(self):
-        token = Token.objects.create(user=self.user)
-        client = APIClient()
-        client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
-
-        resp = client.post("/api/auth/token/revoke/")
-
-        self.assertEqual(resp.status_code, 204)
-        self.assertFalse(Token.objects.filter(user=self.user).exists())
-
-
-# ===========================================================================
-# Identity, structure and the workflow registry
-# ===========================================================================
-
-
-class ResourceApiTests(TestCase):
-    """Users, groups, roles and memberships over the API."""
-
-    @classmethod
-    def setUpTestData(cls):
-        User = get_user_model()
-        cls.user = User.objects.create_user(username="res-user", password="pw")
-        cls.manager = User.objects.create_user(username="res-manager", password="pw")
-        cls.role = Role.objects.create(name="Manager Role", can_manage_permissions=True)
-        cls.group = Group.objects.create(
-            name="Resource Committee", group_type="committee"
-        )
-        GroupMembership.objects.create(user=cls.manager, group=cls.group, role=cls.role)
-
-    @staticmethod
-    def _client(user):
-        client = APIClient()
-        client.force_authenticate(user=user)
-        return client
-
-    def test_user_list_requires_authentication(self):
-        self.assertEqual(APIClient().get("/api/users/").status_code, 403)
-
-    def test_user_list_is_paginated(self):
-        resp = self._client(self.user).get("/api/users/")
-        self.assertEqual(resp.status_code, 200)
-        payload = resp.json()
-        self.assertIn("results", payload)
-        self.assertTrue(any(u["username"] == "res-user" for u in payload["results"]))
-
-    def test_user_detail_is_looked_up_by_username(self):
-        resp = self._client(self.user).get("/api/users/res-user/")
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["username"], "res-user")
-
-    def test_dotted_username_is_addressable(self):
-        get_user_model().objects.create_user(username="z.mkhize", password="pw")
-        resp = self._client(self.user).get("/api/users/z.mkhize/")
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["username"], "z.mkhize")
-
-    def test_username_lookup_is_case_insensitive(self):
-        resp = self._client(self.user).get("/api/users/RES-USER/")
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["username"], "res-user")
-
-    def test_unknown_username_is_a_404(self):
-        resp = self._client(self.user).get("/api/users/nobody-here/")
-        self.assertEqual(resp.status_code, 404)
-
-    def test_me_returns_the_caller(self):
-        resp = self._client(self.user).get("/api/users/me/")
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["username"], "res-user")
-
-    def test_user_payload_never_leaks_secrets(self):
-        resp = self._client(self.user).get("/api/users/res-user/")
-        for forbidden in ("password", "idno_encrypted", "idno_hmac"):
-            self.assertNotIn(forbidden, resp.json())
-
-    def test_reading_a_group_is_open_to_any_signed_in_user(self):
-        resp = self._client(self.user).get(f"/api/groups/{self.group.public_id}/")
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["name"], "Resource Committee")
-
-    def test_plain_user_cannot_create_a_user(self):
-        resp = self._client(self.user).post(
-            "/api/users/",
-            {"username": "newbie", "password": "pw12345"},
-            format="json",
-        )
-        self.assertEqual(resp.status_code, 403)
-
-    def test_manager_can_create_a_user_with_a_password(self):
-        resp = self._client(self.manager).post(
-            "/api/users/",
-            {
-                "username": "newbie",
-                "email": "newbie@example.com",
-                "password": "pw12345",
-            },
-            format="json",
-        )
-        self.assertEqual(resp.status_code, 201, resp.content)
-        created = get_user_model().objects.get(username="newbie")
-        self.assertTrue(created.check_password("pw12345"))
-        # Privilege flags are read-only: a manager cannot mint an admin.
-        self.assertNotIn("password", resp.json())
-        self.assertFalse(created.is_superuser)
-
-    def test_membership_list_returns_rows(self):
-        resp = self._client(self.user).get("/api/memberships/")
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["count"], 1)
-        self.assertEqual(resp.json()["results"][0]["group_name"], "Resource Committee")
-
-    def test_creating_a_membership_records_the_actor(self):
-        resp = self._client(self.manager).post(
-            "/api/memberships/",
-            {
-                "user": self.user.pk,
-                "group": self.group.pk,
-                "role": self.role.pk,
-                "start_date": "2026-01-01",
-            },
-            format="json",
-        )
-        self.assertEqual(resp.status_code, 201, resp.content)
-        self.assertEqual(resp.json()["updated_by"], self.manager.pk)
-
-    def test_role_list_exposes_capability_flags(self):
-        resp = self._client(self.user).get(f"/api/roles/{self.role.public_id}/")
-        self.assertEqual(resp.status_code, 200)
-        self.assertTrue(resp.json()["can_manage_permissions"])
-
-
-# ===========================================================================
-# Workflow instances
-# ===========================================================================
-
-
-class WorkflowResourceApiTests(TestCase):
-    """Delegation-report/resolution/agreement/bill endpoints, exercised via Bill."""
-
-    @classmethod
-    def setUpTestData(cls):
-        User = get_user_model()
-        cls.owner = User.objects.create_user(username="wf-owner", password="pw")
-        cls.stranger = User.objects.create_user(username="wf-stranger", password="pw")
-        cls.group = Group.objects.create(name="Bill Committee", group_type="committee")
-        cls.role = Role.objects.create(name="Bill Clerk", can_create_workflows=True)
-        GroupMembership.objects.create(user=cls.owner, group=cls.group, role=cls.role)
-
-        cls.workflow_type = WorkflowType.objects.create(
-            name="Bill Machine", group=cls.group
-        )
-        cls.workflow_type.create_roles.add(cls.role)
-        cls.draft = make_state(
-            workflow_type=cls.workflow_type, name="Draft", is_initial=True
-        )
-        cls.assent = make_state(
-            workflow_type=cls.workflow_type, name="Assent", is_terminal=True
-        )
-        cls.send = Transition.objects.create(
-            workflow_type=cls.workflow_type,
-            name="Send for assent",
-            from_state=cls.draft,
-            to_state=cls.assent,
-            requires_comment=True,
-        )
-        cls.bill = Bill.objects.create(
-            workflow_type=cls.workflow_type,
-            current_state=cls.draft,
-            bill_number="B 1\u20142026",
-            title="A test bill",
-            owner=cls.owner,
-        )
-
-    @staticmethod
-    def _client(user):
-        client = APIClient()
-        client.force_authenticate(user=user)
-        return client
-
-    def test_collection_requires_authentication(self):
-        self.assertEqual(APIClient().get("/api/bills/").status_code, 403)
-
-    def test_list_only_returns_visible_instances(self):
-        mine = self._client(self.owner).get("/api/bills/")
-        self.assertEqual(mine.status_code, 200)
-        self.assertEqual(mine.json()["count"], 1)
-
-        theirs = self._client(self.stranger).get("/api/bills/")
-        self.assertEqual(theirs.json()["count"], 0)
-
-    def test_detail_is_looked_up_by_public_id(self):
-        resp = self._client(self.owner).get(f"/api/bills/{self.bill.public_id}/")
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json()["bill_number"], "B 1\u20142026")
-
-    def test_detail_is_forbidden_for_an_unrelated_user(self):
-        resp = self._client(self.stranger).get(f"/api/bills/{self.bill.public_id}/")
-        self.assertEqual(resp.status_code, 403)
-
-    def test_member_may_create_and_state_defaults_to_initial(self):
-        resp = self._client(self.owner).post(
-            "/api/bills/",
-            {
-                "workflow_type": self.workflow_type.pk,
-                "title": "Another bill",
-                "bill_number": "B 2\u20142026",
-            },
-            format="json",
-        )
-        self.assertEqual(resp.status_code, 201, resp.content)
-        created = Bill.objects.get(bill_number="B 2\u20142026")
-        self.assertEqual(created.owner, self.owner)
-        self.assertEqual(created.current_state, self.draft)
-
-    def test_user_without_a_create_role_cannot_create(self):
-        resp = self._client(self.stranger).post(
-            "/api/bills/",
-            {
-                "workflow_type": self.workflow_type.pk,
-                "title": "Disallowed bill",
-                "bill_number": "B 3\u20142026",
-            },
-            format="json",
-        )
-        self.assertEqual(resp.status_code, 403)
-
-    def test_current_state_is_not_writable_through_update(self):
-        # State changes must go through the audited transition action; a PATCH
-        # carrying current_state has it ignored.
-        resp = self._client(self.owner).patch(
-            f"/api/bills/{self.bill.public_id}/",
-            {"current_state": self.assent.pk},
-            format="json",
-        )
-        self.assertEqual(resp.status_code, 200, resp.content)
-        self.bill.refresh_from_db()
-        self.assertEqual(self.bill.current_state, self.draft)
-
-    def test_workflow_type_cannot_be_changed(self):
-        other = WorkflowType.objects.create(name="Other Machine", group=self.group)
-        resp = self._client(self.owner).patch(
-            f"/api/bills/{self.bill.public_id}/",
-            {"workflow_type": other.pk},
-            format="json",
-        )
-        self.assertEqual(resp.status_code, 400)
-
-    def test_transitions_action_lists_the_reachable_transition(self):
-        resp = self._client(self.owner).get(
-            f"/api/bills/{self.bill.public_id}/transitions/"
-        )
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual([t["name"] for t in resp.json()], ["Send for assent"])
-
-    def test_transition_action_advances_the_state(self):
-        resp = self._client(self.owner).post(
-            f"/api/bills/{self.bill.public_id}/transition/",
-            {"transition": str(self.send.public_id), "comment": "Passed both Houses."},
-            format="json",
-        )
-        self.assertEqual(resp.status_code, 201, resp.content)
-        self.assertEqual(resp.json()["to_state_name"], "Assent")
-
-        self.bill.refresh_from_db()
-        self.assertEqual(self.bill.current_state, self.assent)
-
-    def test_transition_requiring_a_comment_is_refused_without_one(self):
-        resp = self._client(self.owner).post(
-            f"/api/bills/{self.bill.public_id}/transition/",
-            {"transition": str(self.send.public_id)},
-            format="json",
-        )
-        self.assertEqual(resp.status_code, 400)
-        self.bill.refresh_from_db()
-        self.assertEqual(self.bill.current_state, self.draft)
-
-    def test_an_unknown_transition_is_a_validation_error(self):
-        from uuid import uuid4
-
-        resp = self._client(self.owner).post(
-            f"/api/bills/{self.bill.public_id}/transition/",
-            {"transition": str(uuid4()), "comment": "x"},
-            format="json",
-        )
-        self.assertEqual(resp.status_code, 400)
-
-    def test_audit_action_returns_the_crud_trail(self):
-        resp = self._client(self.owner).get(f"/api/bills/{self.bill.public_id}/audit/")
-        self.assertEqual(resp.status_code, 200)
-        self.assertTrue(any(e["action"] == 0 for e in resp.json()))
-
-    def test_events_action_returns_the_domain_log(self):
-        resp = self._client(self.owner).get(f"/api/bills/{self.bill.public_id}/events/")
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json(), [])
-
-
-class ApiRootListingTests(TestCase):
-    """The API root advertises the token endpoints and the resource index."""
-
-    @classmethod
-    def setUpTestData(cls):
-        cls.user = get_user_model().objects.create_user(
-            username="root-user", password="pw"
-        )
-
-    def test_root_lists_auth_and_resources(self):
-        client = APIClient()
-        client.force_authenticate(user=self.user)
-        payload = client.get("/api/").json()
-
-        self.assertIn("obtain_token", payload["authentication"])
-        self.assertIn("users", payload["resources"])
-        self.assertIn("memberships", payload["resources"])
-        self.assertIn("bills", payload["resources"])
-        self.assertTrue(payload["resources"]["bills"].startswith("http"))
-        self.assertIn("group-by-name", payload["lookups"])
-
-
-class TokenExpiryTests(TestCase):
-    """The absolute TTL on API tokens, and the purge_tokens command."""
-
-    @classmethod
-    def setUpTestData(cls):
-        User = get_user_model()
-        cls.user = User.objects.create_user(username="ttl-user", password="pw")
-        # Token.user is OneToOne, so a second token needs a second user.
-        cls.other = User.objects.create_user(username="ttl-other", password="pw")
-
-    @staticmethod
-    def _auth_client(token):
-        client = APIClient()
-        client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
-        return client
-
-    @staticmethod
-    def _token_for(user, age):
-        """A token for ``user`` whose ``created`` is ``age`` in the past."""
-        token = Token.objects.create(user=user)
-        Token.objects.filter(pk=token.pk).update(created=timezone.now() - age)
-        token.refresh_from_db()
-        return token
-
-    @override_settings(TOKEN_TTL=timedelta(days=30))
-    def test_fresh_token_is_accepted(self):
-        token = Token.objects.create(user=self.user)
-        self.assertEqual(
-            self._auth_client(token).get("/api/users/me/").status_code, 200
-        )
-
-    @override_settings(TOKEN_TTL=timedelta(days=30))
-    def test_expired_token_is_refused(self):
-        token = self._token_for(self.user, timedelta(days=31))
-        resp = self._auth_client(token).get("/api/users/me/")
-        self.assertEqual(resp.status_code, 403)  # auth failures surface as 403 here
-
-    @override_settings(TOKEN_TTL=None)
-    def test_expiry_disabled_accepts_any_age(self):
-        token = self._token_for(self.user, timedelta(days=3650))
-        self.assertEqual(
-            self._auth_client(token).get("/api/users/me/").status_code, 200
-        )
-
-    @override_settings(TOKEN_TTL=timedelta(days=30))
-    def test_obtain_rotates_an_expired_key(self):
-        stale = self._token_for(self.user, timedelta(days=31))
-        with LOCAL_AUTH:
-            resp = APIClient().post(
-                "/api/auth/token/",
-                {"username": "ttl-user", "password": "pw"},
-                format="json",
-            )
-        self.assertEqual(resp.status_code, 200)
-        new_key = resp.json()["token"]
-        self.assertNotEqual(new_key, stale.key)
-        self.assertFalse(Token.objects.filter(key=stale.key).exists())
-        fresh = Token.objects.get(key=new_key)
-        self.assertEqual(
-            self._auth_client(fresh).get("/api/users/me/").status_code, 200
-        )
-
-    @override_settings(TOKEN_TTL=timedelta(days=30))
-    def test_obtain_reuses_an_unexpired_key(self):
-        existing = Token.objects.create(user=self.user)
-        with LOCAL_AUTH:
-            resp = APIClient().post(
-                "/api/auth/token/",
-                {"username": "ttl-user", "password": "pw"},
-                format="json",
-            )
-        self.assertEqual(resp.json()["token"], existing.key)
-
-    @override_settings(TOKEN_TTL=timedelta(days=30))
-    def test_purge_deletes_only_expired_tokens(self):
-        stale = self._token_for(self.user, timedelta(days=40))
-        fresh = Token.objects.create(user=self.other)
-        out = StringIO()
-        call_command("purge_tokens", stdout=out)
-        self.assertIn("Deleted 1 expired token(s)", out.getvalue())
-        self.assertFalse(Token.objects.filter(pk=stale.pk).exists())
-        self.assertTrue(Token.objects.filter(pk=fresh.pk).exists())
-
-    @override_settings(TOKEN_TTL=timedelta(days=30))
-    def test_purge_dry_run_keeps_rows(self):
-        stale = self._token_for(self.user, timedelta(days=40))
-        out = StringIO()
-        call_command("purge_tokens", "--dry-run", stdout=out)
-        self.assertIn("DRY RUN", out.getvalue())
-        self.assertTrue(Token.objects.filter(pk=stale.pk).exists())
-
-    @override_settings(TOKEN_TTL=timedelta(days=30))
-    def test_purge_days_override(self):
-        token = self._token_for(self.user, timedelta(days=10))
-        call_command("purge_tokens", "--days", "5", stdout=StringIO())
-        self.assertFalse(Token.objects.filter(pk=token.pk).exists())
-
-    @override_settings(TOKEN_TTL=None)
-    def test_purge_is_a_noop_when_expiry_disabled(self):
-        token = self._token_for(self.user, timedelta(days=3650))
-        out = StringIO()
-        call_command("purge_tokens", stdout=out)
-        self.assertIn("disabled", out.getvalue())
-        self.assertTrue(Token.objects.filter(pk=token.pk).exists())
-
-
-class TokenThrottleTests(TestCase):
-    """The anonymous rate limit on the credential endpoint."""
-
-    @classmethod
-    def setUpTestData(cls):
-        cls.user = get_user_model().objects.create_user(
-            username="throttle-user", password="pw"
-        )
-
+class ApiTestCase(TestCase):
     def setUp(self):
-        # Throttle counters live in the cache; clear them so this class neither
-        # inherits counts from nor leaks them into the rest of the suite.
         cache.clear()
-        self.addCleanup(cache.clear)
 
-    @staticmethod
-    def _post(password="wrong"):
-        return APIClient().post(
-            "/api/auth/token/",
-            {"username": "throttle-user", "password": password},
-            format="json",
+    def make_client(self, name, scopes, rate_limit_per_minute=60):
+        client = ApiClient(
+            name=name,
+            contact_email=f"{name.lower().replace(' ', '.')}@example.org",
+            scopes=list(scopes),
+            rate_limit_per_minute=rate_limit_per_minute,
+        )
+        secret = client.set_client_secret("test-secret")
+        client.save()
+        return client, secret
+
+    def obtain(self, client, secret):
+        return self.client.post(
+            TOKEN_URL,
+            data=json.dumps({"client_id": client.client_id, "client_secret": secret}),
+            content_type="application/json",
         )
 
-    def test_requests_beyond_the_rate_are_throttled(self):
-        with (
-            LOCAL_AUTH,
-            mock.patch.dict(TokenEndpointThrottle.THROTTLE_RATES, {"token": "3/min"}),
+    def access_token(self, scopes):
+        client, secret = self.make_client(f"Client {uuid4().hex[:8]}", scopes)
+        response = self.obtain(client, secret)
+        self.assertEqual(response.status_code, 200, response.content)
+        return response.json()["access_token"], client
+
+    def auth(self, token):
+        return {"HTTP_AUTHORIZATION": f"Bearer {token}"}
+
+
+class SeededRegistrationTests(TestCase):
+    """The data migration registers the three initial apps with fixed scopes."""
+
+    def test_three_registrations_exist_with_expected_scopes(self):
+        expected = {
+            "Parking System": (
+                "zfo@parliament.gov.za",
+                {"users:read", "memberships:read"},
+            ),
+            "Main Website": ("jarendz@parliament.gov.za", {"bills:read"}),
+            "eNominations": ("sblowu@parliament.gov.za", {"memberships:read"}),
+        }
+        for name, (email, scopes) in expected.items():
+            client = ApiClient.objects.get(name=name)
+            self.assertEqual(client.contact_email, email)
+            self.assertEqual(set(client.enabled_scopes), scopes)
+            self.assertEqual(client.client_id, name.lower().replace(" ", "-"))
+
+    def test_seeded_clients_have_no_secret_until_one_is_issued(self):
+        for client in ApiClient.objects.filter(
+            client_id__in=["parking-system", "main-website", "enominations"]
         ):
-            statuses = [self._post().status_code for _ in range(4)]
-        self.assertEqual(statuses, [401, 401, 401, 429])
+            self.assertFalse(client.has_secret)
 
-    def test_throttled_response_carries_retry_after(self):
-        with (
-            LOCAL_AUTH,
-            mock.patch.dict(TokenEndpointThrottle.THROTTLE_RATES, {"token": "1/min"}),
-        ):
-            self._post()
-            resp = self._post()
-        self.assertEqual(resp.status_code, 429)
-        self.assertIn("Retry-After", resp)
+    def test_unknown_scope_is_rejected(self):
+        client = ApiClient(name="Bad Scope", contact_email="bad@example.org")
+        client.set_client_secret("secret")
+        client.scopes = ["users:read", "admin:write"]
+        with self.assertRaises(ValidationError):
+            client.save()
 
-    def test_authenticated_endpoints_are_not_throttled(self):
-        token = Token.objects.create(user=self.user)
-        client = APIClient()
-        client.credentials(HTTP_AUTHORIZATION=f"Token {token.key}")
-        for _ in range(5):
-            self.assertEqual(client.get("/api/users/me/").status_code, 200)
+    def test_rotate_api_secret_command_issues_and_prints_a_secret(self):
+        client = ApiClient.objects.get(client_id="parking-system")
+        output = StringIO()
+
+        call_command("rotate_api_secret", client.client_id, stdout=output)
+
+        client.refresh_from_db()
+        self.assertTrue(client.has_secret)
+        self.assertIn("Client secret", output.getvalue())
 
 
-class GroupLookupApiTests(TestCase):
-    """``GET /api/groups/lookup/`` — group details + member roster by (partial) name."""
-
-    @classmethod
-    def setUpTestData(cls):
-        User = get_user_model()
-        cls.health = Group.objects.create(
-            name="Portfolio Committee on Health",
-            short_name="Health",
-            group_type="portfolio_committee",
+class AdminRegistrationTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser(
+            username="admin", email="admin@example.org", password="pw"
         )
-        cls.education = Group.objects.create(
-            name="Portfolio Committee on Education",
-            group_type="portfolio_committee",
-        )
-        cls.finance = Group.objects.create(
-            name="Standing Committee on Finance",
-            short_name="SCOF",
-            group_type="portfolio_committee",
-        )
-        cls.chair = Role.objects.create(name="Chairperson")
-        cls.member_role = Role.objects.create(name="Member")
+        self.client.force_login(self.admin)
 
-        cls.alice = User.objects.create_user(
-            username="health-alice",
-            first_name="Alice",
-            last_name="Adams",
-            email="alice@example.com",
-            is_mp=True,
-        )
-        cls.bob = User.objects.create_user(
-            username="health-bob", first_name="Bob", last_name="Brown"
-        )
-        cls.carol = User.objects.create_user(
-            username="health-carol", first_name="Carol", last_name="Clark"
-        )
-        GroupMembership.objects.create(user=cls.alice, group=cls.health, role=cls.chair)
-        GroupMembership.objects.create(
-            user=cls.bob, group=cls.health, role=cls.member_role
-        )
-        # A past member, to exercise include_inactive.
-        GroupMembership.objects.create(
-            user=cls.carol, group=cls.health, role=cls.member_role, is_active=False
-        )
-
-    @staticmethod
-    def _client(user):
-        client = APIClient()
-        client.force_authenticate(user=user)
-        return client
-
-    def test_requires_authentication(self):
-        resp = APIClient().get("/api/groups/lookup/", {"name": "health"})
-        self.assertEqual(resp.status_code, 403)
-
-    def test_partial_name_matches_case_insensitively(self):
-        resp = self._client(self.alice).get(
-            "/api/groups/lookup/", {"name": "portfolio"}
-        )
-        self.assertEqual(resp.status_code, 200)
-        names = [group["name"] for group in resp.json()]
-        self.assertIn("Portfolio Committee on Health", names)
-        self.assertIn("Portfolio Committee on Education", names)
-        self.assertNotIn("Standing Committee on Finance", names)
-
-    def test_short_name_is_matched_too(self):
-        resp = self._client(self.alice).get("/api/groups/lookup/", {"name": "SCOF"})
-        self.assertEqual(
-            [group["name"] for group in resp.json()],
-            ["Standing Committee on Finance"],
-        )
-
-    def test_exact_narrows_to_a_single_group(self):
-        resp = self._client(self.alice).get(
-            "/api/groups/lookup/",
-            {"name": "Portfolio Committee on Education", "exact": "true"},
-        )
-        self.assertEqual(
-            [group["name"] for group in resp.json()],
-            ["Portfolio Committee on Education"],
-        )
-
-    def test_missing_name_is_a_validation_error(self):
-        resp = self._client(self.alice).get("/api/groups/lookup/")
-        self.assertEqual(resp.status_code, 400)
-
-    def test_no_match_is_an_empty_list(self):
-        resp = self._client(self.alice).get("/api/groups/lookup/", {"name": "zzz-nope"})
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(resp.json(), [])
-
-    def test_members_come_with_user_and_role_details(self):
-        resp = self._client(self.alice).get(
-            "/api/groups/lookup/",
-            {"name": "Portfolio Committee on Health", "exact": "true"},
-        )
-        self.assertEqual(resp.status_code, 200)
-        group = resp.json()[0]
-        self.assertEqual(group["group_type"], "portfolio_committee")
-
-        by_username = {m["user"]["username"]: m for m in group["members"]}
-        # The ended membership (carol) is excluded by default.
-        self.assertEqual(set(by_username), {"health-alice", "health-bob"})
-
-        alice = by_username["health-alice"]
-        self.assertEqual(alice["role"], "Chairperson")
-        self.assertEqual(alice["user"]["full_name"], "Alice Adams")
-        self.assertEqual(alice["user"]["email"], "alice@example.com")
-        self.assertTrue(alice["user"]["is_mp"])
-        # Ordered by surname.
-        self.assertEqual(
-            [m["user"]["last_name"] for m in group["members"]], ["Adams", "Brown"]
-        )
-
-    def test_include_inactive_lists_past_members(self):
-        resp = self._client(self.alice).get(
-            "/api/groups/lookup/",
+    def test_admin_can_register_a_client_and_secret_is_shown(self):
+        response = self.client.post(
+            reverse("admin:api_apiclient_add"),
             {
-                "name": "Portfolio Committee on Health",
-                "exact": "true",
-                "include_inactive": "true",
+                "name": "New Partner Service",
+                "description": "Integration used by the tests.",
+                "contact_name": "Test Owner",
+                "contact_email": "owner@example.org",
+                "scopes": ["users:read", "bills:read"],
+                "rate_limit_per_minute": 30,
+                "is_active": "on",
             },
+            follow=True,
         )
-        members = resp.json()[0]["members"]
-        by_username = {m["user"]["username"]: m for m in members}
-        self.assertIn("health-carol", by_username)
-        self.assertFalse(by_username["health-carol"]["is_active"])
+
+        self.assertEqual(response.status_code, 200)
+        client = ApiClient.objects.get(name="New Partner Service")
+        self.assertTrue(client.has_secret)
+        self.assertEqual(client.enabled_scopes, ["users:read", "bills:read"])
+        self.assertContains(response, "Client secret")
+
+    def test_admin_can_rotate_an_existing_secret(self):
+        client = ApiClient(name="Rotate Me", contact_email="rotate@example.org")
+        client.set_client_secret("initial-secret")
+        client.save()
+        previous_hash = client.client_secret_hash
+
+        response = self.client.post(
+            reverse("admin:api_apiclient_changelist"),
+            {
+                "action": "rotate_secret",
+                "_selected_action": [str(client.pk)],
+            },
+            follow=True,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        client.refresh_from_db()
+        self.assertNotEqual(client.client_secret_hash, previous_hash)
+        self.assertContains(response, "New client secret")
 
 
-class UserHierarchyApiTests(TestCase):
-    """User detail and /me carry the manager (supervisor) and immediate reports."""
+class TokenLifecycleTests(ApiTestCase):
+    def test_token_pair_has_expected_lifetimes(self):
+        client, secret = self.make_client("Token Client", [Scope.USERS_READ])
+        response = self.obtain(client, secret)
 
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["access_token"])
+        self.assertTrue(payload["refresh_token"])
+        self.assertEqual(payload["token_type"], "Bearer")
+        self.assertEqual(payload["expires_in"], 15 * 60)
+        self.assertEqual(payload["refresh_expires_in"], 24 * 60 * 60)
+        self.assertEqual(payload["scope"], "users:read")
+
+    def test_bad_secret_and_unknown_client_are_401(self):
+        client, _secret = self.make_client("Bad Secret", [Scope.USERS_READ])
+        response = self.obtain(client, "wrong")
+        self.assertEqual(response.status_code, 401)
+
+        response = self.client.post(
+            TOKEN_URL,
+            data=json.dumps({"client_id": "does-not-exist", "client_secret": "wrong"}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_unsupported_grant_type_is_400(self):
+        client, secret = self.make_client("Grant Client", [Scope.USERS_READ])
+        response = self.client.post(
+            TOKEN_URL,
+            data=json.dumps(
+                {
+                    "client_id": client.client_id,
+                    "client_secret": secret,
+                    "grant_type": "password",
+                }
+            ),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 400)
+
+    def test_inactive_client_cannot_obtain_or_use_token(self):
+        client, secret = self.make_client("Inactive", [Scope.USERS_READ])
+        token = self.obtain(client, secret).json()["access_token"]
+
+        client.is_active = False
+        client.save()
+
+        self.assertEqual(self.obtain(client, secret).status_code, 401)
+        response = self.client.get("/api/v1/me/", **self.auth(token))
+        self.assertEqual(response.status_code, 401)
+
+    def test_refresh_rotates_and_old_token_stops_working(self):
+        client, secret = self.make_client("Refresh Client", [Scope.USERS_READ])
+        pair = self.obtain(client, secret).json()
+
+        response = self.client.post(
+            REFRESH_URL,
+            data=json.dumps({"refresh_token": pair["refresh_token"]}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 200)
+        rotated = response.json()
+        self.assertNotEqual(rotated["refresh_token"], pair["refresh_token"])
+        # Rotation must leave exactly one live refresh token: the replacement.
+        self.assertEqual(
+            ApiRefreshToken.objects.filter(
+                client=client, revoked_at__isnull=True
+            ).count(),
+            1,
+        )
+
+        replay = self.client.post(
+            REFRESH_URL,
+            data=json.dumps({"refresh_token": pair["refresh_token"]}),
+            content_type="application/json",
+        )
+        self.assertEqual(replay.status_code, 401)
+
+        fresh_access = self.client.get(
+            "/api/v1/me/", **self.auth(rotated["access_token"])
+        )
+        self.assertEqual(fresh_access.status_code, 200)
+
+    def test_expired_access_token_is_rejected(self):
+        client, _secret = self.make_client("Expired Access", [Scope.USERS_READ])
+        now = int(timezone.now().timestamp())
+        payload = {
+            "sub": client.client_id,
+            "scopes": [Scope.USERS_READ],
+            "typ": "access",
+            "iat": now - 1000,
+            "exp": now - 1,
+            "jti": "expired-token",
+        }
+        token = signing.dumps(
+            payload,
+            salt=ACCESS_TOKEN_SALT,
+            key=settings.EXTERNAL_API_SIGNING_KEY,
+            compress=True,
+        )
+
+        response = self.client.get("/api/v1/me/", **self.auth(token))
+        self.assertEqual(response.status_code, 401)
+
+    def test_signed_token_of_the_wrong_type_is_rejected(self):
+        client, _secret = self.make_client("Wrong Type", [Scope.USERS_READ])
+        now = int(timezone.now().timestamp())
+        payload = {
+            "sub": client.client_id,
+            "scopes": [Scope.USERS_READ],
+            "typ": "refresh",
+            "iat": now,
+            "exp": now + 900,
+            "jti": "wrong-type",
+        }
+        token = signing.dumps(
+            payload,
+            salt=ACCESS_TOKEN_SALT,
+            key=settings.EXTERNAL_API_SIGNING_KEY,
+            compress=True,
+        )
+
+        response = self.client.get("/api/v1/me/", **self.auth(token))
+        self.assertEqual(response.status_code, 401)
+
+    def test_expired_refresh_token_is_rejected(self):
+        client, _secret = self.make_client("Expired Client", [Scope.USERS_READ])
+        raw = "expired-refresh-token"
+        ApiRefreshToken.objects.create(
+            client=client,
+            token_hash=ApiRefreshToken.hash_token(raw),
+            expires_at=timezone.now() - timedelta(seconds=1),
+        )
+        response = self.client.post(
+            REFRESH_URL,
+            data=json.dumps({"refresh_token": raw}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_revoke_is_idempotent(self):
+        client, secret = self.make_client("Revoke Client", [Scope.USERS_READ])
+        pair = self.obtain(client, secret).json()
+
+        for _ in range(2):
+            response = self.client.post(
+                REVOKE_URL,
+                data=json.dumps({"refresh_token": pair["refresh_token"]}),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 204)
+
+        response = self.client.post(
+            REFRESH_URL,
+            data=json.dumps({"refresh_token": pair["refresh_token"]}),
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 401)
+
+
+class ScopedResourceTests(ApiTestCase):
     @classmethod
     def setUpTestData(cls):
-        User = get_user_model()
-        cls.manager = User.objects.create_user(
-            username="hier-manager",
-            first_name="Mary",
-            last_name="Manager",
-            email="manager@example.com",
+        cls.user = User.objects.create_user(
+            username="alice",
+            email="alice@example.com",
+            password="pw",
+            first_name="Alice",
+            last_name="Molefe",
+            is_mp=True,
+            is_staff_member=False,
+            phone="0123456789",
         )
-        cls.adams = User.objects.create_user(
-            username="hier-adams", first_name="Amy", last_name="Adams"
+        cls.colleague = User.objects.create_user(
+            username="brian",
+            email="brian@example.com",
+            password="pw",
+            first_name="Brian",
+            last_name="Dlamini",
         )
-        cls.brown = User.objects.create_user(
-            username="hier-brown", first_name="Ben", last_name="Brown"
+        cls.group, _ = Group.objects.get_or_create(
+            name="Portfolio Committee", group_type="committee"
         )
-        cls.unrelated = User.objects.create_user(username="hier-unrelated")
-        # Set on the instance (not a queryset update): force_authenticate reuses
-        # these objects, so their in-memory supervisor_id must be current too.
-        cls.adams.supervisor = cls.manager
-        cls.adams.save(update_fields=["supervisor"])
-        cls.brown.supervisor = cls.manager
-        cls.brown.save(update_fields=["supervisor"])
+        cls.user.department = cls.group
+        cls.user.save(update_fields=["department"])
+        cls.role, _ = Role.objects.get_or_create(name="Member")
+        cls.membership = GroupMembership.objects.create(
+            user=cls.user, group=cls.group, role=cls.role
+        )
 
-    @staticmethod
-    def _client(user):
-        client = APIClient()
-        client.force_authenticate(user=user)
-        return client
+        cls.workflow_type, _ = WorkflowType.objects.get_or_create(name="Bills")
+        cls.status, _ = PublicStatus.objects.get_or_create(name="Introduced")
+        cls.state = State.objects.create(
+            workflow_type=cls.workflow_type,
+            name="Introduced in the House",
+            is_initial=True,
+            public_status=cls.status,
+        )
+        cls.bill = Bill.objects.create(
+            workflow_type=cls.workflow_type,
+            current_state=cls.state,
+            bill_number="B 1-2026",
+            title="A test bill",
+            short_title="Test Bill",
+            bill_type=Bill.SECTION_75,
+            house_of_origin=Bill.NA,
+            responsible_committee=cls.group,
+            owner=cls.user,
+        )
 
-    def test_detail_nests_the_manager(self):
-        resp = self._client(self.unrelated).get("/api/users/hier-adams/")
-        self.assertEqual(resp.status_code, 200)
-        manager = resp.json()["supervisor"]
-        self.assertEqual(manager["username"], "hier-manager")
-        self.assertEqual(manager["full_name"], "Mary Manager")
+    def test_authentication_is_required(self):
+        for path in (
+            "/api/v1/",
+            "/api/v1/users/",
+            "/api/v1/memberships/",
+            "/api/v1/bills/",
+        ):
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 401, path)
 
-    def test_detail_lists_immediate_subordinates_ordered_by_surname(self):
-        resp = self._client(self.unrelated).get("/api/users/hier-manager/")
-        self.assertEqual(resp.status_code, 200)
-        payload = resp.json()
-        self.assertIsNone(payload["supervisor"])
+    def test_invalid_bearer_token_is_401(self):
+        response = self.client.get("/api/v1/users/", **self.auth("not-a-token"))
+        self.assertEqual(response.status_code, 401)
+
+    def test_users_scope_reads_users_and_nothing_else(self):
+        token, _ = self.access_token([Scope.USERS_READ])
+
+        listing = self.client.get("/api/v1/users/?search=alice", **self.auth(token))
+        self.assertEqual(listing.status_code, 200)
+        payload = listing.json()
+        self.assertEqual(payload["count"], 1)
+        record = payload["results"][0]
+        self.assertEqual(record["username"], "alice")
+        self.assertEqual(record["display_name"], "Alice Molefe")
+        self.assertNotIn("idno_encrypted", record)
+        self.assertNotIn("date_of_birth", record)
+
+        detail = self.client.get(
+            f"/api/v1/users/{self.user.public_id}/", **self.auth(token)
+        )
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["department"]["name"], "Portfolio Committee")
+
+        blocked = self.client.get("/api/v1/memberships/", **self.auth(token))
+        self.assertEqual(blocked.status_code, 403)
+        blocked = self.client.get("/api/v1/bills/", **self.auth(token))
+        self.assertEqual(blocked.status_code, 403)
+
+    def test_memberships_scope_reads_memberships_and_nothing_else(self):
+        token, _ = self.access_token([Scope.MEMBERSHIPS_READ])
+
+        listing = self.client.get("/api/v1/memberships/", **self.auth(token))
+        self.assertEqual(listing.status_code, 200)
+        payload = listing.json()
+        self.assertEqual(payload["count"], 1)
+        record = payload["results"][0]
+        self.assertEqual(record["user"]["username"], "alice")
+        self.assertEqual(record["group"]["public_id"], str(self.group.public_id))
+        self.assertEqual(record["role"]["slug"], "member")
+        self.assertNotIn("notes", record)
+
+        detail = self.client.get(
+            f"/api/v1/memberships/{self.membership.public_id}/", **self.auth(token)
+        )
+        self.assertEqual(detail.status_code, 200)
+
+        blocked = self.client.get("/api/v1/users/", **self.auth(token))
+        self.assertEqual(blocked.status_code, 403)
+
+    def test_bills_scope_reads_bills_and_exposes_public_status(self):
+        token, _ = self.access_token([Scope.BILLS_READ])
+
+        listing = self.client.get("/api/v1/bills/?search=B 1", **self.auth(token))
+        self.assertEqual(listing.status_code, 200)
+        payload = listing.json()
+        self.assertEqual(payload["count"], 1)
+        record = payload["results"][0]
+        self.assertEqual(record["bill_number"], "B 1-2026")
+        self.assertEqual(record["public_status"], "Introduced")
+        self.assertEqual(record["identifier"], "B 1-2026")
+        self.assertNotIn("owner", record)
+
+        detail = self.client.get(
+            f"/api/v1/bills/{self.bill.public_id}/", **self.auth(token)
+        )
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["title"], "A test bill")
+
+        blocked = self.client.get("/api/v1/users/", **self.auth(token))
+        self.assertEqual(blocked.status_code, 403)
+
+    def test_unified_search_covers_scoped_resources(self):
+        token, _ = self.access_token([Scope.USERS_READ, Scope.MEMBERSHIPS_READ])
+        response = self.client.get(
+            f"/api/v1/search/?{urlencode({'q': 'alice'})}", **self.auth(token)
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["query"], "alice")
+        self.assertEqual(payload["resources"], ["users", "memberships"])
+        self.assertEqual(payload["skipped"], ["bills"])
+        self.assertEqual(payload["users"]["count"], 1)
+        self.assertEqual(payload["memberships"]["count"], 1)
+        self.assertEqual(payload["users"]["results"][0]["username"], "alice")
         self.assertEqual(
-            [u["username"] for u in payload["subordinates"]],
-            ["hier-adams", "hier-brown"],
+            payload["memberships"]["results"][0]["user"]["username"], "alice"
+        )
+        self.assertEqual(payload["bills"]["count"], 0)
+        self.assertEqual(payload["bills"]["results"], [])
+
+        denied = self.client.get(
+            f"/api/v1/search/?{urlencode({'q': 'alice', 'resources': 'bills'})}",
+            **self.auth(token),
+        )
+        self.assertEqual(denied.status_code, 403)
+
+    def test_unified_search_matches_multiple_fields(self):
+        token, _ = self.access_token(
+            [Scope.USERS_READ, Scope.MEMBERSHIPS_READ, Scope.BILLS_READ]
         )
 
-    def test_me_includes_the_reporting_line(self):
-        resp = self._client(self.adams).get("/api/users/me/")
-        self.assertEqual(resp.status_code, 200)
-        payload = resp.json()
-        self.assertEqual(payload["supervisor"]["username"], "hier-manager")
-        self.assertEqual(payload["subordinates"], [])
-
-    def test_list_stays_flat(self):
-        resp = self._client(self.unrelated).get("/api/users/")
-        self.assertEqual(resp.status_code, 200)
-        for item in resp.json()["results"]:
-            self.assertNotIn("subordinates", item)
-
-
-class UserMembershipsApiTests(TestCase):
-    """``GET /api/users/{username}/memberships/`` — a user's memberships, filtered."""
-
-    @classmethod
-    def setUpTestData(cls):
-        User = get_user_model()
-        cls.user = User.objects.create_user(username="mv-user", password="pw")
-        cls.other = User.objects.create_user(username="mv-other", password="pw")
-
-        cls.committee = Group.objects.create(
-            name="Health Committee", group_type="portfolio_committee"
+        by_email = self.client.get(
+            f"/api/v1/search/?{urlencode({'q': 'alice@example.com'})}",
+            **self.auth(token),
         )
-        cls.ministry = Group.objects.create(
-            name="Health Ministry", group_type="ministry"
-        )
-        cls.chair = Role.objects.create(name="Chairperson")
-        cls.member = Role.objects.create(name="Member")
+        self.assertEqual(by_email.json()["users"]["count"], 1)
 
-        cls.current = GroupMembership.objects.create(
-            user=cls.user,
-            group=cls.committee,
-            role=cls.chair,
-            start_date=date(2024, 1, 1),
-            is_active=True,
+        by_group = self.client.get(
+            f"/api/v1/search/?{urlencode({'q': 'Portfolio'})}", **self.auth(token)
         )
-        cls.past_2023 = GroupMembership.objects.create(
-            user=cls.user,
-            group=cls.ministry,
-            role=cls.member,
-            start_date=date(2023, 1, 1),
-            end_date=date(2023, 12, 31),
-            is_active=False,
+        counts = by_group.json()
+        self.assertEqual(counts["memberships"]["count"], 1)
+        self.assertEqual(counts["bills"]["count"], 1)
+
+        by_short_title = self.client.get(
+            f"/api/v1/search/?{urlencode({'q': 'Test Bill'})}", **self.auth(token)
         )
-        cls.past_2022 = GroupMembership.objects.create(
-            user=cls.user,
-            group=cls.committee,
-            role=cls.member,
-            start_date=date(2022, 1, 1),
-            end_date=date(2022, 6, 30),
-            is_active=False,
+        self.assertEqual(by_short_title.json()["bills"]["count"], 1)
+
+    def test_unified_search_validates_query_and_resources(self):
+        token, _ = self.access_token([Scope.USERS_READ])
+
+        too_short = self.client.get("/api/v1/search/?q=a", **self.auth(token))
+        self.assertEqual(too_short.status_code, 400)
+
+        unknown = self.client.get(
+            f"/api/v1/search/?{urlencode({'q': 'alice', 'resources': 'widgets'})}",
+            **self.auth(token),
         )
-        # Another user's membership must never appear.
-        GroupMembership.objects.create(
-            user=cls.other,
-            group=cls.committee,
-            role=cls.member,
-            start_date=date(2024, 5, 1),
-            is_active=True,
+        self.assertEqual(unknown.status_code, 400)
+
+        missing = self.client.get("/api/v1/search/", **self.auth(token))
+        self.assertEqual(missing.status_code, 422)
+
+    def test_search_fields_restricts_which_fields_are_matched(self):
+        token, _ = self.access_token([Scope.USERS_READ])
+
+        miss = self.client.get(
+            f"/api/v1/users/?{urlencode({'search': 'Molefe', 'search_fields': 'email'})}",
+            **self.auth(token),
+        )
+        self.assertEqual(miss.json()["count"], 0)
+
+        hit = self.client.get(
+            f"/api/v1/users/?{urlencode({'search': 'alice@example.com', 'search_fields': 'email'})}",
+            **self.auth(token),
+        )
+        self.assertEqual(hit.json()["count"], 1)
+
+        bad = self.client.get(
+            f"/api/v1/users/?{urlencode({'search': 'alice', 'search_fields': 'bogus'})}",
+            **self.auth(token),
+        )
+        self.assertEqual(bad.status_code, 400)
+
+    def test_identifier_filters_accept_public_id_or_names(self):
+        token, _ = self.access_token(
+            [Scope.USERS_READ, Scope.MEMBERSHIPS_READ, Scope.BILLS_READ]
         )
 
-    @staticmethod
-    def _client(user):
-        client = APIClient()
-        client.force_authenticate(user=user)
-        return client
+        for value in ("alice", str(self.user.public_id)):
+            response = self.client.get(
+                f"/api/v1/memberships/?{urlencode({'user': value})}",
+                **self.auth(token),
+            )
+            self.assertEqual(response.json()["count"], 1, value)
 
-    def _get(self, **params):
-        return self._client(self.user).get("/api/users/mv-user/memberships/", params)
+        for value in ("Portfolio Committee", str(self.group.public_id)):
+            response = self.client.get(
+                f"/api/v1/memberships/?{urlencode({'group': value})}",
+                **self.auth(token),
+            )
+            self.assertEqual(response.json()["count"], 1, value)
 
-    @staticmethod
-    def _ids(response):
-        return [m["public_id"] for m in response.json()["results"]]
+            response = self.client.get(
+                f"/api/v1/users/?{urlencode({'department': value})}",
+                **self.auth(token),
+            )
+            self.assertEqual(response.json()["count"], 1, value)
 
-    def test_requires_authentication(self):
-        resp = APIClient().get("/api/users/mv-user/memberships/")
-        self.assertEqual(resp.status_code, 403)
+            response = self.client.get(
+                f"/api/v1/bills/?{urlencode({'responsible_committee': value})}",
+                **self.auth(token),
+            )
+            self.assertEqual(response.json()["count"], 1, value)
 
-    def test_lists_only_this_users_memberships_newest_first(self):
-        resp = self._get()
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(
-            self._ids(resp),
-            [
-                str(self.current.public_id),
-                str(self.past_2023.public_id),
-                str(self.past_2022.public_id),
-            ],
+    def test_list_pagination_includes_navigation_links(self):
+        token, _ = self.access_token([Scope.USERS_READ])
+
+        first = self.client.get(
+            "/api/v1/users/?limit=1&offset=0&ordering=-username",
+            **self.auth(token),
+        ).json()
+        self.assertEqual(first["count"], 2)
+        self.assertEqual(len(first["results"]), 1)
+        self.assertIsNone(first["previous"])
+        self.assertIn("offset=1", first["next"])
+        self.assertIn("ordering=-username", first["next"])
+
+        second = self.client.get(
+            "/api/v1/users/?limit=1&offset=1&ordering=-username",
+            **self.auth(token),
+        ).json()
+        self.assertIsNone(second["next"])
+        self.assertIn("offset=0", second["previous"])
+
+    def test_search_results_are_paginated_per_group(self):
+        User.objects.create_user(
+            username="alicia",
+            email="alicia@example.com",
+            password="pw",
+            first_name="Alicia",
+            last_name="Ndlovu",
         )
-        first = resp.json()["results"][0]
-        self.assertEqual(first["group_name"], "Health Committee")
-        self.assertEqual(first["group_type"], "portfolio_committee")
-        self.assertEqual(first["group_public_id"], str(self.committee.public_id))
-        self.assertEqual(first["role"], "Chairperson")
+        token, _ = self.access_token([Scope.USERS_READ])
 
-    def test_filter_by_active(self):
-        self.assertEqual(
-            self._ids(self._get(active="true")), [str(self.current.public_id)]
-        )
-        self.assertEqual(len(self._ids(self._get(active="false"))), 2)
+        first = self.client.get(
+            f"/api/v1/search/?{urlencode({'q': 'ali', 'resources': 'users', 'limit': 1, 'offset': 0})}",
+            **self.auth(token),
+        ).json()
+        self.assertEqual(first["users"]["count"], 2)
+        self.assertEqual(len(first["users"]["results"]), 1)
+        self.assertIsNone(first["users"]["previous"])
+        self.assertIn("offset=1", first["users"]["next"])
+        self.assertIn("q=ali", first["users"]["next"])
+        self.assertIn("resources=users", first["users"]["next"])
+        # Groups that were not selected are still present as empty pages.
+        self.assertEqual(first["memberships"]["count"], 0)
+        self.assertEqual(first["bills"]["results"], [])
 
-    def test_filter_as_of(self):
-        self.assertEqual(
-            self._ids(self._get(as_of="2024-06-01")), [str(self.current.public_id)]
-        )
-        self.assertEqual(
-            self._ids(self._get(as_of="2022-03-01")), [str(self.past_2022.public_id)]
-        )
+        second = self.client.get(
+            f"/api/v1/search/?{urlencode({'q': 'ali', 'resources': 'users', 'limit': 1, 'offset': 1})}",
+            **self.auth(token),
+        ).json()
+        self.assertIsNone(second["users"]["next"])
+        self.assertIn("offset=0", second["users"]["previous"])
 
-    def test_filter_start_window(self):
-        self.assertEqual(
-            self._ids(self._get(start_after="2023-06-01")),
-            [str(self.current.public_id)],
-        )
-        self.assertEqual(
-            self._ids(self._get(start_before="2022-12-31")),
-            [str(self.past_2022.public_id)],
-        )
+    def test_missing_resource_is_404(self):
+        token, _ = self.access_token([Scope.BILLS_READ])
+        response = self.client.get(f"/api/v1/bills/{uuid4()}/", **self.auth(token))
+        self.assertEqual(response.status_code, 404)
 
-    def test_filter_by_group(self):
-        self.assertEqual(
-            set(self._ids(self._get(group=str(self.committee.public_id)))),
-            {str(self.current.public_id), str(self.past_2022.public_id)},
+    def test_resources_are_read_only(self):
+        token, _ = self.access_token(
+            [Scope.USERS_READ, Scope.MEMBERSHIPS_READ, Scope.BILLS_READ]
         )
+        for path in ("/api/v1/users/", "/api/v1/memberships/", "/api/v1/bills/"):
+            self.assertEqual(
+                self.client.post(
+                    path, data="{}", content_type="application/json", **self.auth(token)
+                ).status_code,
+                405,
+                path,
+            )
+            self.assertEqual(
+                self.client.delete(path, **self.auth(token)).status_code,
+                405,
+                path,
+            )
 
-    def test_filter_by_role_slug_and_group_type(self):
-        self.assertEqual(
-            self._ids(self._get(role="chairperson")), [str(self.current.public_id)]
+    def test_root_and_me_reflect_scopes(self):
+        token, client = self.access_token([Scope.USERS_READ, Scope.BILLS_READ])
+
+        root = self.client.get("/api/v1/", **self.auth(token))
+        self.assertEqual(root.status_code, 200)
+        payload = root.json()
+        names = {resource["name"] for resource in payload["resources"]}
+        self.assertEqual(names, {"users", "bills", "search"})
+        self.assertEqual(payload["client"], client.name)
+
+        me = self.client.get("/api/v1/me/", **self.auth(token))
+        self.assertEqual(me.status_code, 200)
+        self.assertEqual(me.json()["client_id"], client.client_id)
+        self.assertEqual(set(me.json()["scopes"]), {"users:read", "bills:read"})
+
+
+class ThrottleAndUsageLogTests(ApiTestCase):
+    def test_per_key_rate_limit_returns_429_with_retry_after(self):
+        token, client = self.access_token([Scope.USERS_READ])
+        client.rate_limit_per_minute = 1
+        client.save()
+        cache.clear()
+
+        # Freeze the clock so both requests land in the same one-minute bucket.
+        with mock.patch("pwms.api.throttling.time.time", return_value=1_000_000.0):
+            first = self.client.get("/api/v1/users/", **self.auth(token))
+            self.assertEqual(first.status_code, 200)
+
+            second = self.client.get("/api/v1/users/", **self.auth(token))
+        self.assertEqual(second.status_code, 429)
+        self.assertIn("Retry-After", second)
+
+    def test_client_throttle_fails_open_when_the_cache_is_down(self):
+        token, _client = self.access_token([Scope.USERS_READ])
+
+        with mock.patch(
+            "pwms.api.throttling.cache.add",
+            side_effect=ConnectionError("redis down"),
+        ):
+            response = self.client.get("/api/v1/users/", **self.auth(token))
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_usage_log_records_key_request_and_throttle(self):
+        client, secret = self.make_client(
+            "Usage Client", [Scope.USERS_READ], rate_limit_per_minute=1
         )
-        self.assertEqual(
-            self._ids(self._get(group_type="ministry")),
-            [str(self.past_2023.public_id)],
+        pair = self.obtain(client, secret).json()
+        token = pair["access_token"]
+
+        with mock.patch("pwms.api.throttling.time.time", return_value=1_000_000.0):
+            self.client.get("/api/v1/users/", **self.auth(token))
+            self.client.get("/api/v1/users/", **self.auth(token))
+
+        logs = ApiUsageLog.objects.filter(
+            client=client, path="/api/v1/users/"
+        ).order_by("created_at")
+        self.assertEqual(logs.count(), 2)
+        self.assertEqual(logs[0].status_code, 200)
+        self.assertFalse(logs[0].was_throttled)
+        self.assertEqual(logs[0].method, "GET")
+        self.assertEqual(logs[1].status_code, 429)
+        self.assertTrue(logs[1].was_throttled)
+
+    def test_failed_token_attempt_is_logged_anonymous(self):
+        response = self.client.post(
+            TOKEN_URL,
+            data=json.dumps({"client_id": "does-not-exist", "client_secret": "wrong"}),
+            content_type="application/json",
         )
+        self.assertEqual(response.status_code, 401)
 
-    def test_ordering_overrides_the_default(self):
-        self.assertEqual(
-            self._ids(self._get(ordering="start_date")),
-            [
-                str(self.past_2022.public_id),
-                str(self.past_2023.public_id),
-                str(self.current.public_id),
-            ],
+        log = ApiUsageLog.objects.filter(path=TOKEN_URL).latest("created_at")
+        self.assertIsNone(log.client)
+        self.assertEqual(log.status_code, 401)
+
+    def test_failed_token_attempt_for_known_key_is_attributed(self):
+        client, _secret = self.make_client("Known Client", [Scope.USERS_READ])
+        self.obtain(client, "wrong")
+
+        log = ApiUsageLog.objects.filter(client=client, path=TOKEN_URL).latest(
+            "created_at"
         )
-        self.assertEqual(self._get(ordering="nonsense").status_code, 400)
-
-    def test_unknown_username_is_a_404(self):
-        resp = self._client(self.user).get("/api/users/nobody/memberships/")
-        self.assertEqual(resp.status_code, 404)
-
-    def test_invalid_date_is_a_400(self):
-        self.assertEqual(self._get(as_of="not-a-date").status_code, 400)
+        self.assertEqual(log.status_code, 401)

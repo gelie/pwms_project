@@ -164,6 +164,16 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      # Shared counter store for the external API's per-key throttling.
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
 
@@ -186,6 +196,8 @@ jobs:
         run: uv sync --frozen
 
       - name: Run tests
+        env:
+          REDIS_URL: redis://127.0.0.1:6379/1
         run: |
           uv run coverage run --source=pwms manage.py test \
             pwms.tests \

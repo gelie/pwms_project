@@ -20,40 +20,21 @@ from django.conf.urls.static import static
 from django.contrib import admin
 from django.urls import include, path
 from django.views.generic.base import RedirectView
-from drf_spectacular.views import (
-    SpectacularAPIView,
-    SpectacularRedocView,
-    SpectacularSwaggerView,
-)
-from rest_framework.permissions import AllowAny
+
+from pwms.api.api import api as ninja_api
+
+# Django >= 2 rejects the 3-tuple Ninja's ``api.urls`` returns, so unpack it.
+_api_patterns, _api_app_name, _api_namespace = ninja_api.urls
 
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("", RedirectView.as_view(url="pwms/", permanent=False)),
     path("pwms/", include("pwms.urls")),
-    # Django REST Framework API (audit history for workflow instances)
-    path("api/", include("pwms.api.urls")),
-    # DRF browsable-API login/logout endpoints
-    path("api/auth/", include("rest_framework.urls")),
-    # OpenAPI schema + interactive docs (schema/UI are public; data stays auth'd)
+    # Partner-facing Django-Ninja API (users, memberships, bills). The old DRF
+    # API that lived under /api/ has been retired.
     path(
-        "api/schema/",
-        SpectacularAPIView.as_view(permission_classes=[AllowAny]),
-        name="api-schema",
-    ),
-    path(
-        "api/docs/",
-        SpectacularSwaggerView.as_view(
-            url_name="api-schema", permission_classes=[AllowAny]
-        ),
-        name="api-docs",
-    ),
-    path(
-        "api/redoc/",
-        SpectacularRedocView.as_view(
-            url_name="api-schema", permission_classes=[AllowAny]
-        ),
-        name="api-redoc",
+        settings.EXTERNAL_API_PREFIX.lstrip("/"),
+        include((_api_patterns, _api_app_name), namespace=_api_namespace),
     ),
 ]
 

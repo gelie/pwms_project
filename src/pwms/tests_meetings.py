@@ -1,4 +1,4 @@
-"""Meetings (the Events workflow): model, RBAC, notifications, UI and API.
+"""Meetings (the Events workflow): model, RBAC, notifications and UI.
 
 The feature is a concrete workflow instrument plus a child attendance register:
 
@@ -11,8 +11,8 @@ The feature is a concrete workflow instrument plus a child attendance register:
   member of the owning unit holding its create role may create one;
 * **notifications** — creation, status changes and document changes each raise an
   alert to the meeting's audience;
-* the **UI and API** — the calendar dashboard, the meeting CRUD, the attendance
-  actions and the REST endpoints (including "my meetings by membership").
+* the **UI** — the calendar dashboard, the meeting CRUD and the attendance
+  actions.
 
 The ``Meeting`` workflow type, its states/transitions and the development RBAC
 (``ICT: IT Systems And Application Support Unit`` owning it, ``ECM Analyst
@@ -229,16 +229,6 @@ class PremisesTests(MeetingFixture):
         self.assertIn("off_site_venue", form.fields)
         self.assertIn("off_site_address", form.fields)
         self.assertIn("attendance_mode", form.fields)
-
-    def test_api_exposes_the_mode_and_venue_display(self):
-        venue = Venue.objects.filter(building__name="Marks Building").first()
-        meeting = self._meeting(venue=venue)
-        self.client.force_login(self.organiser)
-        response = self.client.get(f"/api/meetings/{meeting.public_id}/")
-        payload = response.json()
-        self.assertEqual(payload["attendance_mode"], "on_premise")
-        self.assertEqual(payload["attendance_mode_label"], "On the premises")
-        self.assertIn("Marks Building", payload["venue_display"])
 
 
 class MeetingModelTests(MeetingFixture):
@@ -1061,115 +1051,6 @@ class AttendanceGenerationTests(MeetingFixture):
         self.assertEqual(response.status_code, 302)
         meeting = Meeting.objects.get(title="Generated register")
         self.assertEqual(meeting.attendances.filter(source="host_group").count(), 2)
-
-    def test_api_create_generates_and_regenerate_keeps_invitees(self):
-        self._member("hostapi")
-        self.client.force_login(self.organiser)
-        create = self.client.post(
-            "/api/meetings/",
-            {
-                "workflow_type": str(self.meeting_type.pk),
-                "title": "API meeting",
-                "meeting_type": "committee",
-                "attendance_mode": "on_premise",
-                "host_group": self.ict_group.pk,
-                "start_datetime": (timezone.now() + timedelta(days=1)).isoformat(),
-            },
-            content_type="application/json",
-        )
-        self.assertEqual(create.status_code, 201)
-        meeting = Meeting.objects.get(title="API meeting")
-        self.assertEqual(meeting.attendances.filter(source="host_group").count(), 2)
-
-        invitee = MeetingAttendance.objects.create(
-            meeting=meeting, guest_name="API Guest"
-        )
-        regenerate = self.client.post(
-            f"/api/meetings/{meeting.public_id}/attendance/regenerate/",
-            content_type="application/json",
-        )
-        self.assertEqual(regenerate.status_code, 200)
-        self.assertTrue(meeting.attendances.filter(pk=invitee.pk).exists())
-
-
-class MeetingApiTests(MeetingFixture):
-    """The REST endpoints: list, detail, membership search, attendance, minutes."""
-
-    def test_list_is_permission_scoped(self):
-        meeting = self._meeting()
-        self.client.force_login(self.organiser)
-        response = self.client.get("/api/meetings/")
-        self.assertEqual(response.status_code, 200)
-        ids = [row["public_id"] for row in response.json()["results"]]
-        self.assertIn(str(meeting.public_id), ids)
-
-        self.client.force_login(self.outsider)
-        response = self.client.get("/api/meetings/")
-        self.assertEqual(response.json()["count"], 0)
-
-    def test_detail_endpoint_carries_attendance_and_summary(self):
-        meeting = self._meeting()
-        MeetingAttendance.objects.create(meeting=meeting, user=self.attendee)
-        self.client.force_login(self.organiser)
-        response = self.client.get(f"/api/meetings/{meeting.public_id}/")
-        self.assertEqual(response.status_code, 200)
-        payload = response.json()
-        self.assertEqual(payload["meeting_type"], "committee")
-        self.assertEqual(payload["attendance_summary"]["invited"], 1)
-        self.assertEqual(len(payload["attendance"]), 1)
-
-    def test_mine_returns_meetings_by_membership(self):
-        meeting = self._meeting()
-        MeetingAttendance.objects.create(meeting=meeting, user=self.attendee)
-        self.client.force_login(self.attendee)
-        response = self.client.get("/api/meetings/mine/")
-        self.assertEqual(response.status_code, 200)
-        ids = [row["public_id"] for row in response.json()["results"]]
-        self.assertIn(str(meeting.public_id), ids)
-
-    def test_member_filter_searches_by_username(self):
-        meeting = self._meeting()
-        MeetingAttendance.objects.create(meeting=meeting, user=self.attendee)
-        self.client.force_login(self.organiser)
-        response = self.client.get("/api/meetings/?member=attendee")
-        ids = [row["public_id"] for row in response.json()["results"]]
-        self.assertIn(str(meeting.public_id), ids)
-
-    def test_attendance_add_and_record_actions(self):
-        meeting = self._meeting()
-        self.client.force_login(self.organiser)
-        add = self.client.post(
-            f"/api/meetings/{meeting.public_id}/attendance/add/",
-            {"user": self.attendee.pk, "capacity": "member"},
-            content_type="application/json",
-        )
-        self.assertEqual(add.status_code, 201)
-        attendance = meeting.attendances.get(user=self.attendee)
-
-        record = self.client.post(
-            f"/api/meetings/{meeting.public_id}/attendance/record/",
-            {
-                "attendance": str(attendance.public_id),
-                "attendance_status": "present",
-            },
-            content_type="application/json",
-        )
-        self.assertEqual(record.status_code, 200)
-        attendance.refresh_from_db()
-        self.assertEqual(attendance.attendance_status, "present")
-        self.assertEqual(attendance.recorded_by, self.organiser)
-
-    def test_minutes_action_advances_the_status(self):
-        meeting = self._meeting()
-        self.client.force_login(self.organiser)
-        response = self.client.post(
-            f"/api/meetings/{meeting.public_id}/minutes/",
-            {"status": "filed"},
-            content_type="application/json",
-        )
-        self.assertEqual(response.status_code, 200)
-        meeting.refresh_from_db()
-        self.assertEqual(meeting.minutes_status, "filed")
 
 
 class MeetingImportExportTests(MeetingFixture):

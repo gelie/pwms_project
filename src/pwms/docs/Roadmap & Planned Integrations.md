@@ -29,8 +29,8 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
   and scheduled delivery (`pwms.reporting`, `ReportShare`)
 - Active Directory sign-in with a local-database fallback, and SharePoint tenant
   sync (`populate_sites`) into local mirror tables
-- DRF API (token auth + resource endpoints) + OpenAPI (Swagger/ReDoc), admin,
-  migrations, tests
+- External Django-Ninja API (scoped app keys, access/refresh tokens, usage logs,
+  per-key throttling) + OpenAPI (Swagger), admin, migrations, tests
 
 ---
 
@@ -464,8 +464,8 @@ expiry alert is raised by `mark_expired()` itself, not by the command.
   `collectstatic` collects the app static into `staticfiles/`
   (`STATIC_ROOT`, repo root) and user uploads go to `media/` (`MEDIA_ROOT`,
   repo root).
-- Broader test coverage and enforcing coverage in CI (the django-ninja spike has
-  since been removed — see [System Design §6](./System%20Design.md#6-api-layer)).
+- Broader test coverage and enforcing coverage in CI (see
+  [System Design §6](./System%20Design.md#6-api-layer)).
 
 ---
 

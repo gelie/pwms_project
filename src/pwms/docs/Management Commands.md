@@ -325,21 +325,23 @@ share takes it out of the queue immediately.
 | `audit_workflow_access` | explain why a user can (or cannot) create or open a workflow type, and flag create roles no active member of the group holds | ✅ live — see below |
 | `show_workflow_hierarchy` | print the parent/child tree of workflow instances | ✅ live — see below |
 | `seed_demo_data` | empty the four workflow registers and reseed them with presentation-ready mock records | ✅ live — see below |
-| `purge_tokens` | delete API tokens that have passed their TTL (`settings.TOKEN_TTL`) | ✅ live — see below |
+| `rotate_api_secret` | issue a new secret for a registered external API client and print it once | ✅ live — see below |
 | `validate_memberships` | integrity-check group memberships | pending repoint |
 
-### API tokens
+### External API client secrets
 
-API tokens expire on an absolute TTL (`settings.TOKEN_TTL_DAYS`, default 30;
-`0` disables it). `pwms.api.authentication.ExpiringTokenAuthentication` enforces
-the cut-off at authentication time, so `purge_tokens` only reclaims the dead rows
-— safe to run any time, and a good fit for a systemd timer alongside
-`check_referral_deadlines`. `--dry-run` lists what would go; `--days N` applies a
-different TTL for one run.
+Partner applications authenticate with a `client_id` / `client_secret` pair;
+PWMS stores only a hash of the secret. A registration created in the admin gets
+its first secret from the **Rotate client secret** action, or from:
 
 ```bash
-python manage.py purge_tokens --dry-run
+python manage.py rotate_api_secret parking-system
 ```
+
+The new secret is printed once. Distribute it through the partner's own secure
+channel; it cannot be recovered from the database afterwards. Rotating a secret
+does not invalidate existing 15-minute access tokens, but the old secret can no
+longer mint new ones.
 
 ### Type-level group access
 

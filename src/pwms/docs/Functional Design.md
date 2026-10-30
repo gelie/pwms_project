@@ -287,8 +287,7 @@ assignment is a work queue, so it confers reading rights only.
 
 The service is wired in: the workflow CRUD views enforce `edit`/`delete` with
 `require()` (both GET and POST) and hide the Edit/Delete buttons when they are
-not permitted, and the DRF audit-history endpoint enforces `view` through
-`WorkflowViewPermission` (`pwms/api/permissions.py`).
+not permitted.
 
 Every **write affordance** on a detail page is gated on a capability of its own
 through `resolve(user, record, …)` — the same check `require()` enforces on the
@@ -366,8 +365,8 @@ Consumers:
   `pwms.services.history`). The **Events** tab lists the domain events and offers
   the recorder, and document events still also show in the Attachments section's
   “Document activity”.
-- The **REST API** exposes the auditlog CRUD trail for each instrument
-  (`GET …/audit/`, see [API Reference](./API%20Reference.md)).
+- Audit history is intentionally **not** exposed by the external partner API; it
+  remains an internal, permission-scoped view of the web UI.
 
 ---
 
@@ -519,10 +518,10 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
   ([Meetings Import & Export](./Meetings%20Import%20%26%20Export.md)).
 - **Django Admin** for administration (users, groups, roles, memberships,
   workflow definitions, the SharePoint mirror, and notifications — read-only).
-- **REST API (DRF)** with token authentication and resource endpoints (users,
-  memberships, the workflow registry and every workflow register), plus audit
-  history; browsable, with Swagger/ReDoc docs — see
-  [API Reference](./API%20Reference.md).
+- **External API (Django-Ninja)** for registered partner applications: scoped
+  read-only users, memberships and bills, with app-key authentication,
+  short-lived access/refresh tokens, usage logs, per-key throttling and
+  Swagger docs — see [API Reference](./API%20Reference.md).
 
 ---
 

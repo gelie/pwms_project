@@ -2924,8 +2924,7 @@ def delegation_report_resolution_add(request, public_id):
 # day (``?view=``) — over the meetings the signed-in user may view, with HTMX
 # navigation, type/mine/text filters, a day panel and a "next up" strip. A JSON
 # feed over the same permission-scoped query is exposed for interactive consumers
-# (``meeting_calendar_json``), and the REST API mirrors it (see
-# pwms.api.views.MeetingViewSet).
+# (``meeting_calendar_json``).
 
 #: Weekday labels, in Python's weekday order (Monday == 0). The grid's columns
 #: are rotated to the configured week start; the same order is what

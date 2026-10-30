@@ -8,7 +8,6 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
-from datetime import timedelta
 from pathlib import Path
 
 import ldap
@@ -51,9 +50,6 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     "auditlog",
     "background_task",
-    "rest_framework",
-    "rest_framework.authtoken",
-    "drf_spectacular",
     "chartjs",
     "django_flatpickr",
     "lucide",
@@ -61,6 +57,7 @@ INSTALLED_APPS = [
     "django_htmx",
     # "django_extensions",
     "pwms",  # ← custom app config for auditlog wiring
+    "pwms.api",  # partner-facing Django-Ninja API
 ]
 
 MIDDLEWARE = [
@@ -77,70 +74,36 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "django_htmx.middleware.HtmxMiddleware",
+    # Appends an ApiUsageLog row for every /api/v1/ request. It only reads the
+    # response, so its position is not security-sensitive.
+    "pwms.api.middleware.ExternalApiUsageLogMiddleware",
 ]
 
-# Django REST Framework
+# External (partner) API
 #
-# Token auth is available for machine clients (``Authorization: Token <key>``),
-# alongside the browsable-API session cookie and HTTP Basic for one-off calls.
-# All three hand back the same ``request.user``, so the resource RBAC is the same
-# however the caller signed in.
-#
-# ``SessionAuthentication`` stays first deliberately: DRF derives the anonymous
-# challenge from the first authenticator, and this project's contract is that an
-# unauthenticated API request is ``403`` (with an HTML login page on the
-# browsable API) rather than a bare ``401``. Reordering this list changes that.
-REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework.authentication.SessionAuthentication",
-        "pwms.api.authentication.ExpiringTokenAuthentication",
-        "rest_framework.authentication.BasicAuthentication",
-    ],
-    "DEFAULT_PERMISSION_CLASSES": [
-        "rest_framework.permissions.IsAuthenticated",
-    ],
-    # List endpoints page by default so a whole register can never be pulled in
-    # one response. Override per view with ``pagination_class = None``.
-    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
-    "PAGE_SIZE": 50,
-    # Named rate limits that individual views opt into. There is deliberately no
-    # DEFAULT_THROTTLE_CLASSES: only the token endpoint sets ``throttle_classes``
-    # (see pwms.api.throttles), so declaring a scope here does not throttle the
-    # rest of the API.
-    "DEFAULT_THROTTLE_RATES": {
-        "token": config("TOKEN_THROTTLE_RATE", default="20/min"),
-    },
-    # OpenAPI schema generation (drf-spectacular)
-    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
-}
-
-# API token lifetime. DRF's ``authtoken`` tokens never expire on their own, so
-# ``pwms.api.authentication.ExpiringTokenAuthentication`` enforces an absolute TTL
-# measured from the token's ``created`` column (see that module). ``0`` disables
-# expiry and keeps the stock non-expiring behaviour; ``manage.py purge_tokens``
-# deletes the rows that have passed it.
-TOKEN_TTL_DAYS = config("TOKEN_TTL_DAYS", default=30, cast=int)
-TOKEN_TTL = timedelta(days=TOKEN_TTL_DAYS) if TOKEN_TTL_DAYS > 0 else None
-
-# drf-spectacular (OpenAPI 3 + Swagger UI / ReDoc)
-SPECTACULAR_SETTINGS = {
-    "TITLE": "PWMS Workflow API",
-    "DESCRIPTION": (
-        "REST API for parliamentary workflow management: users, groups, roles "
-        "and memberships; the workflow registry (types, states, transitions); "
-        "the concrete workflow instances (delegation reports, international "
-        "resolutions and agreements, bills); and the auditlog CRUD history and "
-        "domain TransitionLog events behind them.\n\n"
-        "Authenticate with ``Authorization: Token <key>`` — obtain a key from "
-        "``POST /api/auth/token/``."
-    ),
-    "VERSION": "1.0.0",
-    "SERVE_INCLUDE_SCHEMA": False,
-    "COMPONENT_SPLIT_REQUEST": True,
-    # Token auth is the documented default; the session/basic classes are still
-    # accepted, but listing them here keeps the OpenAPI security block focused.
-    "SECURITY": [{"tokenAuth": []}],
-}
+# The public API lives in the ``pwms.api`` Django-Ninja app and is
+# mounted at ``EXTERNAL_API_PREFIX``. Unlike the removed DRF API it has no
+# session/basic login: callers are registered applications that exchange a
+# client id/secret for a short-lived access token.
+EXTERNAL_API_PREFIX = "/api/v1/"
+EXTERNAL_API_ACCESS_TOKEN_TTL_MINUTES = config(
+    "EXTERNAL_API_ACCESS_TOKEN_TTL_MINUTES", default=15, cast=int
+)
+EXTERNAL_API_REFRESH_TOKEN_TTL_MINUTES = config(
+    "EXTERNAL_API_REFRESH_TOKEN_TTL_MINUTES", default=1440, cast=int
+)
+# Access-token signing key. Defaults to SECRET_KEY; set a separate value to allow
+# rotating app tokens without invalidating sessions/password-reset links.
+EXTERNAL_API_SIGNING_KEY = config("EXTERNAL_API_SIGNING_KEY", default=SECRET_KEY)
+# IP-scoped ceiling for POST /api/v1/auth/token/ (and refresh/revoke).
+EXTERNAL_API_TOKEN_THROTTLE_RATE = config(
+    "EXTERNAL_API_TOKEN_THROTTLE_RATE", default="20/min"
+)
+# Default per-client requests/minute; each ApiClient row can override it.
+EXTERNAL_API_DEFAULT_RATE_LIMIT_PER_MINUTE = config(
+    "EXTERNAL_API_DEFAULT_RATE_LIMIT_PER_MINUTE", default=60, cast=int
+)
+EXTERNAL_API_MAX_PAGE_SIZE = config("EXTERNAL_API_MAX_PAGE_SIZE", default=100, cast=int)
 
 ROOT_URLCONF = "pwms.root_urls"
 
@@ -187,6 +150,46 @@ DATABASES = {
         "DISABLE_SERVER_SIDE_CURSORS": True,
     }
 }
+
+# Cache / throttling.
+#
+# The external API's per-key rate limit is only exact when every gunicorn
+# worker shares one counter store. Set REDIS_URL to a redis:// or rediss://
+# URL in deployment (e.g. redis://127.0.0.1:6379/1) and the stock Django Redis
+# backend is used. When REDIS_URL is blank the project falls back to
+# LocMemCache, so a bare checkout, CI without Redis, and local tests still
+# boot; throttling is then per process.
+REDIS_URL = config("REDIS_URL", default="")
+CACHE_KEY_PREFIX = config("CACHE_KEY_PREFIX", default="pwms")
+CACHE_TIMEOUT = config("CACHE_TIMEOUT", default=300, cast=int)
+REDIS_SOCKET_TIMEOUT = config("REDIS_SOCKET_TIMEOUT", default=2.0, cast=float)
+REDIS_CONNECT_TIMEOUT = config("REDIS_CONNECT_TIMEOUT", default=2.0, cast=float)
+
+if REDIS_URL:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.redis.RedisCache",
+            "LOCATION": REDIS_URL,
+            "KEY_PREFIX": CACHE_KEY_PREFIX,
+            "TIMEOUT": CACHE_TIMEOUT,
+            "OPTIONS": {
+                # Keep a Redis outage from stalling every request; the throttle
+                # classes log the failure and fail open (see api).
+                "socket_timeout": REDIS_SOCKET_TIMEOUT,
+                "socket_connect_timeout": REDIS_CONNECT_TIMEOUT,
+                "health_check_interval": 30,
+            },
+        }
+    }
+else:
+    CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "pwms-locmem",
+            "KEY_PREFIX": CACHE_KEY_PREFIX,
+            "TIMEOUT": CACHE_TIMEOUT,
+        }
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/6.1/ref/settings/#auth-password-validators

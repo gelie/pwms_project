@@ -945,3 +945,43 @@ send time in one `update_fields` so a crash between them cannot lose either.
 share landing on the 1st keeps landing on the 1st, and a day that overshoots a
 short month clamps (31 Jan → 28 Feb). Indexed on `(schedule, next_send_at)` for
 the delivery job's "due" query.
+
+---
+
+## 10. External API — `pwms/api/models.py`
+
+A small, self-contained credential and observability layer for the partner API.
+
+### `ApiClient(BaseModel)`
+
+| Field | Type | Notes |
+| --- | --- | --- |
+| `id`, `public_id`, `created_at`, `updated_at` | from `BaseModel` | |
+| `name` (unique) | text | application name, e.g. **Parking System** |
+| `description` | text | what the integration does |
+| `contact_name` | text | human owner |
+| `contact_email` (required) | email | owner address |
+| `client_id` (unique, generated) | text | public credential identifier |
+| `client_secret_hash` | text | PBKDF2 hash; plaintext is shown once and never stored |
+| `scopes` (JSON list) | `users:read` / `memberships:read` / `bills:read` | normalised on save; unknown values raise |
+| `is_active` | bool | inactive clients cannot obtain or use tokens |
+| `rate_limit_per_minute` | int | per-key request ceiling, default from settings |
+| `last_used_at` | datetime | written by the usage-log middleware |
+| `secret_rotated_at` | datetime | when the current secret was issued |
+
+Helpers: `set_client_secret()`, `rotate_secret()` (returns the plaintext once),
+`check_client_secret()`, `enabled_scopes`, `has_scope()`.
+
+### `ApiRefreshToken(BaseModel)`
+
+Server-side refresh tokens so rotation and revocation are possible. Stores
+`client` (FK), `token_hash` (SHA-256, unique), `expires_at` and `revoked_at`.
+`is_expired` / `is_usable` drive the refresh endpoint; redeeming a row revokes
+it before issuing its replacement.
+
+### `ApiUsageLog(BaseModel)`
+
+Append-only request log for every `/api/v1/` call: `client` (FK, null for
+unauthenticated requests), `method`, `path`, `endpoint`, `status_code`,
+`duration_ms`, `remote_addr`, `user_agent`, `was_throttled` and `created_at`.
+Indexed on `(client, -created_at)` and `-created_at`; read-only in the admin.
