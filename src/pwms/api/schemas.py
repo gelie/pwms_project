@@ -49,6 +49,7 @@ class UserRef(Schema):
     public_id: UUID
     username: str
     display_name: str
+    email: str
 
 
 # ---------------------------------------------------------------------------

@@ -36,6 +36,7 @@ GROUP_SEARCH_FIELDS: dict[str, tuple[str, ...]] = {
     "short_name": ("short_name",),
     "slug": ("slug",),
     "description": ("description",),
+    "group_type": ("group_type",),
     "parent": ("parent__name",),
     "contact_email": ("contact_email",),
     "contact_phone": ("contact_phone",),
@@ -52,6 +53,7 @@ MEMBERSHIP_SEARCH_FIELDS: dict[str, tuple[str, ...]] = {
     "group_name": ("group__name",),
     "group_short_name": ("group__short_name",),
     "group_slug": ("group__slug",),
+    "group_type": ("group__group_type",),
     "role_name": ("role__name",),
     "role_slug": ("role__slug",),
 }
