@@ -185,11 +185,20 @@ class BillOut(Schema):
     sponsor_name: str
     introduced_date: date | None = None
     responsible_committee: GroupRef | None = None
-    atc_reference: str
-    order_paper_reference: str
-    bill_document_url: str
-    public_status: str
+    # atc_reference: str
+    # order_paper_reference: str
+    # The Bill model's citizen-facing property, published to partners as bill_stage.
+    bill_stage: str = Field(validation_alias="public_status")
+    bill_stage_date: date
+    # Annotated on the API bill queryset (TruncDate of the latest transition,
+    # falling back to created_at): the date the bill entered its current stage.
+    # Version history fields derived on the model (BRS §15A); the API queryset
+    # prefetches the versions so they cost nothing extra per page.
+    introduced_version: str
+    introduced_version_date: date | None = None
     current_version: str
+    current_version_date: date | None = None
+    bill_document_url: str
     identifier: str
     is_overdue: bool
     deadline: datetime | None = None

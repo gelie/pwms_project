@@ -1,7 +1,7 @@
 """Tests for the partner-facing Django-Ninja API (``pwms.api``)."""
 
 import json
-from datetime import timedelta
+from datetime import date, timedelta
 from io import StringIO
 from unittest import mock
 from urllib.parse import urlencode
@@ -22,11 +22,13 @@ from .api.scopes import Scope
 from .api.tokens import ACCESS_TOKEN_SALT
 from .models import (
     Bill,
+    BillVersion,
     Group,
     GroupMembership,
     PublicStatus,
     Role,
     State,
+    Transition,
     WorkflowType,
 )
 
@@ -544,7 +546,7 @@ class ScopedResourceTests(ApiTestCase):
         blocked = self.client.get("/api/v1/users/", **self.auth(token))
         self.assertEqual(blocked.status_code, 403)
 
-    def test_bills_scope_reads_bills_and_exposes_public_status(self):
+    def test_bills_scope_reads_bills_and_exposes_bill_stage(self):
         token, _ = self.access_token([Scope.BILLS_READ])
 
         listing = self.client.get("/api/v1/bills/?search=B 1", **self.auth(token))
@@ -553,7 +555,17 @@ class ScopedResourceTests(ApiTestCase):
         self.assertEqual(payload["count"], 1)
         record = payload["results"][0]
         self.assertEqual(record["bill_number"], "B 1-2026")
-        self.assertEqual(record["public_status"], "Introduced")
+        self.assertEqual(record["bill_stage"], "Introduced")
+        # The bill never advanced: it entered the initial stage at creation.
+        self.assertEqual(
+            record["bill_stage_date"],
+            timezone.localdate(self.bill.created_at).isoformat(),
+        )
+        # No versions recorded: the bill is its own original version.
+        self.assertEqual(record["introduced_version"], "B 1-2026")
+        self.assertIsNone(record["introduced_version_date"])
+        self.assertEqual(record["current_version"], "")
+        self.assertIsNone(record["current_version_date"])
         self.assertEqual(record["identifier"], "B 1-2026")
         self.assertNotIn("owner", record)
 
@@ -562,6 +574,70 @@ class ScopedResourceTests(ApiTestCase):
         )
         self.assertEqual(detail.status_code, 200)
         self.assertEqual(detail.json()["title"], "A test bill")
+
+    def test_bill_stage_date_follows_the_last_transition(self):
+        token, _ = self.access_token([Scope.BILLS_READ])
+        entered_stage = State.objects.create(
+            workflow_type=self.workflow_type,
+            name="In Committee",
+            public_status=self.status,
+        )
+        transition = Transition.objects.create(
+            workflow_type=self.workflow_type,
+            name="Refer to committee",
+            from_state=self.state,
+            to_state=entered_stage,
+            requires_comment=False,
+        )
+        self.bill.perform_transition(transition, comment="Referred to the committee.")
+
+        listing = self.client.get("/api/v1/bills/?search=B 1", **self.auth(token))
+        self.assertEqual(listing.status_code, 200)
+        record = listing.json()["results"][0]
+        self.assertEqual(record["bill_stage"], "Introduced")
+        # The stage entry date moved to the transition's date.
+        self.assertEqual(record["bill_stage_date"], timezone.localdate().isoformat())
+
+        detail = self.client.get(
+            f"/api/v1/bills/{self.bill.public_id}/", **self.auth(token)
+        )
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(
+            detail.json()["bill_stage_date"], timezone.localdate().isoformat()
+        )
+
+    def test_bill_version_fields_follow_the_version_history(self):
+        token, _ = self.access_token([Scope.BILLS_READ])
+        introduced = BillVersion.objects.create(
+            bill=self.bill,
+            version_label="B 1-2026",
+            version_type=BillVersion.INTRODUCED,
+            version_date=date(2026, 1, 5),
+        )
+        amended = BillVersion.objects.create(
+            bill=self.bill,
+            version_label="B 1A-2026",
+            version_type=BillVersion.AMENDED,
+            version_date=date(2026, 3, 1),
+            is_current=True,
+        )
+
+        listing = self.client.get("/api/v1/bills/?search=B 1", **self.auth(token))
+        self.assertEqual(listing.status_code, 200)
+        record = listing.json()["results"][0]
+        self.assertEqual(record["introduced_version"], introduced.version_label)
+        self.assertEqual(record["introduced_version_date"], "2026-01-05")
+        self.assertEqual(record["current_version"], amended.version_label)
+        self.assertEqual(record["current_version_date"], "2026-03-01")
+
+        detail = self.client.get(
+            f"/api/v1/bills/{self.bill.public_id}/", **self.auth(token)
+        )
+        self.assertEqual(detail.status_code, 200)
+        payload = detail.json()
+        self.assertEqual(payload["introduced_version"], "B 1-2026")
+        self.assertEqual(payload["introduced_version_date"], "2026-01-05")
+        self.assertEqual(payload["current_version_date"], "2026-03-01")
 
         blocked = self.client.get("/api/v1/users/", **self.auth(token))
         self.assertEqual(blocked.status_code, 403)
