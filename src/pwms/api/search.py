@@ -71,8 +71,8 @@ BILL_SEARCH_FIELDS: dict[str, tuple[str, ...]] = {
         "sponsor__last_name",
     ),
     "responsible_committee": ("responsible_committee__name",),
-    "atc_reference": ("atc_reference",),
-    "order_paper_reference": ("order_paper_reference",),
+    # "atc_reference": ("atc_reference",),
+    # "order_paper_reference": ("order_paper_reference",),
     "public_status": (
         "current_state__public_status__name",
         "current_state__public_status__slug",

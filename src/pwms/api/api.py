@@ -11,13 +11,15 @@ from uuid import UUID
 
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
-from django.db.models import Prefetch, Q
+from django.contrib.contenttypes.models import ContentType
+from django.db.models import DateField, OuterRef, Prefetch, Q, Subquery
+from django.db.models.functions import Coalesce, TruncDate
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from ninja import NinjaAPI, Router
 from ninja.errors import HttpError
 
-from ..models import Bill, Group, GroupMembership, User
+from ..models import Bill, Group, GroupMembership, TransitionLog, User
 from .auth import api_auth, require_scope
 from .models import ApiClient
 from .schemas import (
@@ -149,11 +151,38 @@ def _membership_queryset():
 
 
 def _bill_queryset():
-    return Bill.objects.select_related(
-        "sponsor",
-        "responsible_committee",
-        "current_state",
-        "current_state__public_status",
+    """Bills with their related rows and the date the current stage was entered.
+
+    ``bill_stage_date`` is the local date of the bill's latest recorded
+    transition; ``created_at``'s date for bills that never left the initial
+    stage. Computed in SQL so list responses stay one query per page.
+    """
+    latest_stage_entry = (
+        TransitionLog.objects.filter(
+            content_type=ContentType.objects.get_for_model(Bill),
+            object_id=OuterRef("pk"),
+        )
+        .order_by("-timestamp")
+        .annotate(entry_day=TruncDate("timestamp"))
+        .values("entry_day")[:1]
+    )
+    return (
+        Bill.objects.annotate(
+            bill_stage_date=Coalesce(
+                Subquery(latest_stage_entry, output_field=DateField()),
+                TruncDate("created_at"),
+                output_field=DateField(),
+            )
+        )
+        .select_related(
+            "sponsor",
+            "responsible_committee",
+            "current_state",
+            "current_state__public_status",
+        )
+        # current_version / introduced_version / *_date are derived from the
+        # version history on the model; one query per page instead of per bill.
+        .prefetch_related("versions")
     )
 
 

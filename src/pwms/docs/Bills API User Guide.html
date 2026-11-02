@@ -275,14 +275,25 @@ curl -s "$BASE/api/v1/bills/PUBLIC_ID/" \
           <code>sponsor_name</code>, <code>introduced_date</code>,
           <code>responsible_committee</code>, <code>atc_reference</code>,
           <code>order_paper_reference</code>, <code>bill_document_url</code>,
-          <code>public_status</code>, <code>current_version</code>,
+          <code>bill_stage</code>, <code>bill_stage_date</code>,
+          <code>current_version</code>, <code>current_version_date</code>,
+          <code>introduced_version</code>,
+          <code>introduced_version_date</code>,
           <code>identifier</code>, <code>is_overdue</code>,
           <code>deadline</code>, <code>priority</code>, <code>created_at</code>
           and <code>updated_at</code>.
         </p>
         <p>
-          <code>public_status</code> is the citizen-facing status;
-          <code>current_version</code> is the current version label. Dates are
+          <code>bill_stage</code> is the citizen-facing status (queried with
+          the <code>public_status</code> parameter);
+          <code>bill_stage_date</code> is the date the bill entered that stage
+          — the bill's latest recorded transition, or its creation date when
+          it never advanced;
+          <code>current_version</code> is the current version label;
+          <code>current_version_date</code> is the date that version was
+          tabled; <code>introduced_version</code> and
+          <code>introduced_version_date</code> identify the original version
+          of the bill. Dates are
           ISO 8601; empty values are <code>null</code> or an empty string.
         </p>
       </section>

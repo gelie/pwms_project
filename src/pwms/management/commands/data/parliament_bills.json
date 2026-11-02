@@ -1,0 +1,2219 @@
+{
+  "source": "https://www.parliament.gov.za/bills",
+  "endpoint": "POST /bills {page, bill_status} + GET /bill/<id> (AJAX feed behind the Bills Currently in Parliament page)",
+  "fetched_at": "2026-11-02",
+  "notes": "Snapshot of the bills listed on parliament.gov.za (tabs: National Assembly, NCOP, Withdrawn/Lapsed). bill_status: NA = before the National Assembly, NCOP = before the National Council of Provinces, WD = withdrawn/lapsed. bill_no_URL is the parliament.gov.za path to the bill PDF; detail carries the bill page's description, Introduced by, stage dates and Previous Versions rows.",
+  "count": 67,
+  "bills": [
+    {
+      "id": 2335588,
+      "name": "Statistics Amendment Bill (B35–2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-10-21",
+      "introduced_by": "",
+      "bill_no": "B35-2026",
+      "bill_no_number": "B35",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B35-2026_Statistics_AB.pdf",
+      "detail": {
+        "description": "To amend the Statistics Act, 1999, so as to insert and amend certain definitions; to provide for the Statistician-General to cause a PotableWaterAccess Indicator to be undertaken and published; to provide for the Council to advise the Minister and the Statistician-General on the collection of a Potable Water Access Indicator; to provide for regulations regarding the collection and publication of a PotableWater Access Indicator; to amend the arrangement of sections; and to provide for matters connected therewith.",
+        "introduced_by": "Mr M Manyi, MP",
+        "stages": {
+          "introduction": "2026-10-21",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B35–2026",
+            "date": "2026-10-21",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B35-2026_Statistics_AB.pdf",
+            "title": "Statistics Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2335584,
+      "name": "Rates and Monetary Amounts and Amendment of Revenue Laws Bill (B34–2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-10-21",
+      "introduced_by": "",
+      "bill_no": "B34-2026",
+      "bill_no_number": "B34",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B34-2026_Rates_and_Monetary_Amounts.pdf",
+      "detail": {
+        "description": "To fix the rates of normal tax; to amend the Income Tax Act, 1962, so as to amend certain provisions; to amend the Customs and Excise Act, 1964, so as to amend rates of duty in Schedule 1 to that Act; to amend the Value-Added Tax Act, 1991, so as to amend rates of tax and to amend Schedule 2 to that Act; to amend the Diamond Export Levy Act, 2007, so as to amend certain provisions; to amend the Carbon Tax Act, 2019, so as to amend an amount; and to provide for matters connected therewith.",
+        "introduced_by": "Minister of Finance",
+        "stages": {
+          "introduction": "2026-10-21",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B34–2026",
+            "date": "2026-10-21",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B34-2026_Rates_and_Monetary_Amounts.pdf",
+            "title": "Rates and Monetary Amounts and Amendment of Revenue Laws Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2335583,
+      "name": "Tax Administration Laws Amendment Bill (B33–2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-10-21",
+      "introduced_by": "",
+      "bill_no": "B33-2026",
+      "bill_no_number": "B33",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B33-2026_Tax_Administrative_Laws_AB.pdf",
+      "detail": {
+        "description": "To—",
+        "introduced_by": "Minister of Finance",
+        "stages": {
+          "introduction": "2026-10-21",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B33–2026",
+            "date": "2026-10-21",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B33-2026_Tax_Administrative_Laws_AB.pdf",
+            "title": "Tax Administration Laws Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2335582,
+      "name": "Taxation Laws Amendment Bill (B32–2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-10-21",
+      "introduced_by": "",
+      "bill_no": "B32-2026",
+      "bill_no_number": "B32",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B32-2026_Taxation_Laws_AB.pdf",
+      "detail": {
+        "description": "To—",
+        "introduced_by": "Minister of Finance",
+        "stages": {
+          "introduction": "2026-10-21",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B32–2026",
+            "date": "2026-10-21",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B32-2026_Taxation_Laws_AB.pdf",
+            "title": "Taxation Laws Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2335580,
+      "name": "Special Appropriation (2026/27 Financial Year) Bill (B31–2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-10-21",
+      "introduced_by": "",
+      "bill_no": "B31-2026",
+      "bill_no_number": "B31",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B31-2026_Special_Appropriation_Bill.pdf",
+      "detail": {
+        "description": "To appropriate an additional amount of money for the requirements of the State; and to provide for matters connected therewith.",
+        "introduced_by": "Minister of Finance",
+        "stages": {
+          "introduction": "2026-10-21",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B31–2026",
+            "date": "2026-10-21",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B31-2026_Special_Appropriation_Bill.pdf",
+            "title": "Special Appropriation (2026/27 Financial Year) Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2335579,
+      "name": "Adjustments Appropriation Bill (B30–2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-10-21",
+      "introduced_by": "",
+      "bill_no": "B30-2026",
+      "bill_no_number": "B30",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B30-2026_Adjustments_Appropriation_Bill.pdf",
+      "detail": {
+        "description": "To effect adjustments to the appropriation of money from the National Revenue Fund for the requirements of the State in respect of the 2026/27 financial year; and to provide for matters incidental thereto.",
+        "introduced_by": "Minister of Finance",
+        "stages": {
+          "introduction": "2026-10-21",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B30–2026",
+            "date": "2026-10-21",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B30-2026_Adjustments_Appropriation_Bill.pdf",
+            "title": "Adjustments Appropriation Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2335578,
+      "name": "Division of Revenue Amendment Bill (B29–2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-10-21",
+      "introduced_by": "",
+      "bill_no": "B29-2026",
+      "bill_no_number": "B29",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B29-2026_Division_of_Revenue_AB.pdf",
+      "detail": {
+        "description": "To amend the Division of Revenue Act, 2026, in accordance with the Money Bills and Related Matters Act, 2009; and to provide for matters connected therewith.",
+        "introduced_by": "Minister of Finance",
+        "stages": {
+          "introduction": "2026-10-21",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B29–2026",
+            "date": "2026-10-21",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B29-2026_Division_of_Revenue_AB.pdf",
+            "title": "Division of Revenue Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2335453,
+      "name": "Conspiracy, Instigation and Incitement to Commit Offence Bill (B28–2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-10-15",
+      "introduced_by": "",
+      "bill_no": "B28-2026",
+      "bill_no_number": "B28",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B28-2026_Conspiracy_Instigation_and_Incitement.pdf",
+      "detail": {
+        "description": "To define ‘‘serious offence’’; to make provision for the offence of conspiracy and for the offence of instigating, inciting, commanding and procuring another person to commit a serious offence; to repeal the Riotous Assemblies Act, 1956; and to provide for matters incidental thereto.",
+        "introduced_by": "Minister of Justice and Constitutional Development",
+        "stages": {
+          "introduction": "2026-10-15",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B28–2026",
+            "date": "2026-10-16",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B28-2026_Conspiracy_Instigation_and_Incitement.pdf",
+            "title": "Conspiracy, Instigation and Incitement to Commit Offence Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2334793,
+      "name": "Electronic Deeds Registration and Recordal Systems Amendment Bill (B27-2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-09-22",
+      "introduced_by": "",
+      "bill_no": "B27-2026",
+      "bill_no_number": "B27",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B27-2026_Electronic_Deeds_Registration_and_Recordal_Systems_Amendment_Bill.pdf",
+      "detail": {
+        "description": "To amend the Electronic Deeds Registration and Recordal Systems Act, 2019, so as to provide for a client copy of a registered or executed deed or document to remain a valid copy for certain purposes; to provide that a transaction pertaining to a property registered electronically results in subsequent transactions to such property being registered electronically; to provide for additional transitional arrangements for electronic registration subject to the development of the electronic deeds registration and recordal system; to provide for the consequential amendment of certain legislation to the extent set out in the Schedule; and to provide for matters connected therewith.",
+        "introduced_by": "Minister of Land Reform and Rural Development",
+        "stages": {
+          "introduction": "2026-09-22",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B27-2026",
+            "date": "2026-09-22",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B27-2026_Electronic_Deeds_Registration_and_Recordal_Systems_Amendment_Bill.pdf",
+            "title": "Electronic Deeds Registration and Recordal Systems Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2334582,
+      "name": "Repeal of Certain Pre-1994 Justice Laws Bill (B26-2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-09-17",
+      "introduced_by": "",
+      "bill_no": "B26-2026",
+      "bill_no_number": "B26",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B26-2026_Repeal_of_Certain_Pre_1994_Justice_Laws_Bill.pdf",
+      "detail": {
+        "description": "To repeal certain obsolete legislation enacted before 1994; and to provide for matters connected therewith.",
+        "introduced_by": "The Minister of Justice and Constitutional Development",
+        "stages": {
+          "introduction": "2026-09-17",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B26-2026",
+            "date": "2026-09-17",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B26-2026_Repeal_of_Certain_Pre_1994_Justice_Laws_Bill.pdf",
+            "title": "Repeal of Certain Pre-1994 Justice Laws Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2334445,
+      "name": "Superior Courts Amendment Bill (B25-2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-08-28",
+      "introduced_by": "",
+      "bill_no": "B25-2026",
+      "bill_no_number": "B25",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B25-2026_Superior_Courts_Amendment_Bill.pdf",
+      "detail": {
+        "description": "To amend the Superior Courts Act, 2013, so as to limit the application of the provision that regulates the institution of civil proceedings by way of a summons or a notice of motion, and the serving of a subpoena in civil proceedings, against a judge; and to provide for matters connected therewith.",
+        "introduced_by": "Mr M Manyi, MP",
+        "stages": {
+          "introduction": "2026-08-28",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B25-2026",
+            "date": "2026-09-14",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B25-2026_Superior_Courts_Amendment_Bill.pdf",
+            "title": "Superior Courts Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2333897,
+      "name": "Electoral Laws Amendment Bill (B24-2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-08-28",
+      "introduced_by": "",
+      "bill_no": "B24-2026",
+      "bill_no_number": "B24",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B24-2026_Electoral_Laws_AB.pdf",
+      "detail": {
+        "description": "To amend the—",
+        "introduced_by": "Minister of Home Affairs",
+        "stages": {
+          "introduction": "2026-08-28",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B24-2026",
+            "date": "2026-09-03",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B24-2026_Electoral_Laws_AB.pdf",
+            "title": "Electoral Laws Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2333582,
+      "name": "Local Government: Municipal Structures Amendment Bill (B23-2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-08-18",
+      "introduced_by": "",
+      "bill_no": "B23-2026",
+      "bill_no_number": "B23",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B23-2026_Municipal_Structures_AB.pdf",
+      "detail": {
+        "description": "To amend the Local Government: Municipal Structures Act, 1998, so as to insert certain definitions; to make it mandatory for a councillor appointed as municipal office bearer or in terms of sections 79, 79A and 80 of the Local Government: Municipal Structures Act, 1998, to possess the necessary experience, skills or qualifications; to extend the time period within which a local council must appoint its representatives to the district council; to extend the time period within which the first meeting of the council must be called after it has been declared elected; to provide for the time period within which a new speaker must be elected; to provide for voting by the council to include by way of show of hands or secret ballot; to provide for grounds of removal and the procedure for the removal of municipal office bearers; to extend the time period within which the meeting to determine the members of the executive committee must be held; to extend the time period within which the meeting for the election of the mayor, deputy mayor, an executive mayor and executive deputy mayor must be held; to provide for coalition agreements; to provide for the period within which an executive mayor must be elected after the removal of the executive mayor; to provide for the period within which a mayoral committee must be appointed after the appointment of the newly elected executive mayor; and to provide for matters connected therewith.",
+        "introduced_by": "Minister of Cooperative Governance and Traditional Affairs",
+        "stages": {
+          "introduction": "2026-08-18",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B23-2026",
+            "date": "2026-08-19",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B23-2026_Municipal_Structures_AB.pdf",
+            "title": "Local Government: Municipal Structures Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2333580,
+      "name": "Public Procurement Amendment Bill (B22-2026)",
+      "referred_nhtl": 0,
+      "bill_status": "WD",
+      "introduced_date": "2026-08-18",
+      "introduced_by": "",
+      "bill_no": "B22-2026",
+      "bill_no_number": "B22",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B22-2026_Public_Procurement_AB.pdf",
+      "detail": {
+        "description": "To amend the Public Procurement Act, 2024, so as to insert a definition; to increase the number of days within which an affected person may provide reasons as to why a debarment order should not be issued; to expand upon the instances in which a debarment order must be issued by a procuring institution; to provide for procuring institutions to develop and implement public procurement policies, in terms of section 217(2) of the Constitution, which also contribute toward the achievement of Sustainable Development Goals; to repeal the provisions related to set-asides and prequalification criteria for preferential procurement; to repeal the provisions related to subcontracting as a condition to bid and to provide for the necessary consequential amendments; to repeal the provisions concerning the designation of sectors for local production and content and to provide for the necessary consequential amendments; to remove the discretion to provide for measures to advance sustainable development in procurement; to expand the qualification criteria for the appointment of a person as a member of the Tribunal; to remove a threat to national security as justification for the Minister to exempt a procuring institution from any provision of the Public Procurement Act, 2024; to remove a threat to national security as justification for the Public Procurement Office to authorise a departure from a provision of an instruction which it has issued; to provide for regulations related to Sustainable Development Goals and to extend consultation processes when making any regulations; to amend the Preamble; to amend the Schedule to the Public Procurement Act, 2024; to amend the Arrangement of Sections; to repeal the Broad-Based Black Economic Empowerment Act, 2003 and to provide for the necessary consequential amendments; to provide for transitional measures; and to provide for matters connected therewith.",
+        "introduced_by": "Mr G Michalakis, MP",
+        "stages": {
+          "introduction": "2026-08-18",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B22-2026",
+            "date": "2026-08-19",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B22-2026_Public_Procurement_AB.pdf",
+            "title": "Public Procurement Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2333578,
+      "name": "General Finance Laws Amendment Bill (B21-2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-08-18",
+      "introduced_by": "",
+      "bill_no": "B21-2026",
+      "bill_no_number": "B21",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B21-2026_General_Finance_Laws_AB.pdf",
+      "detail": {
+        "description": "To amend—",
+        "introduced_by": "Minister of Finance",
+        "stages": {
+          "introduction": "2026-08-18",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B21-2026",
+            "date": "2026-08-19",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B21-2026_General_Finance_Laws_AB.pdf",
+            "title": "General Finance Laws Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2333235,
+      "name": "Second Special Appropriation (202526 Financial Year) Bill (B20-2026)",
+      "referred_nhtl": 1,
+      "bill_status": "NA",
+      "introduced_date": "2026-07-30",
+      "introduced_by": "",
+      "bill_no": "B20-2026",
+      "bill_no_number": "B20",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B20-2026_Second_Special_Appropriation_2025-26_Financial_Year_Bill.pdf",
+      "detail": {
+        "description": "To appropriate an additional amount of money for the requirements of the vote of Mineral and Petroleum Resources for the Equalisation Fund in the Central Energy Fund, authorised in terms of section 16 of the Public Finance Management Act,1999, for the 2025/26 financial year; and to provide for matters connected therewith.",
+        "introduced_by": "Minister of Finance",
+        "stages": {
+          "introduction": "2026-07-30",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B20-2026",
+            "date": "2026-07-31",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B20-2026_Second_Special_Appropriation_2025-26_Financial_Year_Bill.pdf",
+            "title": "Second Special Appropriation (202526 Financial Year) Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2332804,
+      "name": "Prevention and Combating of Corrupt Activities Amendment Bill (B19-2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-07-16",
+      "introduced_by": "",
+      "bill_no": "B19-2026",
+      "bill_no_number": "B19",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B19-2026_Prevention_and_Combating_of_Corrupt_Activities_Amendment_Bill.pdf",
+      "detail": {
+        "description": "To amend the Prevention and Combating of Corrupt Activities Act, 2004, so as to introduce minimum sentences for offences relating to corrupt activities; to lower the threshold for the reporting of corruption; and to provide for matters connected therewith.",
+        "introduced_by": "Ms DE James MP",
+        "stages": {
+          "introduction": "2026-07-16",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B19-2026",
+            "date": "2026-07-29",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B19-2026_Prevention_and_Combating_of_Corrupt_Activities_Amendment_Bill.pdf",
+            "title": "Prevention and Combating of Corrupt Activities Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2331848,
+      "name": "South African Police Service Amendment Bill (B18-2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-06-10",
+      "introduced_by": "",
+      "bill_no": "B18-2026",
+      "bill_no_number": "B18",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B18-2026_South_African_Police_Service_AB.pdf",
+      "detail": {
+        "description": "To amend the South African Police Service Act, 1995, so as to insert, delete and amend certain definitions; to provide for the purpose of the South African Police Service Act, 1995; to delete provisions related to the Civilian Secretariat for the Police Service; to provide for the establishment of the South African Police Service as the single national police service contemplated in section 199(1) and section 205(1) of the Constitution; to strengthen the provisions of the South African Police Service Act, 1995, relating to the establishment, powers, functions and control of municipal police services as provided for in section 206(7) of the Constitution; to further regulate the functions of the National Commissioner and Provincial Commissioners; to provide for the establishment of the National Policing Advisory Committee to advise the National Commissioner on issues such as selection criteria for appointment and promotion of members of the Service and the professionalisation of the Service; to provide for the funding of the National Policing Advisory Committee; to provide for the appointment of a Secretariat for the National Policing Advisory Committee and the functions thereof; to provide that Deputy National Commissioners of the Service will, in respect of a loss of confidence in them by the National Commissioner, be subject to investigation by an inquiry similar to that applicable to a Provincial Commissioner; to provide for a Management Forum; to regulate the functions of the National Commissioner and the Provincial Commissioners; to provide that the use of force must be reasonably necessary and proportionate in the circumstances; to provide for service outside the Republic by members of the Service and members of the Directorate for Priority Crime Investigation; to provide for integrity testing of new members of the Service and lifestyle audits of all members; to provide for the inclusion of municipal police recruits in the requirement to submit a DNA sample for the purpose of a DNAprofile to be included in the Elimination Index; to provide for the deployment of the national public order policing capacity by the National Commissioner; to provide for deviations from National Instructions by the Directorate for Priority Crime Investigation; to provide for textual corrections; to provide for service arrangements regarding the performance of services of personnel for the Directorate for Priority Crime Investigation; to provide that the retired judge may initiate investigations on behalf of a complainant or which emerge from other related investigations; to provide for the appointment of an office manager for the office of the retired judge; to provide that the retired judge may summons persons to appear before him or her; to provide for the establishment of specialised units by the National Commissioner; to provide for the establishment of the Intelligence Division of the Service; to provide for the repeal of most of the provisions relating to community policing forums and boards in the South African Police Service Act, 1995, and the enactment of new provisions regulating community policing forums, district community policing boards and provincial community policing boards; to further regulate the filling of posts in the Service; to provide that members would be deemed to be dismissed after a period of absence of 30 calendar days; to provide for the establishment by the National Commissioner of a disciplinary system which would be managed by dedicated, appropriately qualified and trained disciplinary units of presiding and disciplinary officers who are solely dedicated to disciplinary matters; to provide for the seizure or attachment of property of the Service and to improve measures relating to the property of the Service; to provide for the appointment of a Chief of a municipal police service; to provide for the establishment of a municipal public order policing capacity; to provide for the establishment of a national policing co-ordinating committee; to provide for offences relating to the unlawful possession and use of a lamp, fitted in a vehicle or displayed in or on a vehicle, capable of emitting blue light; to provide for an offence in respect of hoaxes and the spreading of false information; to provide for an offence relating to members who are involved in investigations whilst having a conflict of interest; and to provide for matters connected therewith.",
+        "introduced_by": "Minister of Police",
+        "stages": {
+          "introduction": "2026-06-10",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B18-2026",
+            "date": "2026-06-11",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B18-2026_South_African_Police_Service_AB.pdf",
+            "title": "South African Police Service Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2331615,
+      "name": "Long-Term Insurance Amendment Bill (B17–2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-06-05",
+      "introduced_by": "",
+      "bill_no": "B17-2026",
+      "bill_no_number": "B17",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media",
+      "detail": {
+        "description": "To amend the Long-term Insurance Act, 1998, so as to require the Authority to prescribe rules relating to the protection of a policyholder of multiple funeral policies for the same beneficiaries; to require a long-term insurer to offer disclosure within a certain period to existing policyholders related to the consequences of holding multiple funeral policies for the same beneficiaries; to provide that a policyholder of a funeral policy is entitled to cancel any of the multiple funeral policies held for the same life event; to provide that non-disclosure of a funeral policy for the beneficiary does not affect the validity of an affected funeral policy; to provide for a sanction in the event of a failure of a long-term insurer to comply with certain rules and disclosure obligations; and to provide for matters connected therewith.",
+        "introduced_by": "Mr NLS Kwankwa, MP",
+        "stages": {
+          "introduction": "2026-06-05",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B17–2026",
+            "date": "2026-06-08",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B17-2026_Long_term_Insurance_AB.pdf",
+            "title": "Long-Term Insurance Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2330539,
+      "name": "Employment Services Amendment Bill (B16–2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-05-29",
+      "introduced_by": "",
+      "bill_no": "B16-2026",
+      "bill_no_number": "B16",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B16-2026_Employment_Services.pdf",
+      "detail": {
+        "description": "To amend the Employment Services Act, 2014, so as to insert and amend certain definitions in order to clarify expressions in the Act and extend the scope of the Act to cover foreign nationals, private employment agencies not operating for gain, and workers; to regulate the employment of foreign nationals in South Africa in a manner consistent with the purpose of the Act, the Immigration Act and the Refugees Act; to provide for the powers of the Minister to make regulations in respect of matters related to labour migration; to expand the functions of the Employment Services Board; to provide for the establishment and governance of Supported Employment Enterprises; to provide for further offences and the improved enforcement of the Act and immigration laws regulating work by foreign nationals; to provide for exemptions from the Act; to provide for the making of further regulations by the Minister; and to provide for matters connected therewith.",
+        "introduced_by": "Minister of Employment and Labour",
+        "stages": {
+          "introduction": "2026-05-29",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B16–2026",
+            "date": "2026-06-01",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B16-2026_Employment_Services.pdf",
+            "title": "Employment Services Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2330292,
+      "name": "General Laws (Anti-Money Laundering and Combating Terrorism Financing) Amendment Bill (B15–2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-05-27",
+      "introduced_by": "",
+      "bill_no": "B15-2026",
+      "bill_no_number": "B15",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B15-2026_General_Laws_Anti_Money_Laundering_AB.pdf",
+      "detail": {
+        "description": "To amend—",
+        "introduced_by": "Minister of Finance",
+        "stages": {
+          "introduction": "2026-05-27",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B15–2026",
+            "date": "2026-05-28",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B15-2026_General_Laws_Anti_Money_Laundering_AB.pdf",
+            "title": "General Laws (Anti-Money Laundering and Combating Terrorism Financing) Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2329967,
+      "name": "Extradition Bill (B14-2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-05-20",
+      "introduced_by": "",
+      "bill_no": "B14-2026",
+      "bill_no_number": "B14",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B14-2026_Extradition_Bill.pdf",
+      "detail": {
+        "description": "To provide for the extradition of persons accused or convicted of certain offences in the Republic of South Africa and foreign States; to provide for the surrender of persons accused or convicted of certain crimes to international entities; to provide for measures to ensure compliance with the international obligations of the Republic of South Africa insofar as it relates to extradition; and to provide for matters incidental thereto.",
+        "introduced_by": "Minister of Justice and Constitutional Development",
+        "stages": {
+          "introduction": "2026-05-20",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B14-2026",
+            "date": "2026-05-20",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B14-2026_Extradition_Bill.pdf",
+            "title": "Extradition Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2328630,
+      "name": "Constitution Twenty-Fourth Amendment Bill (B13-2026)",
+      "referred_nhtl": 1,
+      "bill_status": "NA",
+      "introduced_date": "2026-04-29",
+      "introduced_by": "",
+      "bill_no": "B13-2026",
+      "bill_no_number": "B13",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B13-2026_Constitution_24th_AB.pdf",
+      "detail": {
+        "description": "To amend the Constitution of the Republic of South Africa, 1996, so as to add to the list of citizens who are ineligible to become members of the National Assembly, a provincial legislature, and a Municipal Council, respectively; and to provide for matters connected therewith.",
+        "introduced_by": "Adv G Breytenbach, MP",
+        "stages": {
+          "introduction": "2026-04-29",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B13-2026",
+            "date": "2026-04-30",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B13-2026_Constitution_24th_AB.pdf",
+            "title": "Constitution Twenty-Fourth Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2328429,
+      "name": "Electronic Communications Amendment Bill (B12–2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-04-22",
+      "introduced_by": "",
+      "bill_no": "B12-2026",
+      "bill_no_number": "B12",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B12-2026_Electronic_Communications_AB.pdf",
+      "detail": {
+        "description": "To amend the Electronic Communications Act, 2005, so as to enable the Minister responsible for local government to make a national standard by-law on rapid deployment of electronic communications networks and facilities; to enable the ‘‘use it or share it’’ principle for spectrum; to regulate roaming and mobile virtual network operator services; to improve the facilities leasing framework and provide for wholesale pricing rules and standards; to provide for improved competition regulation; and to provide for matters connected therewith.",
+        "introduced_by": "The Minister of Communications and Digital Technologies",
+        "stages": {
+          "introduction": "2026-04-22",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B12–2026",
+            "date": "2026-04-23",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B12-2026_Electronic_Communications_AB.pdf",
+            "title": "Electronic Communications Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2328393,
+      "name": "Traditionaland Khoi-San Leadership Bill (B11-2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-04-21",
+      "introduced_by": "",
+      "bill_no": "B11-2026",
+      "bill_no_number": "B11",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B11-2026_Traditional_and_Khoi_San_Leadership_Bill.pdf",
+      "detail": {
+        "description": "To provide for the recognition of traditional and Khoi-San communities, leadership positions and for the withdrawal of such recognition; to provide for the functions and roles of traditional and Khoi-San leaders, to provide for the recognition, establishment, functions, roles and administration of kingship or queenship councils, Khoi-San kingship councils, Khoi-San queenship councils, principal traditional councils, traditional councils, Khoi-San councils and traditional sub-councils, as well as the support to such councils; to provide for the establishment, composition and functioning of the National House of Traditional and Khoi-San Leaders; to provide for the establishment of provincial houses of traditional and Khoi-San leaders; to provide for the establishment and composition of local houses of traditional and Khoi-San leaders; to provide for the establishment and operation of the Commission on Khoi-San Matters; to provide for a code of conduct for members of the National House, provincial houses, local houses, traditional and Khoi-San councils and recognised traditional leaders; to provide for regulatory powers of the Minister and Premiers; to provide for transitional arrangements; to amend certain Acts; to provide for the repeal of legislation; and to provide for matters connected therewith.",
+        "introduced_by": "The Minister of Cooperative Governance and Traditional Affairs",
+        "stages": {
+          "introduction": "2026-04-21",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B11-2026",
+            "date": "2026-04-22",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B11-2026_Traditional_and_Khoi_San_Leadership_Bill.pdf",
+            "title": "Traditionaland Khoi-San Leadership Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2327603,
+      "name": "Mine Health and Safety Amendment Bill (B10–2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-04-07",
+      "introduced_by": "",
+      "bill_no": "B10-2026",
+      "bill_no_number": "B10",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B10-2026_Mine_Health_and_Safety_AB.pdf",
+      "detail": {
+        "description": "To amend the Mine Health and Safety Act, 1996, so as to streamline administrative processes and substitute obsolete provisions; to strengthen managerial responsibility and accountability of employers; to provide for the recomposition of the Council; to provide for the dissolution of the Inspectorate as a juristic person; to strengthen enforcement provisions and increase penalties; to amend and insert certain definitions; and to provide for matters connected therewith.",
+        "introduced_by": "The Minister of Mineral and Petroleum Resources",
+        "stages": {
+          "introduction": "2026-04-07",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B10-2026",
+            "date": "2026-04-09",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B10-2026_Mine_Health_and_Safety_AB.pdf",
+            "title": "Mine Health and Safety Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2327557,
+      "name": "Public Procurement Second Amendment Bill (B9-2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-03-25",
+      "introduced_by": "",
+      "bill_no": "B9-2026",
+      "bill_no_number": "B9",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B9-2026_Public_Procurement_2nd_AB.pdf",
+      "detail": {
+        "description": "To amend the Public Procurement Act, 2024, so as to insert certain definitions; to provide for the making of whistleblower disclosures in respect of any infringement or offence in terms of the Public Procurement Act, 2024; to provide for the reward of a whistleblower disclosure, which leads to the recovery of funds by the State; to provide for offences in respect of whistleblower disclosures; to increase the penalty, which may be imposed in respect of certain offences; to make provision for the institution of a private prosecution; to provide for regulations related to whistleblower disclosures; to amend the arrangement of sections; and to provide for matters connected therewith.",
+        "introduced_by": "MS MP Kobe, MP",
+        "stages": {
+          "introduction": "2026-03-25",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B9-2026",
+            "date": "2026-03-26",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B9-2026_Public_Procurement_2nd_AB.pdf",
+            "title": "Public Procurement Second Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2327497,
+      "name": "Special Pensions Amendment Bill (B8-2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-03-17",
+      "introduced_by": "",
+      "bill_no": "B8-2026",
+      "bill_no_number": "B8",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B8-2026_Special_Pensions_AB.pdf",
+      "detail": {
+        "description": "To amend the Special Pensions Act, 1996, so as to provide for the retention of benefits that have been determined before the lapsing of certain provisions; to allow persons who qualify for more than one benefit to be granted the greater benefit; to provide for the right of a survivor to a survivor’s lump sum benefit under certain circumstances; to provide for a funeral benefit in line with the Government Employees Pension Law, 1996; to provide for condonation of applications submitted after the closing date; to provide for reconsideration of a determination by the designated institution under certain circumstances; to repeal a certain section; to substitute and delete certain definitions; and to provide for matters connected therewith.",
+        "introduced_by": "Minister of Finance",
+        "stages": {
+          "introduction": "2026-03-17",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B8-2026",
+            "date": "2026-03-18",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B8-2026_Special_Pensions_AB.pdf",
+            "title": "Special Pensions Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2327194,
+      "name": "Public Procurement Amendment Bill (B7-2026)",
+      "referred_nhtl": 0,
+      "bill_status": "WD",
+      "introduced_date": "2026-03-12",
+      "introduced_by": "",
+      "bill_no": "B7-2026",
+      "bill_no_number": "B7",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B7-2026_Public_Procurement_AB.pdf",
+      "detail": {
+        "description": "To amend the Public Procurement Act, 2024, so as to insert a definition; to increase the number of days within which an affected person may provide reasons as to why a debarment order should not be issued; to expand upon the instances in which a",
+        "introduced_by": "Mr M Cuthbert, MP",
+        "stages": {
+          "introduction": "2026-03-12",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B7-2026",
+            "date": "2026-03-13",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B7-2026_Public_Procurement_AB.pdf",
+            "title": "Public Procurement Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2327140,
+      "name": "Gas Bill (B6-2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-03-05",
+      "introduced_by": "",
+      "bill_no": "B6-2026",
+      "bill_no_number": "B6",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B6-2026_Gas_Bill.pdf",
+      "detail": {
+        "description": "To repeal the Gas Act, 2001, to provide for the promotion of the orderly development of the gas industry; to enhance the national regulatory framework; to promote broad-based black economic empowerment; to provide for socioeconomic and environmentally sustainable development; to provide for new developments and changing technologies in the gas sector; to facilitate gas infrastructure development and investment; to provide for cooperation between the private and public sectors; to strengthen enforcement and improve compliance; and to provide for matters connected therewith.",
+        "introduced_by": "Minister of Electricity and Energy",
+        "stages": {
+          "introduction": "2026-03-05",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B6-2026",
+            "date": "2026-03-06",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B6-2026_Gas_Bill.pdf",
+            "title": "Gas Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2326912,
+      "name": "South African National Petroleum Company Bill (B2-2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-02-11",
+      "introduced_by": "",
+      "bill_no": "B2-2026",
+      "bill_no_number": "B2",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B2-2026_SA_National_Petroleum_Company.pdf",
+      "detail": {
+        "description": "To provide for the establishment of the South African National Petroleum Company; to provide for the objects and functions of the Company; to provide for the consolidation and transfer of assets to the Company; to provide for the appointment and composition of the Board of the Company and the management thereof; to provide for its finances; to provide for the appointment of the Chief Executive Officer, Chief Financial Officer and staff of the Company; to provide for transitional arrangements for the transfer of human resources and assets from the South African Gas Development Company (iGas), Strategic Fuel Fund (SFF) and Petroleum Oil and Gas Corporation of South Africa (PetroSA) to the Company; and to provide for matters connected therewith.",
+        "introduced_by": "Minister of Mineral and Petroleum Resources",
+        "stages": {
+          "introduction": "2026-02-11",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B2-2026",
+            "date": "2026-02-11",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B2-2026_SA_National_Petroleum_Company.pdf",
+            "title": "South African National Petroleum Company Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2326497,
+      "name": "National Water Amendment Bill (B1-2026)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2026-01-21",
+      "introduced_by": "",
+      "bill_no": "B1-2026",
+      "bill_no_number": "B1",
+      "bill_no_year": "2026",
+      "bill_no_URL": "/storage/app/media/Bills/2026/B1_2026_National_Water_Amendment_Bill.pdf",
+      "detail": {
+        "description": "To amend the National Water Act, 1998, so as to insert and amend certain definitions; to ensure equitable water allocation and optimise the use of water in support of the guiding principles of the National Water Act; to prohibit undesirable consequences of private water trading; to further provide for the purpose of the Act; to provide for the review period of the national water resource strategy to be increased to 10 years; to provide for the periodic review of the determination of a class of a water resource and water resource quality objectives; to provide for the periodic review of the Reserve; to further provide for the protection of water source areas; to further provide for the transfer of water use authorisations; to provide for the reallocation of water; to further provide for the making of regulations; to repeal the right to declare an existing lawful water use; to provide for additional controlled activities; to further regulate the governance matters of water user associations and their membership thereof; to provide for the transformation of water user associations; and to provide for matters connected therewith.",
+        "introduced_by": "Minister of Water and Sanitation",
+        "stages": {
+          "introduction": "2026-01-21",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B1-2026",
+            "date": "2026-01-22",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2026/B1_2026_National_Water_Amendment_Bill.pdf",
+            "title": "National Water Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2326443,
+      "name": "Constitution Twenty-Third Amendment Bill (B34-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2025-12-12",
+      "introduced_by": "",
+      "bill_no": "B34-2025",
+      "bill_no_number": "B34",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B34-2025_Constitution_23rd_AB.pdf",
+      "detail": {
+        "description": "To amend the Constitution of the Republic of South Africa, 1996, so as to abolish the office of Deputy Minister and to delete any reference to Deputy Minister; to increase the number of Ministers that may be selected from outside the National Assembly; to ensure the National Assembly’s approval of every ministerial appointment and to require the creation of a committee in the National Assembly to give effect to this requirement; to provide for a motion of no confidence in a Minister; and to provide for matters connected therewith.",
+        "introduced_by": "Mr RAP Trollip, MP",
+        "stages": {
+          "introduction": "2025-12-12",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B34-2025",
+            "date": "2025-12-15",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B34-2025_Constitution_23rd_AB.pdf",
+            "title": "Constitution Twenty-Third Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2326261,
+      "name": "Electoral Laws Amendment Bill (B33-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2025-12-01",
+      "introduced_by": "",
+      "bill_no": "B33-2025",
+      "bill_no_number": "B33",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B33-2025_Electoral_Laws_Amendment_Bill/B33-2025_Electoral_Laws_Amendment_Bill.pdf",
+      "detail": {
+        "description": "To amend the Electoral Commission Act, 1996,",
+        "introduced_by": "Ms LM Ngobeni, MP",
+        "stages": {
+          "introduction": "2025-12-01",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B33-2025",
+            "date": "2025-12-01",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B33-2025_Electoral_Laws_Amendment_Bill/B33-2025_Electoral_Laws_Amendment_Bill.pdf",
+            "title": "Electoral Laws Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2326108,
+      "name": "Defence Amendment Bill (B32-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NCOP",
+      "introduced_date": "2025-11-20",
+      "introduced_by": "",
+      "bill_no": "B32-2025",
+      "bill_no_number": "B32",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B32_2025_Defence_AB.pdf",
+      "detail": {
+        "description": "To amend the Defence Act, 2002, so as to provide for the exclusion of military judges and senior military judges from boards of inquiry; and to provide for matters incidental thereto.",
+        "introduced_by": "Minister of Defence and Military Veterans",
+        "stages": {
+          "introduction": "2025-11-20",
+          "portfolio committee": "2026-04-07",
+          "national assembly": "2026-06-11",
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B32-2025",
+            "date": "2025-11-21",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B32_2025_Defence_AB.pdf",
+            "title": "Defence Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2326106,
+      "name": "Military Discipline Supplementary Measures Amendment Bill (B31-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2025-11-20",
+      "introduced_by": "",
+      "bill_no": "B31B-2025",
+      "bill_no_number": "B31B",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B31B-2025_Military_Discipline_Supplementary_Measures_AB.pdf",
+      "detail": {
+        "description": "To amend the Military Discipline Supplementary Measures Act, 1999, so as to insert and substitute certain definitions; to provide for the establishment of the Military Judicial Advisory Committee; to provide for the assignment and removal of military judges and senior military judges; and to provide for matters connected therewith.",
+        "introduced_by": "Minister of Defence and Military Veterans",
+        "stages": {
+          "introduction": "2025-11-20",
+          "portfolio committee": "2026-05-06",
+          "national assembly": "2026-06-04",
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B31B-2025",
+            "date": "2026-05-06",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B31B-2025_Military_Discipline_Supplementary_Measures_AB.pdf",
+            "title": "Military Discipline Supplementary Measures Amendment Bill"
+          },
+          {
+            "label": "B31A-2025",
+            "date": "2026-05-06",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B31A-2025_Military_Discipline_Supplementary_Measures_AB.pdf",
+            "title": "Military Discipline Supplementary Measures Amendment Bill"
+          },
+          {
+            "label": "B31-2025",
+            "date": "2025-11-21",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B31_2025_Military_Discipline_Supplementary_Measures_AB.pdf",
+            "title": "Military Discipline Supplementary Measures Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2325687,
+      "name": "South African Judicial Education Institute Amendment Bill (B26-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2025-10-27",
+      "introduced_by": "",
+      "bill_no": "B26-2025",
+      "bill_no_number": "B26",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B26_2025_South_African_Judicial_Education_Institute_AB.pdf",
+      "detail": {
+        "description": "To amend the South African Judicial Education Institute Act, 2008, so as to provide for the appointment of a Dean; to provide for the powers and duties of the Dean; to amend the title of Director to Executive Director; to further regulate the appointment, powers and duties of the Executive Director; to provide for the reimbursement of members of the Council for subsistence and travelling expenses; and to provide for matters connected therewith.",
+        "introduced_by": "Minister of Justice and Constitutional Development",
+        "stages": {
+          "introduction": "2025-10-27",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B26-2025",
+            "date": "2025-10-28",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B26_2025_South_African_Judicial_Education_Institute_AB.pdf",
+            "title": "South African Judicial Education Institute Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2325627,
+      "name": "Parliamentary and Provincial Medical Aid Scheme Amendment Bill (B25-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2025-10-09",
+      "introduced_by": "",
+      "bill_no": "B25-2025",
+      "bill_no_number": "B25",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B25-2025_Parliamentary_and_Provincial_Medical_Aid_Scheme_AB.pdf",
+      "detail": {
+        "description": "To amend the Parliamentary and Provincial Medical Aid Scheme Act, 1975, so as to substitute compulsory membership of the Parmed Medical Aid Scheme with voluntary membership; to substitute certain outdated terminology; to amend the long title; to provide for transitional measures; and to provide for matters connected therewith.",
+        "introduced_by": "Dr TKS Letlape, MP",
+        "stages": {
+          "introduction": "2025-10-09",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B25-2025",
+            "date": "2025-10-15",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B25-2025_Parliamentary_and_Provincial_Medical_Aid_Scheme_AB.pdf",
+            "title": "Parliamentary and Provincial Medical Aid Scheme Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2325496,
+      "name": "Water Services Amendment Bill (B24-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2025-10-03",
+      "introduced_by": "",
+      "bill_no": "B24-2025",
+      "bill_no_number": "B24",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B24_2025_Water_Services_AB.pdf",
+      "detail": {
+        "description": "To amend the Water Services Act, 1997, so as to insert and amend certain definitions; to provide for the registration of persons who install and operate water services works; to provide for a  icensing system for municipal service delivery mechanisms delivering water services; to provide for a water services licensing authority; to provide for further governance and operations requirements for water boards; to strengthen the compliance and enforcement provisions in the Act; to provide for authorised persons to conduct inspections of water services works or activities in terms of the Act; to provide for additional offences and penalties; to provide for transitional arrangements; and to provide for matters connected therewith.",
+        "introduced_by": "Minister of Water and Sanitation",
+        "stages": {
+          "introduction": "2025-10-03",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B24-2025",
+            "date": "2025-10-06",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B24_2025_Water_Services_AB.pdf",
+            "title": "Water Services Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2325477,
+      "name": "Constitution Twenty-Second Amendment Bill (B 23-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2025-09-29",
+      "introduced_by": "",
+      "bill_no": "B 23-2025",
+      "bill_no_number": "B 23",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B23_2025_Constitution_22nd_AB.pdf",
+      "detail": {
+        "description": "To amend the Constitution of the Republic of South Africa, 1996, so as to affirm that land and natural resources are the common heritage of all citizens of South Africa; to provide for custodianship of land and natural resources by the state and traditional or Khoi-San leadership; to provide for the expropriation of land without compensation for a public purpose or in the public interest; to remove all references to compensation in section 25 of the Constitution; to extend the historical cut-off date for restitution of land to 6 April 1652; and to provide for the repeal of the existing section 25 upon the enactment of enabling legislation.",
+        "introduced_by": "Mr M Manyi, MP",
+        "stages": {
+          "introduction": "2025-09-29",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B 23-2025",
+            "date": "2025-09-30",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B23_2025_Constitution_22nd_AB.pdf",
+            "title": "Constitution Twenty-Second Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2325059,
+      "name": "Liquor Amendment Bill (B21-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2025-09-08",
+      "introduced_by": "",
+      "bill_no": "B21-2025",
+      "bill_no_number": "B21",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B21_2025_Liquor_Amendment_Bill.pdf",
+      "detail": {
+        "description": "To amend the Liquor Act, 2003, so as to insert certain definitions; to prohibit the advertising, promotion or product placement of liquor, in all forms of media; to prohibit the use of a manufacturer’s name or any brand element to promote liquor or the consumption of liquor; to prohibit the organising, promoting of, or the making of a financial contribution to, an organised event by a registered person; and to provide for matters connected therewith.",
+        "introduced_by": "MS VN Mente, MP",
+        "stages": {
+          "introduction": "2025-09-08",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B21-2025",
+            "date": "2025-09-09",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B21_2025_Liquor_Amendment_Bill.pdf",
+            "title": "Liquor Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2323835,
+      "name": "General (Family) Laws Amendment Bill (B20-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2025-08-13",
+      "introduced_by": "",
+      "bill_no": "B20-2025",
+      "bill_no_number": "B20",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B20_2025_General_Family_Laws_Amendment_Bill.pdf",
+      "detail": {
+        "description": "To amend the—",
+        "introduced_by": "Minister of Justice and Constitutional Development)",
+        "stages": {
+          "introduction": "2025-08-13",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B20-2025",
+            "date": "2025-08-14",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B20_2025_General_Family_Laws_Amendment_Bill.pdf",
+            "title": "General (Family) Laws Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2323776,
+      "name": "Insourcing Bill (B19-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2025-07-31",
+      "introduced_by": "",
+      "bill_no": "B19-2025",
+      "bill_no_number": "B19",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B19_2025_Insourcing_Bill.pdf",
+      "detail": {
+        "description": "To provide for insourcing of certain services that are required on a regular basis by organs of state; and to provide for matters connected therewith.",
+        "introduced_by": "MS OMC Maotwe, MP",
+        "stages": {
+          "introduction": "2025-07-31",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B19-2025",
+            "date": "2025-08-01",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B19_2025_Insourcing_Bill.pdf",
+            "title": "Insourcing Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2323597,
+      "name": "International Co-operation in Criminal Matters Amendment Bill (B 18-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2025-07-11",
+      "introduced_by": "",
+      "bill_no": "B 18-2025",
+      "bill_no_number": "B 18",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B18-2025_International_Co-operation_in_Criminal_Matters.pdf",
+      "detail": {
+        "description": "To amend the International Co-operation in Criminal Matters Act, 1996, so as to insert certain definitions; to facilitate the provision of evidence to an entity in order to ensure that South Africa complies with its international obligations; to provide for evidence by means of audio-visual link; and to provide for matters incidental thereto.",
+        "introduced_by": "",
+        "stages": {
+          "introduction": "2025-07-11",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B 18-2025",
+            "date": "2025-07-14",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B18-2025_International_Co-operation_in_Criminal_Matters.pdf",
+            "title": "International Co-operation in Criminal Matters Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2322993,
+      "name": "Remuneration of Public Office Bearers Amendment Bill (B17-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2025-06-12",
+      "introduced_by": "",
+      "bill_no": "B17-2025",
+      "bill_no_number": "B17",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B17_2025_Remuneration_of_Public_Office_Bearers_AB.pdf",
+      "detail": {
+        "description": "To amend the Remuneration of Public Office Bearers Act, 1998, so as to provide for a definition of ‘tools of trade’; to amend the definition of ‘‘the Constitution’’; to require that the President be provided with such tools of trade as the National Assembly by resolution may determine, and to stipulate the factors to be considered by the National Assembly when doing so; to require that the Deputy President, Ministers and Deputy Ministers be provided with such tools of trade as the President by proclamation in the Gazette may determine, and to stipulate the factors to be considered by the President when doing so; to provide that any changes effected to the provision of allowances, benefits or tools of trade of the Deputy President, Ministers and Deputy Ministers must be reported to the National Assembly and published on the official website of The Presidency; to provide for a review of all allowances, tools of trade and benefits of the President, Deputy President, Ministers and Deputy Ministers and regular reviews thereafter; and to provide for matters connected therewith.",
+        "introduced_by": "Mr AD Beesley, MP",
+        "stages": {
+          "introduction": "2025-06-12",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B17-2025",
+            "date": "2025-06-13",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B17_2025_Remuneration_of_Public_Office_Bearers_AB.pdf",
+            "title": "Remuneration of Public Office Bearers Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2322089,
+      "name": "Performing Animals Protection Amendment Bill (B12-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2025-04-15",
+      "introduced_by": "",
+      "bill_no": "B12-2025",
+      "bill_no_number": "B12",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B12_2025_Performing_Animals_Protection.pdf",
+      "detail": {
+        "description": "To amend the Performing Animals Protection Act, 1935, so as to regulate the access to private or public areas, buildings, facilities or transport systems of assistance animals accompanying a person with a disability; to provide that a National Licensing Officer may also be a specialist in training of assistance animals; to provide that a person with a disability who intends to have an assistance animal accompany him or her into a private or public space, building, facility or transport system must apply for a licence to do so; to provide for the inclusion of the details of the assistance animal accompanying a person with a disability in an application for a licence; to further regulate the visitation and assessing of the premise that will be the living quarters of an assistance animal; to amend the criteria for granting a licence; to amend the criteria for a valid licence; to also regulate instances where an assistance animal may be refused access to a premises; to provide for the Minister to make regulations regarding further licensing conditions; to ensure that a person with a disability is granted access, on an equal basis with others, to the physical environment, transportation, and all other facilities open or provided to the public, both in urban and rural areas; to insert new definitions; and to provide for matters connected therewith.",
+        "introduced_by": "Ms WR Alexander, MP",
+        "stages": {
+          "introduction": "2025-04-15",
+          "portfolio committee": "2025-11-25",
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B12-2025",
+            "date": "2025-05-02",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B12_2025_Performing_Animals_Protection.pdf",
+            "title": "Performing Animals Protection Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2322044,
+      "name": "Intergovernmental Monitoring, Support and Interventions Bill (B11-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2025-04-15",
+      "introduced_by": "",
+      "bill_no": "B11-2025",
+      "bill_no_number": "B11",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B11_2025_Intergovernmental_MSI_Bill.pdf",
+      "detail": {
+        "description": "(Referred to National House of Traditional and Khoi-San Leaders, which must, within 60 days from the date of the referral (viz. 14 July 2025) make any comments it wishes to make. To regulate the processes established by section 100 of the Constitution; to regulate the implementation of section 139 of the Constitution, including the processes established by that section; to provide for support to provinces and municipalities in need of assistance; to provide for the monitoring of provinces and municipalities as to the fulfilment of their executive obligations in terms of the Constitution or legislation; to provide alternative steps and mechanisms to interventions to ensure fulfilment by provinces or municipalities of their executive obligations; to provide for the appointment of an administrator or national and provincial executive representative by the intervening national executive or provincial executive; and to provide for matters connected therewith.",
+        "introduced_by": "Minister of Cooperative Governance and Traditional Affairs",
+        "stages": {
+          "introduction": "2025-04-15",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B11-2025",
+            "date": "2025-04-16",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B11_2025_Intergovernmental_MSI_Bill.pdf",
+            "title": "Intergovernmental Monitoring, Support and Interventions Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2321873,
+      "name": "Local Government: Municipal Structures Second Amendment Bill (B9-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2025-03-25",
+      "introduced_by": "",
+      "bill_no": "B9-2025",
+      "bill_no_number": "B9",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B9_2025_Local_Government_Municipal_Structures_Second_Amendment_Bill.pdf",
+      "detail": {
+        "description": "",
+        "introduced_by": "Mr G Michalakis, MP",
+        "stages": {
+          "introduction": "2025-03-25",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B9-2025",
+            "date": "2025-03-26",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B9_2025_Local_Government_Municipal_Structures_Second_Amendment_Bill.pdf",
+            "title": "Local Government: Municipal Structures Second Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2321757,
+      "name": "Judicial Matters Amendment Bill (B8-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2025-03-12",
+      "introduced_by": "",
+      "bill_no": "B8-2025",
+      "bill_no_number": "B8",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B8_2025_Judicial_Matters_Amendment_Bill.pdf",
+      "detail": {
+        "description": "",
+        "introduced_by": "Minister of Justice and Constitutional Development",
+        "stages": {
+          "introduction": "2025-03-12",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B8-2025",
+            "date": "2025-03-12",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B8_2025_Judicial_Matters_Amendment_Bill.pdf",
+            "title": "Judicial Matters Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2321747,
+      "name": "Division of Revenue Bill (B7-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "WD",
+      "introduced_date": "2025-03-12",
+      "introduced_by": "",
+      "bill_no": "B7-2025",
+      "bill_no_number": "B7",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B7_2025_Division_of_Revenue_Bill.pdf",
+      "detail": {
+        "description": "(Withdrawn according to Assembly Rule 334) To provide for the equitable division of revenue raised nationally among the national, provincial and local spheres of government for the 2025/26 financial year; the determination of each province’s equitable share; allocations to provinces, local government and municipalities from national government’s equitable share; the responsibilities of all three spheres of government pursuant to such division and allocations; and to provide for matters connected therewith.",
+        "introduced_by": "Minister of Finance",
+        "stages": {
+          "introduction": "2025-03-12",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B7-2025",
+            "date": "2025-03-12",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B7_2025_Division_of_Revenue_Bill.pdf",
+            "title": "Division of Revenue Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2321746,
+      "name": "Appropriation Bill (B6-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "WD",
+      "introduced_date": "2025-03-12",
+      "introduced_by": "",
+      "bill_no": "B6-2025",
+      "bill_no_number": "B6",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B6_2025_Appropriation_Bill.pdf",
+      "detail": {
+        "description": "(Withdrawn according to Assembly Rule 334) To appropriate money from the National Revenue Fund for the requirements of the State for the 2025/26 financial year; to prescribe conditions for the spending of funds withdrawn for the 2026/27 financial year before the commencement of the Appropriation Act for the 2026/27 financial year; and to provide for matters incidental thereto.",
+        "introduced_by": "Minister of Finance",
+        "stages": {
+          "introduction": "2025-03-12",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B6-2025",
+            "date": "2025-03-12",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B6_2025_Appropriation_Bill.pdf",
+            "title": "Appropriation Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2321679,
+      "name": "Local Government: Municipal Structures Amendment Bill (B2-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2024-11-08",
+      "introduced_by": "",
+      "bill_no": "B2-2025",
+      "bill_no_number": "B2",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B2_2025_Local_Government_Munipal_Structures.pdf",
+      "detail": {
+        "description": "",
+        "introduced_by": "Mr G Michalakis, MP",
+        "stages": {
+          "introduction": "2024-11-08",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B2-2025",
+            "date": "2025-03-04",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B2_2025_Local_Government_Munipal_Structures.pdf",
+            "title": "Local Government: Municipal Structures Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2321674,
+      "name": "Constitution Nineteenth Amendment Bill (B1-2025)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2024-11-08",
+      "introduced_by": "",
+      "bill_no": "B1-2025",
+      "bill_no_number": "B1",
+      "bill_no_year": "2025",
+      "bill_no_URL": "/storage/app/media/Bills/2025/B1_2025_Constitution_Nineteenth_Amendment Bill.pdf",
+      "detail": {
+        "description": "",
+        "introduced_by": "Mr G Michalakis, MP",
+        "stages": {
+          "introduction": "2024-11-08",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B1-2025",
+            "date": "2025-03-04",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2025/B1_2025_Constitution_Nineteenth_Amendment%20Bill.pdf",
+            "title": "Constitution Nineteenth Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2320048,
+      "name": "Constitution Twenty-First Amendment Bill (B22-2024)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2024-11-01",
+      "introduced_by": "",
+      "bill_no": "B22-2024",
+      "bill_no_number": "B22",
+      "bill_no_year": "2024",
+      "bill_no_URL": "/storage/app/media/Bills/2024/B22_2024_Constitution_Twenty_First_Amendment_Bill/B22_2024_Constitution_Twenty_First_Amendment_Bill.pdf",
+      "detail": {
+        "description": "",
+        "introduced_by": "Adv G Breytenbach, MP",
+        "stages": {
+          "introduction": "2024-11-01",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B22-2024",
+            "date": "2024-11-01",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2024/B22_2024_Constitution_Twenty_First_Amendment_Bill/B22_2024_Constitution_Twenty_First_Amendment_Bill.pdf",
+            "title": "Constitution Twenty-First Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2316701,
+      "name": "Repeal of South African Airways Bill (B2-2024)",
+      "referred_nhtl": 0,
+      "bill_status": "WD",
+      "introduced_date": "2024-01-24",
+      "introduced_by": "",
+      "bill_no": "B2-2024",
+      "bill_no_number": "B2",
+      "bill_no_year": "2024",
+      "bill_no_URL": "/storage/app/media/Bills/2024/B2_2024_Repeal_of_South_African_Airways/B2_2024_Repeal_of_South_African_Airways.pdf",
+      "detail": {
+        "description": "To repeal the South African Airways Act, 2007; and to provide for matters connected therewith.",
+        "introduced_by": "The Minister of Public Enterprises",
+        "stages": {
+          "introduction": "2024-01-24",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B2-2024",
+            "date": "2024-01-25",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2024/B2_2024_Repeal_of_South_African_Airways/B2_2024_Repeal_of_South_African_Airways.pdf",
+            "title": "Repeal of South African Airways Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2316700,
+      "name": "National State Enterprises Bill (B1-2024)",
+      "referred_nhtl": 0,
+      "bill_status": "WD",
+      "introduced_date": "2024-01-24",
+      "introduced_by": "",
+      "bill_no": "B1-2024",
+      "bill_no_number": "B1",
+      "bill_no_year": "2024",
+      "bill_no_URL": "/storage/app/media/Bills/2024/B1_2024_National_State_Enterprises/B1_2024_National_State_Enterprises.pdf",
+      "detail": {
+        "description": "To provide for the development of a strategy for national state enterprises; to establish the State Asset Management SOC Ltd; to provide for the State as the sole shareholder of a holding company; to consolidate the State’s shareholdings in national state enterprises; to provide for the powers of the shareholder on behalf of the State; to provide for the phased succession of national state enterprises to the holding company; to provide for the holding company’s powers as shareholder of subsidiaries; to provide for appropriate and effective monitoring and reporting mechanisms over subsidiaries; and to provide for matters connected therewith.",
+        "introduced_by": "The Minister of Public Enterprises",
+        "stages": {
+          "introduction": "2024-01-24",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B1-2024",
+            "date": "2024-01-25",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2024/B1_2024_National_State_Enterprises/B1_2024_National_State_Enterprises.pdf",
+            "title": "National State Enterprises Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2316250,
+      "name": "Marriage Bill (B43-2023)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2023-12-13",
+      "introduced_by": "",
+      "bill_no": "B43-2023",
+      "bill_no_number": "B43",
+      "bill_no_year": "2023",
+      "bill_no_URL": "/storage/app/media/Bills/2023/B43_2023_Marriage_Bill/b43-2023-marriage-bill.pdf",
+      "detail": {
+        "description": "",
+        "introduced_by": "Minister of Home Affairs",
+        "stages": {
+          "introduction": "2023-12-13",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B43-2023",
+            "date": "2023-12-13",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2023/B43_2023_Marriage_Bill/b43-2023-marriage-bill.pdf",
+            "title": "Marriage Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2315401,
+      "name": "South African Broadcasting Corporation SOC Ltd Bill (B32-2023)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2023-10-13",
+      "introduced_by": "",
+      "bill_no": "B32-2023",
+      "bill_no_number": "B32",
+      "bill_no_year": "2023",
+      "bill_no_URL": "/storage/app/media/Bills/2023/B32-2023_South_African_Broadcasting_Corporation_SOC_LTD_Bill/B32-2023_South_African_Broadcasting_Corporation_SOC_LTD_Bill.pdf",
+      "detail": {
+        "description": "",
+        "introduced_by": "Minister of Communications and Digital Technologies",
+        "stages": {
+          "introduction": "2023-10-13",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B32-2023",
+            "date": "2023-10-17",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2023/B32-2023_South_African_Broadcasting_Corporation_SOC_LTD_Bill/B32-2023_South_African_Broadcasting_Corporation_SOC_LTD_Bill.pdf",
+            "title": "South African Broadcasting Corporation SOC Ltd Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2314491,
+      "name": "Regulation of Interception of Communications and Provision of Communication-related Information Bill (B28-2023)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2023-08-29",
+      "introduced_by": "",
+      "bill_no": "B28B-2023",
+      "bill_no_number": "B28B",
+      "bill_no_year": "2023",
+      "bill_no_URL": "/storage/app/media/Bills/2023/B28_2023 Regulation_of_Interception_of_Communications_and_Provision_of_Communication_related_Information_Bill/B28B_2023_Regulation_of_Interception_of_Communications_and_Provision_of_Communication_related_Information_Bill.pdf",
+      "detail": {
+        "description": "",
+        "introduced_by": "Minister of Justice and Correctional Services",
+        "stages": {
+          "introduction": "2023-08-29",
+          "portfolio committee": "2023-11-01",
+          "national assembly": "2023-11-14",
+          "select committee": "2023-11-30",
+          "national council of provinces": "2023-12-06",
+          "sent for assent": "2023-12-06"
+        },
+        "versions": [
+          {
+            "label": "B28B-2023",
+            "date": "2023-11-01",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2023/B28_2023%20Regulation_of_Interception_of_Communications_and_Provision_of_Communication_related_Information_Bill/B28B_2023_Regulation_of_Interception_of_Communications_and_Provision_of_Communication_related_Information_Bill.pdf",
+            "title": "Regulation of Interception of Communications and Provision of Communication-related Information Bill"
+          },
+          {
+            "label": "B28-2023",
+            "date": "2023-08-30",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2023/B28_2023%20Regulation_of_Interception_of_Communications_and_Provision_of_Communication_related_Information_Bill/B28_2023%20Regulation_of_Interception_of_Communications_and_Provision_of_Communication_related_Information_Bill.pdf",
+            "title": "Regulation of Interception of Communications and Provision of Communication-related Information Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2320318,
+      "name": "Constitution Twentieth Amendment Bill (B20-2023)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2023-07-13",
+      "introduced_by": "",
+      "bill_no": "B20-2023",
+      "bill_no_number": "B20",
+      "bill_no_year": "2023",
+      "bill_no_URL": "/storage/app/media/Bills/2023/B20_2023_Constitution_Twentieth_Amendment_Bill/B20_2023_Constitution_Twentieth_Amendment_Bill.pdf",
+      "detail": {
+        "description": "",
+        "introduced_by": "Adv G Breytenbach, MP",
+        "stages": {
+          "introduction": "2023-07-13",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B20-2023",
+            "date": "2023-07-13",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2023/B20_2023_Constitution_Twentieth_Amendment_Bill/B20_2023_Constitution_Twentieth_Amendment_Bill.pdf",
+            "title": "Constitution Twentieth Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2310209,
+      "name": "Electoral Commission Amendment Bill (B15-2023)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2023-06-21",
+      "introduced_by": "",
+      "bill_no": "B15-2023",
+      "bill_no_number": "B15",
+      "bill_no_year": "2023",
+      "bill_no_URL": "/storage/app/media/Bills/2023/B15_2023_Electoral_Commission_Amendment_Bill/B15_2023_Electoral_Commission_Amendment_Bill.pdf",
+      "detail": {
+        "description": "",
+        "introduced_by": "Dr A Lotriet, MP",
+        "stages": {
+          "introduction": "2023-06-21",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B15-2023",
+            "date": "2023-06-21",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2023/B15_2023_Electoral_Commission_Amendment_Bill/B15_2023_Electoral_Commission_Amendment_Bill.pdf",
+            "title": "Electoral Commission Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2309784,
+      "name": "Merchant Shipping Bill (B12-2023)",
+      "referred_nhtl": 0,
+      "bill_status": "WD",
+      "introduced_date": "2023-05-11",
+      "introduced_by": "",
+      "bill_no": "B12-2023",
+      "bill_no_number": "B12",
+      "bill_no_year": "2023",
+      "bill_no_URL": "/storage/app/media/Bills/2023/B12_2023_Merchant_Shipping_Bill/B12_2023_Merchant_Shipping_Bill.pdf",
+      "detail": {
+        "description": "To provide for the powers and duties of the Minister and the South African Maritime Safety Authority in the administration of this Act; to provide for the registration, permitting, and licensing of ships and the establishment and operation of a shipping information centre in the Republic; to provide for the application of labour laws to seafarers; to provide for the conditions of employment of seafarers and the health and well-being of seafarers on board a vessel; to promote the safety of life at sea; to establish inspection and enforcement mechanisms including those for marine casualties and crimes committed on ships; to provide for the regulation of marine traffic; to provide for legal proceedings and jurisdictional matters; to recognise and incorporate into domestic law, international conventions to which the Republic is bound in terms of the Constitution; to repeal certain Acts; to provide a transitional framework for the new provisions of this Act; and to provide for matters incidental thereto.",
+        "introduced_by": "Minister of Transport",
+        "stages": {
+          "introduction": "2023-05-11",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B12-2023",
+            "date": "2023-05-11",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2023/B12_2023_Merchant_Shipping_Bill/B12_2023_Merchant_Shipping_Bill.pdf",
+            "title": "Merchant Shipping Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2320316,
+      "name": "Prevention of Illegal Eviction from and Unlawful Occupation of Land Amendment Bill (B6-2023)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2023-03-29",
+      "introduced_by": "",
+      "bill_no": "B6-2023",
+      "bill_no_number": "B6",
+      "bill_no_year": "2023",
+      "bill_no_URL": "/storage/app/media",
+      "detail": {
+        "description": "",
+        "introduced_by": "Ms EL Powell, MP",
+        "stages": {
+          "introduction": "2023-03-29",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B6-2023",
+            "date": "2023-03-29",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2023/B6_2023_Prevention_of_Illegal_Eviction_from_and_Unlawful_Occupation_of_Land_Amendment_Bill/B6_2023_Prevention_of_Illegal_Eviction_from_and_Unlawful_Occupation_of_Land_Amendment_Bill.pdf",
+            "title": "Prevention of Illegal Eviction from and Unlawful Occupation of Land Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2307574,
+      "name": "Tobacco Products and Electronic Delivery Systems Control Bill (B33-2022)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2022-12-09",
+      "introduced_by": "",
+      "bill_no": "B33-2022",
+      "bill_no_number": "B33",
+      "bill_no_year": "2022",
+      "bill_no_URL": "/storage/app/media/Bills/2022/B33_2022_Tobacco_Products_and_Electronic_Delivery_Systems_Control_Bill/B33_2022_Tobacco_Products_and_Electronic_Delivery_Systems_Control_Bill.pdf",
+      "detail": {
+        "description": "To regulate smoking; to regulate the sale and advertising of tobacco products and electronic delivery systems; to regulate the packaging and appearance of tobacco products and electronic delivery systems and to make provision for the standardisation of their packaging; to provide for standards in respect of the manufacturing and export of tobacco products and electronic delivery systems; to prohibit the sale of tobacco products and electronic delivery systems to children; to prohibit the free distribution of tobacco products and electronic delivery systems; to prohibit the sale of tobacco products and electronic delivery systems by means of vending machines; and to provide for matters connected therewith.",
+        "introduced_by": "Minister of Health",
+        "stages": {
+          "introduction": "2022-12-09",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B33-2022",
+            "date": "2022-12-09",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2022/B33_2022_Tobacco_Products_and_Electronic_Delivery_Systems_Control_Bill/B33_2022_Tobacco_Products_and_Electronic_Delivery_Systems_Control_Bill.pdf",
+            "title": "Tobacco Products and Electronic Delivery Systems Control Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2291404,
+      "name": "National Gambling Amendment Bill (B27-2018)",
+      "referred_nhtl": 0,
+      "bill_status": "NCOP",
+      "introduced_date": "2018-08-21",
+      "introduced_by": "",
+      "bill_no": "B27B-2018",
+      "bill_no_number": "B27B",
+      "bill_no_year": "2018",
+      "bill_no_URL": "/storage/app/media/Bills/2018/B27-2018_National_Gambling_Amendment_Bill/B27B-2018_National_Gambling_Amendment_Bill.pdf",
+      "detail": {
+        "description": "Rejected by NCOP Referred to Mediation Committee (ATC 15/05/25) Report by Mediation Committee (ATC 13/06/25)",
+        "introduced_by": "Minister of Trade and Industry",
+        "stages": {
+          "introduction": "2018-08-21",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": "2021-02-16",
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B27B-2018",
+            "date": "2019-10-18",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2018/B27-2018_National_Gambling_Amendment_Bill/B27B-2018_National_Gambling_Amendment_Bill.pdf",
+            "title": "National Gambling Amendment Bill"
+          },
+          {
+            "label": "B27-2018",
+            "date": "2018-08-01",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2018/B27-2018_National_Gambling_Amendment_Bill/B27-2018_National_Gambling_Amendment_Bill.pdf",
+            "title": "National Gambling Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2291403,
+      "name": "South African Reserve Bank Amendment Bill (B26-2018)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2018-08-16",
+      "introduced_by": "",
+      "bill_no": "B26-2018",
+      "bill_no_number": "B26",
+      "bill_no_year": "2018",
+      "bill_no_URL": "/storage/app/media/Bills/2018/B26_2018_South_African_Reserve_Bank_Amendment_Bill/B26_2018_South_African_Reserve_Bank_Amendment_Bill.pdf",
+      "detail": {
+        "description": "",
+        "introduced_by": "Mr J S Malema, MP",
+        "stages": {
+          "introduction": "2018-08-16",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B26-2018",
+            "date": "2018-08-16",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2018/B26_2018_South_African_Reserve_Bank_Amendment_Bill/B26_2018_South_African_Reserve_Bank_Amendment_Bill.pdf",
+            "title": "South African Reserve Bank Amendment Bill"
+          }
+        ]
+      }
+    },
+    {
+      "id": 2291733,
+      "name": "Protection of State Information Bill (B6-2010)",
+      "referred_nhtl": 0,
+      "bill_status": "NA",
+      "introduced_date": "2010-03-09",
+      "introduced_by": "",
+      "bill_no": "B6H-2010",
+      "bill_no_number": "B6H",
+      "bill_no_year": "2010",
+      "bill_no_URL": "/storage/app/media/Bills/2010/B6_2010_Protection_of_State_Information_Bill/B6H_2010_Protection_of_State_Information_Bill.pdf",
+      "detail": {
+        "description": "",
+        "introduced_by": "Minister of State Security",
+        "stages": {
+          "introduction": "2010-03-09",
+          "portfolio committee": null,
+          "national assembly": null,
+          "select committee": null,
+          "national council of provinces": null,
+          "sent for assent": null
+        },
+        "versions": [
+          {
+            "label": "B6H-2010",
+            "date": "2013-11-12",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2010/B6_2010_Protection_of_State_Information_Bill/B6H_2010_Protection_of_State_Information_Bill.pdf",
+            "title": "Protection of State Information Bill"
+          },
+          {
+            "label": "B6G-2010",
+            "date": "2013-11-12",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2010/B6_2010_Protection_of_State_Information_Bill/B6G_2010_Protection_of_State_Information_Bill.pdf",
+            "title": "Protection of State Information Bill"
+          },
+          {
+            "label": "B6F-2010",
+            "date": "2013-04-25",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2010/B6_2010_Protection_of_State_Information_Bill/B6F_2010_Protection_of_State_Information_Bill.pdf",
+            "title": "Protection of State Information Bill"
+          },
+          {
+            "label": "B6E-2010",
+            "date": "2013-04-25",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2010/B6_2010_Protection_of_State_Information_Bill/B6E_2010_Protection_of_State_Information_Bill.pdf",
+            "title": "Protection of State Information Bill"
+          },
+          {
+            "label": "B6D-2010",
+            "date": "2012-11-29",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2010/B6_2010_Protection_of_State_Information_Bill/B6D_2010_Protection_of_State_Information_Bill.pdf",
+            "title": "Protection of State Information Bill"
+          },
+          {
+            "label": "B6C-2010",
+            "date": "2012-11-29",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2010/B6_2010_Protection_of_State_Information_Bill/B6C_2010_Protection_of_State_Information_Bill.pdf",
+            "title": "Protection of State Information Bill"
+          },
+          {
+            "label": "B6B-2010",
+            "date": "2011-11-22",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2010/B6_2010_Protection_of_State_Information_Bill/B6B_2010_Protection_of_State_Information_Bill.pdf",
+            "title": "Protection of State Information Bill"
+          },
+          {
+            "label": "B6-2010",
+            "date": "2010-03-09",
+            "url": "https://www.parliament.gov.za/storage/app/media/Bills/2010/B6_2010_Protection_of_State_Information_Bill/B6_2010_Protection_of_State_Information_Bill.pdf",
+            "title": "Protection of State Information Bill"
+          }
+        ]
+      }
+    }
+  ]
+}

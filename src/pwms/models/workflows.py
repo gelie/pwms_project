@@ -2823,15 +2823,68 @@ class Bill(AbstractLegislativeWorkflow):
         Read-only: the :class:`BillVersion` history is the record, so the label
         is derived rather than typed. Prefers the row flagged ``is_current`` and
         falls back to the most recent version; empty string when the bill has no
-        versions recorded yet.
+        versions recorded yet. Reads the related set through the prefetch cache
+        when it is loaded (the API bill queryset does), so list responses do not
+        query per bill.
         """
-        if self.pk is None:
-            return ""
-        current = self.versions.filter(is_current=True).first()
-        if current is not None:
-            return current.version_label
-        latest = self.versions.first()  # Meta.ordering: newest first
-        return latest.version_label if latest is not None else ""
+        rows = self._version_rows()
+        for row in rows:  # Meta.ordering: newest first
+            if row.is_current:
+                return row.version_label
+        return rows[0].version_label if rows else ""
+
+    @property
+    def introduced_version(self):
+        """
+        Label of the bill's original (introduced) version (BRS §15A).
+
+        The earliest ``introduced``-typed version, falling back to the earliest
+        version of any type; a bill recorded without versions publishes as its
+        B-number — the bill as introduced.
+        """
+        row = self._introduced_version_row()
+        return row.version_label if row is not None else self.bill_number
+
+    @property
+    def introduced_version_date(self):
+        """
+        Date the bill's original (introduced) version was tabled (BRS §15A).
+
+        Tracks :attr:`introduced_version`: the earliest introduced-typed
+        version's date, else the earliest version's date, else the bill's
+        introduction date.
+        """
+        row = self._introduced_version_row()
+        if row is not None:
+            return row.version_date
+        return self.introduced_date
+
+    @property
+    def current_version_date(self):
+        """
+        Date the bill's current version was tabled / published (BRS §15A).
+
+        Tracks :attr:`current_version`: the flagged row's date, else the most
+        recent version's date; ``None`` when the bill has no versions recorded.
+        """
+        rows = self._version_rows()
+        for row in rows:  # Meta.ordering: newest first
+            if row.is_current:
+                return row.version_date
+        return rows[0].version_date if rows else None
+
+    def _version_rows(self):
+        """The bill's versions (prefetch-cache aware)."""
+        return list(self.versions.all())
+
+    def _introduced_version_row(self):
+        """The original version row: earliest introduced, else earliest of all."""
+        rows = self._version_rows()
+        introduced = [row for row in rows if row.version_type == BillVersion.INTRODUCED]
+        pool = introduced or rows
+        if not pool:
+            return None
+        return min(pool, key=lambda row: (row.version_date, row.pk))
 
 
 class BillVersion(BaseModel):
