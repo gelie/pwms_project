@@ -204,6 +204,7 @@ jobs:
             pwms.tests_api \
             pwms.tests_attachments \
             pwms.tests_authentication \
+            pwms.tests_bill_folders \
             pwms.tests_detail \
             pwms.tests_detail_actions \
             pwms.tests_executive \

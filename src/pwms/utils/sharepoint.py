@@ -119,6 +119,48 @@ async def get_all_sites(token_data: dict):
     return {"value": all_sites}
 
 
+async def get_drive(token_data: dict, drive_id: str):
+    """Get one drive's metadata (name, driveType and parent site reference)."""
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise Exception("No access_token found in token data")
+
+    url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}"
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    async with httpx.AsyncClient() as client:
+        response = None
+        try:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            raise Exception(
+                f"Drive request failed: {e!s}, response: {getattr(response, 'text', 'no response') if response else 'no response'}"
+            )
+
+
+async def get_site(token_data: dict, site_id: str):
+    """Get one SharePoint site's core metadata (id, name and web URL)."""
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise Exception("No access_token found in token data")
+
+    url = f"https://graph.microsoft.com/v1.0/sites/{site_id}?$select=id,name,webUrl"
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    async with httpx.AsyncClient() as client:
+        response = None
+        try:
+            response = await client.get(url, headers=headers)
+            response.raise_for_status()
+            return response.json()
+        except httpx.HTTPError as e:
+            raise Exception(
+                f"Site request failed: {e!s}, response: {getattr(response, 'text', 'no response') if response else 'no response'}"
+            )
+
+
 async def get_site_details(token_data: dict, site_id: str):
     # url = f"https://graph.microsoft.com/v1.0/sites/{site_id}"
     url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/drive/root/children?$select=id,name,file,folder"
@@ -575,3 +617,91 @@ async def create_folder(
             raise Exception(
                 f"Folder creation failed: {e!s}, response: {getattr(response, 'text', 'no response')}"
             )
+
+
+async def create_child_folder(
+    token_data: dict, drive_id: str, parent_item_id: str, folder_name: str
+):
+    """Create a folder via ``POST /drives/{drive-id}/items/{parent-item-id}/children``.
+
+    Unlike :func:`create_folder` this never renames a colliding name away:
+    Graph answers 409 ``nameAlreadyExists`` when the name is taken, and the
+    folder that is already there is resolved and returned, giving the caller
+    idempotent "create it if it does not exist" semantics.
+
+    Returns ``(item_dict, created)`` — the existing item with ``created=False``
+    on a conflict. Because a *file* triggers the very same 409, a conflict that
+    resolves against a non-folder (or cannot be resolved) raises instead: files
+    take the name and nothing folder-shaped exists to file documents into.
+    """
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise Exception("No access_token found in token data")
+
+    url = (
+        f"https://graph.microsoft.com/v1.0/drives/{drive_id}"
+        f"/items/{parent_item_id}/children"
+    )
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+    data = {"name": folder_name, "folder": {}}
+
+    async with httpx.AsyncClient() as client:
+        response = None
+        try:
+            response = await client.post(url, headers=headers, json=data)
+            if response.status_code == 409:
+                try:
+                    error_code = response.json().get("error", {}).get("code", "")
+                except ValueError:
+                    error_code = ""
+                if error_code == "nameAlreadyExists":
+                    existing = await _child_by_name(
+                        token_data, drive_id, parent_item_id, folder_name
+                    )
+                    if existing is None or "folder" not in existing:
+                        raise Exception(
+                            f"A non-folder item named {folder_name!r} already "
+                            f"exists under the parent folder: {response.text}"
+                        )
+                    return existing, False
+            response.raise_for_status()
+            return response.json(), True
+        except httpx.HTTPError as e:
+            raise Exception(
+                f"Folder creation failed: {e!s}, response: {getattr(response, 'text', 'no response')}"
+            )
+
+
+async def _child_by_name(
+    token_data: dict, drive_id: str, parent_item_id: str, name: str
+):
+    """Find a direct child of a folder by its exact name (paged)."""
+    access_token = token_data.get("access_token")
+    if not access_token:
+        raise Exception("No access_token found in token data")
+
+    url = (
+        f"https://graph.microsoft.com/v1.0/drives/{drive_id}"
+        f"/items/{parent_item_id}/children"
+    )
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    async with httpx.AsyncClient() as client:
+        while url:
+            response = None
+            try:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+            except httpx.HTTPError as e:
+                raise Exception(
+                    f"Folder lookup failed: {e!s}, response: {getattr(response, 'text', 'no response')}"
+                )
+            payload = response.json()
+            for item in payload.get("value", []):
+                if item.get("name") == name:
+                    return item
+            url = payload.get("@odata.nextLink")
+    return None

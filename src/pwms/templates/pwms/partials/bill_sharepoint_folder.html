@@ -1,0 +1,34 @@
+{% comment %}
+The bill's own SharePoint filing status, shown inside the attachment section's
+header. Bills file into one folder under the Bill Base Folder — named after the
+B-number — when the bill is saved (pwms.services.bill_folders.file_bill_folder);
+this chip shows where documents will land and offers the re-file retry when it
+has not been filed yet. Only bills have a filing target, so every other record
+renders nothing here.
+
+Context (from ``pwms.views._attachment_context``): attachment_target,
+attachment_bill_folder, attachment_is_bill, sharepoint_filing_configured,
+can_attach.
+{% endcomment %}
+{% if attachment_is_bill %}
+  {% if attachment_bill_folder %}
+    <a class="badge badge-success text-decoration-none text-truncate"
+       {% if attachment_bill_folder.web_url %}href="{{ attachment_bill_folder.web_url }}" target="_blank" rel="noopener"{% endif %}
+       title="Documents for this bill file into this SharePoint folder">
+      {% lucide "folder-open" size=12 %} {{ attachment_bill_folder.name }}
+    </a>
+  {% elif can_attach and sharepoint_filing_configured %}
+    <form method="post" class="m-0"
+          action="{% url "pwms:bill_file_folder" attachment_target.public_id %}"
+          title="Create the bill's folder under the Bill Base Folder">
+      {% csrf_token %}
+      <button type="submit" class="btn btn-sm btn-outline-secondary">
+        {% lucide "folder-plus" size=14 %} File the bill folder
+      </button>
+    </form>
+  {% else %}
+    <span class="badge badge-muted">
+      {% if sharepoint_filing_configured %}Not filed yet{% else %}SharePoint filing not configured{% endif %}
+    </span>
+  {% endif %}
+{% endif %}

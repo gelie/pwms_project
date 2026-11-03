@@ -1886,6 +1886,52 @@ class WorkflowCrudViewTests(TestCase):
         self.assertRedirects(response, reverse("pwms:bills"))
         self.assertFalse(Bill.objects.filter(pk=bill.pk).exists())
 
+    def test_bill_edit_renders_the_state_readonly_and_ignores_a_crafted_post(self):
+        self.client.post(reverse("pwms:bill_create"), self._bill_payload())
+        bill = Bill.objects.get(bill_number="B 99—2026")
+        original = bill.current_state_id
+        other_state = self.bill_type.states.exclude(pk=original).first()
+        self.assertIsNotNone(other_state)
+
+        edit = self.client.get(reverse("pwms:bill_update", args=[bill.public_id]))
+        # The select stays visible but read-only: this instance's state is the
+        # only option, Django disables it (POSTed values are ignored), and the
+        # hint points at the transition path.
+        self.assertRegex(edit.content.decode(), r'name="current_state"[^>]*disabled')
+        self.assertNotContains(edit, f">{other_state.name}</option>")
+        self.assertContains(edit, "state machine")
+
+        response = self.client.post(
+            reverse("pwms:bill_update", args=[bill.public_id]),
+            {
+                "title": "CRUD bill (edited)",
+                "description": "",
+                "current_state": other_state.pk,
+                "owner": self.user.pk,
+                "assigned_to": "",
+                "deadline": "",
+                "priority": "high",
+                "bill_number": "B 99—2026",
+                "short_title": "CRUD",
+                "bill_type": Bill.SECTION_75,
+                "house_of_origin": Bill.NA,
+                "sponsor_name": "Minister of Justice",
+                "introduced_date": "",
+                "responsible_committee": "",
+                "atc_reference": "",
+                "order_paper_reference": "",
+                "bill_document_url": "",
+                "notes": "",
+            },
+        )
+        self.assertRedirects(
+            response, reverse("pwms:bill_detail", args=[bill.public_id])
+        )
+        bill.refresh_from_db()
+        # The state did not move: only a transition may change it.
+        self.assertEqual(bill.current_state_id, original)
+        self.assertEqual(bill.priority, "high")
+
     def test_bill_version_capture_from_the_web_ui(self):
         self.client.post(reverse("pwms:bill_create"), self._bill_payload())
         bill = Bill.objects.get(bill_number="B 99—2026")

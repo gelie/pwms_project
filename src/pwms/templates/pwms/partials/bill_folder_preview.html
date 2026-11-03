@@ -1,0 +1,18 @@
+{% comment %}
+HTMX fragment under the B-number field of the bill form: the SharePoint folder
+the typed number will file into once the bill is saved (inside the deployment's
+Bill Base Folder). The name is exactly what the filing service will create, so
+a number carrying a "/", ":" or other SharePoint-illegal character shows its
+folded form here first.
+
+Context (pwms.views.bill_folder_preview): configured, bill_number, folder_name.
+{% endcomment %}
+{% if not configured %}
+  <span class="small text-body-secondary">SharePoint filing is not configured.</span>
+{% elif not bill_number %}
+  <span class="small text-body-secondary">Files into the Bill Base Folder, one folder per B-number.</span>
+{% else %}
+  <span class="small text-body-secondary">
+    Files into {% lucide "folder" size=14 %} <span class="fw-medium">Bill Folder / {{ folder_name }}</span>
+  </span>
+{% endif %}

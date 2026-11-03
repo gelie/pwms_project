@@ -73,8 +73,10 @@ class WorkflowInstanceFormMixin:
     Each concrete form stands for exactly one workflow type, so the type is
     never a choice: on **create** it is pinned to this form's type and rendered
     hidden, and ``current_state`` is derived from that type's initial state. On
-    **update** the type is fixed by the instance and ``current_state`` becomes
-    editable, limited to the states of that type.
+    **update** the type is fixed by the instance, and ``current_state`` renders
+    either editable (limited to the states of that type) or — for forms opting
+    into :attr:`protect_current_state` — disabled display-only, because state
+    changes must go through the transition machine instead.
 
     ``owner`` is not a choice either — it is the acting user on create, and the
     instance's existing owner on update — so it too is rendered hidden, and its
@@ -86,6 +88,13 @@ class WorkflowInstanceFormMixin:
 
     #: Workflow type pre-selected when creating a new instance.
     initial_workflow_type = ""
+
+    #: Opt-in protection of ``current_state`` on the update form: the state is
+    #: a transition-machine concern (the detail page's status menu posts to
+    #: ``workflow_transition``, which validates guards/permissions and logs the
+    #: move), never a profile edit. The disabled field also ignores posted
+    #: values, so a hand-crafted POST cannot move the state through this form.
+    protect_current_state = False
 
     #: Option lists longer than this are unusable as a <select>, so those fields
     #: render as HTMX search pickers instead (see ``pwms/_picker_field.html``).
@@ -172,9 +181,22 @@ class WorkflowInstanceFormMixin:
             type_field.widget = forms.HiddenInput()
         else:
             self.fields.pop("workflow_type", None)
-            self.fields["current_state"].queryset = State.objects.filter(
-                workflow_type=self.instance.workflow_type
-            ).order_by("order", "name")
+            state_field = self.fields["current_state"]
+            if self.protect_current_state:
+                # Display-only: the one rendered option is this instance's own
+                # state, and Django ignores POSTed data for disabled fields.
+                state_field.disabled = True
+                state_field.queryset = State.objects.filter(
+                    pk=self.instance.current_state_id
+                )
+                state_field.help_text = (
+                    "The status moves through the state machine on this "
+                    "instrument's page, not by editing it."
+                )
+            else:
+                state_field.queryset = State.objects.filter(
+                    workflow_type=self.instance.workflow_type
+                ).order_by("order", "name")
 
     @staticmethod
     def _initial_state(workflow_type):
@@ -725,6 +747,10 @@ class BillForm(WorkflowInstanceFormMixin, forms.ModelForm):
 
     initial_workflow_type = "Bill"
 
+    # The B-number status is moved only by the transition machine (the detail
+    # page's Status menu), so the edit form renders it read-only.
+    protect_current_state = True
+
     introduced_date = forms.DateField(
         required=False,
         widget=DatePickerInput(attrs={"class": "form-control"}),
@@ -754,10 +780,10 @@ class BillForm(WorkflowInstanceFormMixin, forms.ModelForm):
             "sponsor_name",
             "introduced_date",
             "responsible_committee",
-            "atc_reference",
-            "order_paper_reference",
+            # "atc_reference",
+            # "order_paper_reference",
             "bill_document_url",
-            "notes",
+            # "notes",
         ]
         widgets = {
             "current_state": forms.Select(attrs={"class": "form-select"}),
@@ -776,12 +802,12 @@ class BillForm(WorkflowInstanceFormMixin, forms.ModelForm):
             "sponsor_name": forms.TextInput(attrs={"class": "form-control"}),
             # Swapped to a search picker by the mixin when there are many groups.
             "responsible_committee": forms.Select(attrs={"class": "form-select"}),
-            "atc_reference": forms.TextInput(attrs={"class": "form-control"}),
-            "order_paper_reference": forms.TextInput(attrs={"class": "form-control"}),
+            # "atc_reference": forms.TextInput(attrs={"class": "form-control"}),
+            # "order_paper_reference": forms.TextInput(attrs={"class": "form-control"}),
             "bill_document_url": forms.TextInput(
                 attrs={"class": "form-control", "type": "url"}
             ),
-            "notes": forms.Textarea(attrs={"class": "form-control", "rows": 4}),
+            # "notes": forms.Textarea(attrs={"class": "form-control", "rows": 4}),
         }
 
 

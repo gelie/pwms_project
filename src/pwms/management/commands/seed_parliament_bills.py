@@ -66,6 +66,17 @@ over manually edited data. ``--purge-imported`` first removes the bills this
 command imported before (matched by workflow type ``Bill`` plus the imported
 provenance note, so manually created bills survive), for a clean re-import.
 
+Each imported bill also gets its SharePoint folder under the Bill Base Folder
+(``BILL_DRIVE``/``BILL_FOLDER`` in the environment): the B-number folder is
+created when missing (via ``pwms.services.bill_folders``) and mirrored onto
+``Bill.sharepoint_folder``, so seeded bills are as wired for attachments as
+hand-created ones. Filing happens after the import transaction commits — Graph
+round trips must not hold the database connection — and is idempotent:
+``--purge-imported`` re-runs relink the folders that are already there, and
+bills that still carry their mirror row are skipped without a round trip.
+Unconfigured environments skip the filing with a note; ``--no-sharepoint``
+opts out.
+
 Timestamps are back-dated onto the published dates, so the bills arrive with
 a plausible history instead of a single batch stamp.
 
@@ -75,6 +86,7 @@ Usage::
     python manage.py seed_parliament_bills --fetch      # re-read the live site
     python manage.py seed_parliament_bills --limit 10   # only the 10 newest
     python manage.py seed_parliament_bills --purge-imported  # reset & re-import
+    python manage.py seed_parliament_bills --no-sharepoint   # skip SP filing
 """
 
 from __future__ import annotations
@@ -108,6 +120,7 @@ from pwms.models import (
     WorkflowReferral,
     WorkflowType,
 )
+from pwms.services import bill_folders
 
 from .seed_demo_data import SeededWorkflow, silenced_notifications
 
@@ -458,6 +471,14 @@ class Command(BaseCommand):
                 "clean re-import."
             ),
         )
+        parser.add_argument(
+            "--no-sharepoint",
+            action="store_true",
+            help=(
+                "Skip filing each bill's SharePoint folder under the Bill "
+                "Base Folder (default: file it when it does not exist)."
+            ),
+        )
 
     def handle(self, *args, **options):
         self.now = timezone.now()
@@ -466,6 +487,13 @@ class Command(BaseCommand):
         self.updated_count = 0
         self.unchanged_count = 0
         self.unmatched_committees: set[str] = set()
+        # SharePoint filing: the bills this run processed plus its outcome(s).
+        # Filing happens after the transaction commits (see the docstring).
+        self.filing_bills: list[Bill] = []
+        self.folder_created_count = 0
+        self.folder_relinked_count = 0
+        self.folder_failures: list[tuple[str, str]] = []
+        self.folder_skipped = ""
 
         bills = self._fetch_listing() if options["fetch"] else self._load_snapshot()
         if options["limit"] is not None:
@@ -480,6 +508,11 @@ class Command(BaseCommand):
                 self._purge_imported()
             for spec in bills:
                 self._import_bill(spec)
+
+        if options["no_sharepoint"]:
+            self.folder_skipped = "skipped (--no-sharepoint)"
+        else:
+            self._file_sharepoint_folders()
 
         if self.records:
             self._backdate()
@@ -740,6 +773,50 @@ class Command(BaseCommand):
                 self.stdout.write(f"      {bill_number}: committee -> {committee.name}")
 
         self._ensure_versions(bill, owner, spec)
+        self.filing_bills.append(bill)
+
+    # -- sharepoint filing ----------------------------------------------------
+    def _file_sharepoint_folders(self):
+        """File each imported bill's folder under the Bill Base Folder.
+
+        Through :func:`pwms.services.bill_folders.file_bill_folder`: creates
+        the B-number folder when missing (``POST
+        /drives/{drive-id}/items/{parent-item-id}/children``) or resolves the
+        folder that is already there, and mirrors both onto
+        ``Bill.sharepoint_folder``. Filing is best-effort per bill — one
+        failed folder never stops the import — and idempotent, so re-runs
+        (including after ``--purge-imported``, which resets the links)
+        converge without duplicating anything on SharePoint. Bills that still
+        carry their mirror row are skipped: nothing to confirm, no round trip.
+        """
+        if not bill_folders.filing_configured():
+            self.folder_skipped = "skipped (BILL_DRIVE/BILL_FOLDER are not configured)"
+            return
+
+        to_file = [
+            bill for bill in self.filing_bills if bill.sharepoint_folder_id is None
+        ]
+        relinkable = len(self.filing_bills) - len(to_file)
+        if not to_file:
+            self.folder_relinked_count = relinkable
+            return
+        self.stdout.write(
+            f"Filing {len(to_file)} bill folder{'s' if len(to_file) != 1 else ''} "
+            f"in SharePoint (skipping {relinkable} already linked)..."
+        )
+        for bill in to_file:
+            try:
+                # Mirror rows/audit entries attribute to the bill's owner, as
+                # the mechanical writes in this command do.
+                with set_actor(bill.owner, remote_addr=IP_ADDRESS):
+                    status = bill_folders.file_bill_folder(bill)
+            except bill_folders.BillFolderError as error:
+                self.folder_failures.append((bill.bill_number, str(error)))
+                continue
+            if status == bill_folders.CREATED:
+                self.folder_created_count += 1
+            else:
+                self.folder_relinked_count += 1
 
     def _build_notes(self, spec, status, committee):
         """The import provenance plus any listing flags."""
@@ -1105,6 +1182,18 @@ class Command(BaseCommand):
         self.stdout.write(f"   Created: {self.created_count}")
         self.stdout.write(f"   Updated: {self.updated_count}")
         self.stdout.write(f"   Unchanged: {self.unchanged_count}")
+        if self.folder_skipped:
+            self.stdout.write(f"   SharePoint folders: {self.folder_skipped}.")
+        else:
+            self.stdout.write(
+                f"   SharePoint folders: created {self.folder_created_count}, "
+                f"relinked {self.folder_relinked_count}, "
+                f"failed {len(self.folder_failures)}"
+            )
+        for number, error in self.folder_failures:
+            self.stdout.write(
+                self.style.WARNING(f"     {number}: SharePoint filing failed ({error})")
+            )
         self.stdout.write("   Bill register by state:")
         for state_name, count in sorted(distribution.items()):
             self.stdout.write(f"     {state_name}: {count}")

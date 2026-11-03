@@ -39,11 +39,15 @@
       {% endif %}
       {% include "pwms/_form_field.html" with field=form.title wrapper_class="col-12" %}
       {% include "pwms/_form_field.html" with field=form.description wrapper_class="col-12" %}
-      {% include "pwms/_picker_field.html" with field=form.assigned_to search_url="pwms:user_search" placeholder="Type to search users..." selected_name=form.picker_labels.assigned_to wrapper_class="col-12 col-md-6" %}
-      {% include "pwms/_form_field.html" with field=form.deadline wrapper_class="col-12 col-md-6" %}
-      {% include "pwms/_form_field.html" with field=form.priority wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_picker_field.html" with field=form.assigned_to search_url="pwms:user_search" placeholder="Type to search users..." selected_name=form.picker_labels.assigned_to wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_form_field.html" with field=form.deadline wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_form_field.html" with field=form.priority wrapper_class="col-12 col-md-4" %}
     </div>
     <h2 class="h5 mb-3">Bill details</h2>
+    <!--HTMX: where the typed B-number files on SharePoint, as a live hint so
+        the folder is known before the bill exists to retry from. The preview
+        targets the input by its id (from:), so the field include below needs
+        no attributes.-->
     <div class="row g-3 mb-4">
       {% include "pwms/_form_field.html" with field=form.bill_number wrapper_class="col-12 col-md-4" %}
       {% include "pwms/_form_field.html" with field=form.short_title wrapper_class="col-12 col-md-8" %}
@@ -53,10 +57,19 @@
       {% include "pwms/_picker_field.html" with field=form.sponsor search_url="pwms:user_search" placeholder="Type to search users..." selected_name=form.picker_labels.sponsor wrapper_class="col-12 col-md-6" %}
       {% include "pwms/_form_field.html" with field=form.sponsor_name wrapper_class="col-12 col-md-6" %}
       {% include "pwms/_picker_field.html" with field=form.responsible_committee search_url="pwms:group_search" placeholder="Type to search groups..." selected_name=form.picker_labels.responsible_committee wrapper_class="col-12 col-md-6" %}
-      {% include "pwms/_form_field.html" with field=form.atc_reference wrapper_class="col-12 col-md-6" %}
-      {% include "pwms/_form_field.html" with field=form.order_paper_reference wrapper_class="col-12 col-md-6" %}
+      <!--{% include "pwms/_form_field.html" with field=form.atc_reference wrapper_class="col-12 col-md-6" %}-->
+      <!--{% include "pwms/_form_field.html" with field=form.order_paper_reference wrapper_class="col-12 col-md-6" %}-->
       {% include "pwms/_form_field.html" with field=form.bill_document_url wrapper_class="col-12 col-md-6" %}
-      {% include "pwms/_form_field.html" with field=form.notes wrapper_class="col-12" %}
+      <!--{% include "pwms/_form_field.html" with field=form.notes wrapper_class="col-12" %}-->
+      <div class="col-12"
+           id="bill-folder-preview"
+           hx-get="{% url "pwms:bill_folder_preview" %}"
+           hx-trigger="load, input from:#id_bill_number delay:500ms, change from:#id_bill_number delay:300ms"
+           hx-include="#id_bill_number"
+           hx-target="this"
+           hx-swap="innerHTML">
+        <span class="small text-body-secondary">Files into the Bill Base Folder, one folder per B-number.</span>
+      </div>
     </div>
     <div class="d-flex flex-wrap gap-2">
       <button class="btn btn-primary" type="submit">

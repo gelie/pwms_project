@@ -266,7 +266,7 @@ class AbstractLegislativeWorkflow(BaseModel):
         "State",
         on_delete=models.PROTECT,
         related_name="%(class)s_current",
-        help_text="Current workflow state. Must belong to ``workflow_type``.",
+        help_text="Current workflow state",
     )
 
     # Clean reverse relations per concrete subclass (e.g. bill_owned, parliamentaryquestion_owned)
@@ -2716,26 +2716,24 @@ class Bill(AbstractLegislativeWorkflow):
     bill_number = models.CharField(
         max_length=50,
         unique=True,
-        help_text=("Parliamentary B-number, including any version suffix (BRS §13.1)."),
+        help_text=("B-number, including any version suffix"),
     )
     short_title = models.CharField(
         max_length=255,
         blank=True,
-        help_text="Short title of the bill (BRS §7A).",
+        help_text="Short title of the bill",
     )
     bill_type = models.CharField(
         max_length=20,
         choices=BILL_TYPE_CHOICES,
         blank=True,
-        help_text=(
-            "Constitutional classification: Section 74, 75, 76 or 77 (BRS §13.1)."
-        ),
+        help_text=("Constitutional classification: Section 74, 75, 76 or 77"),
     )
     house_of_origin = models.CharField(
         max_length=10,
         choices=HOUSE_CHOICES,
         blank=True,
-        help_text="House of introduction (BRS §7A).",
+        help_text="",
     )
     sponsor = models.ForeignKey(
         "User",
@@ -2743,20 +2741,17 @@ class Bill(AbstractLegislativeWorkflow):
         null=True,
         blank=True,
         related_name="sponsored_bills",
-        help_text="Sponsor or originating authority with a PWMS account (BRS §7A).",
+        help_text="Sponsor or originating authority with a PWMS account",
     )
     sponsor_name = models.CharField(
         max_length=255,
         blank=True,
-        help_text=(
-            "Sponsor or originating authority as recorded on the bill (BRS "
-            "§7A) - e.g. a committee or department with no PWMS account."
-        ),
+        help_text="Sponsor or originating authority as recorded on the bill - e.g. external body",
     )
     introduced_date = models.DateField(
         null=True,
         blank=True,
-        help_text="Date the bill was introduced (BRS §13.1).",
+        help_text="Date the bill was introduced",
     )
     responsible_committee = models.ForeignKey(
         "Group",
@@ -2764,28 +2759,37 @@ class Bill(AbstractLegislativeWorkflow):
         null=True,
         blank=True,
         related_name="bills_responsible",
-        help_text="Committee responsible for the bill (BRS §13.2).",
+        help_text="Committee responsible for the bill",
     )
     atc_reference = models.CharField(
         max_length=255,
         blank=True,
-        help_text="ATC reference for the bill's movements (BRS §7B).",
+        help_text="ATC reference for the bill's movements",
     )
     order_paper_reference = models.CharField(
         max_length=255,
         blank=True,
-        help_text="Order paper reference, where available (BRS §7B).",
+        help_text="Order paper reference, where available",
     )
     bill_document_url = models.URLField(
         max_length=2048,
         blank=True,
-        help_text="SharePoint link to the bill document (BRS §7B).",
+        help_text="SharePoint link to the bill document",
+    )
+    sharepoint_folder = models.ForeignKey(
+        "SharepointFolder",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="bills",
+        help_text=(
+            "This bill's folder under the Bill Base Folder, filed automatically "
+            "when the bill is saved; attachments default to it."
+        ),
     )
     notes = models.TextField(
         blank=True,
-        help_text=(
-            "Sub-events or explanatory notes under the current stage (BRS §15A)."
-        ),
+        help_text="Sub-events or explanatory notes under the current stage",
     )
 
     class Meta:
