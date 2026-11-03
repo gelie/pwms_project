@@ -35,6 +35,7 @@ test: ## Run the full suite (needs PostgreSQL, see README quickstart)
 		pwms.tests_api \
 		pwms.tests_attachments \
 		pwms.tests_authentication \
+		pwms.tests_bill_folders \
 		pwms.tests_detail \
 		pwms.tests_detail_actions \
 		pwms.tests_executive \
@@ -51,6 +52,7 @@ coverage: ## Run the suite under coverage and print a report
 		pwms.tests_api \
 		pwms.tests_attachments \
 		pwms.tests_authentication \
+		pwms.tests_bill_folders \
 		pwms.tests_detail \
 		pwms.tests_detail_actions \
 		pwms.tests_executive \

@@ -137,6 +137,18 @@ urlpatterns = [
     # Bills
     path("workflows/bills/", views.bills, name="bills"),
     path("workflows/bills/new/", views.bill_create, name="bill_create"),
+    # The HTMX hint under the form's B-number field: which SharePoint folder the
+    # typed number will file into (before a bill even exists to retry from).
+    path(
+        "workflows/bills/folder-preview/",
+        views.bill_folder_preview,
+        name="bill_folder_preview",
+    ),
+    path(
+        "workflows/bills/<uuid:public_id>/file-folder/",
+        views.bill_file_folder,
+        name="bill_file_folder",
+    ),
     path(
         "workflows/bills/<uuid:public_id>/",
         views.bill_detail,

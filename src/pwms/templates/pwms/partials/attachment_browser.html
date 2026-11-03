@@ -5,7 +5,9 @@ Left: an expandable tree of the user's sites, their drives and their folders
 (each level loads lazily). Right: the documents in the selected folder, with an
 "Attach" action per file and an upload form aimed at that same folder.
 
-Context: attachment_sites, attachment_content_type, attachment_object_id.
+Context: attachment_sites, attachment_content_type, attachment_object_id,
+and, when the target is a bill with a filed folder, attachment_default_folder
+(whose contents pane loads on display).
 {% endcomment %}
 <div class="card">
   <div class="card-header d-flex justify-content-between align-items-center">
@@ -40,7 +42,17 @@ Context: attachment_sites, attachment_content_type, attachment_object_id.
       </div>
       <div class="col-12 col-lg-7">
         <div id="attachment-folder-contents" class="border rounded-3 p-3">
-          <p class="small text-muted mb-0">Select a folder to see its documents.</p>
+          {% if attachment_default_folder %}
+            <p class="small text-body-secondary mb-2">
+              This bill files into its own folder; the picker opens on it.
+            </p>
+            <div hx-get="{% url "pwms:attachment_folder" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}&drive_id={{ attachment_default_folder.drive.drive_id|urlencode }}&folder_id={{ attachment_default_folder.folder_id|urlencode }}&folder_name={{ attachment_default_folder.name|urlencode }}&default_type={{ attachment_default_type|urlencode }}"
+                 hx-trigger="load"
+                 hx-target="#attachment-folder-contents"
+                 hx-swap="innerHTML"></div>
+          {% else %}
+            <p class="small text-muted mb-0">Select a folder to see its documents.</p>
+          {% endif %}
         </div>
       </div>
     </div>

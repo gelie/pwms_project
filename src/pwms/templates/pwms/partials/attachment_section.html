@@ -9,13 +9,18 @@ three tabs of a record read as one family.
 
 Context (from ``pwms.views._attachment_context``): attachment_target,
 attachment_content_type, attachment_object_id, attachments, attachment_events,
-can_attach.
+can_attach; plus attachment_bill_folder/attachment_is_bill only when the target
+carries a SharePoint filing target (a bill).
 {% endcomment %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
   <h2 class="workflow-card-title mb-0">
     {% lucide "paperclip" size=16 %} Attachments
     <span class="badge badge-muted" id="attachment-count">{{ attachments|length }}</span>
   </h2>
+  <div class="d-flex align-items-center gap-2">
+    {% include "pwms/partials/bill_sharepoint_folder.html" %}
+  <div class="d-flex align-items-center gap-2">
+    {% include "pwms/partials/bill_sharepoint_folder.html" %}
   {% if can_attach %}
     <button type="button"
             class="btn btn-sm btn-outline-primary"
@@ -23,6 +28,7 @@ can_attach.
             hx-target="#attachment-browser"
             hx-swap="innerHTML">Add attachment</button>
   {% endif %}
+  </div>
 </div>
 <div id="attachment-status" aria-live="polite"></div>
 {% include "pwms/partials/attachment_list.html" %}

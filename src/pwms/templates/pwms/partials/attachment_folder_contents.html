@@ -8,11 +8,17 @@ the same step. Both report back into the ``#attachment-list`` fragment.
 
 Context: attachment_drive, attachment_files, attachment_folder_id,
          attachment_folder_name, attachment_parent_folder_id, attachment_types,
-         attachment_content_type, attachment_object_id, attachment_error.
+         attachment_content_type, attachment_object_id, attachment_error;
+         for a bill target also attachment_is_bill/attachment_bill_folder.
 {% endcomment %}
 {% if attachment_error %}
   <div class="alert alert-danger py-2 mb-0" role="alert">{{ attachment_error }}</div>
 {% else %}
+  {% if attachment_is_bill and attachment_bill_folder and attachment_folder_id != attachment_bill_folder.folder_id %}
+    <div class="alert alert-warning py-2" role="alert">
+      Bills file into their own folder — uploads land in "{{ attachment_bill_folder.name }}" regardless of the folder shown here.
+    </div>
+  {% endif %}
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
     <h3 class="h6 mb-0">
       {% lucide "folder-open" size=16 %}

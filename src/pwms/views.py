@@ -98,6 +98,7 @@ from .reporting import (
     send_share_email,
 )
 from .services import attachments as attachments_service
+from .services import bill_folders
 from .services.history import TIMELINE_PREVIEW_LIMIT, instance_timeline
 from .services.meetings_io import (
     MEETING_COLUMNS,
@@ -1612,6 +1613,57 @@ def bill_detail(request, public_id):
     return render(request, "pwms/bill-detail.html", context)
 
 
+def _file_bill_folder(request, bill, verbose=False):
+    """File the bill's SharePoint folder (B-number named) after a save; never blocks.
+
+    The bill row is already saved when this runs, so SharePoint being down must
+    not lose the submission: Graph failures downgrade to a warning the user can
+    retry later by editing (or re-saving) the bill, or from the detail page's
+    folder chip.
+
+    ``verbose`` (the manual retry path) reports an already-filed folder too;
+    a plain save stays quiet about the idempotent no-op.
+    """
+    try:
+        status = bill_folders.file_bill_folder(bill)
+    except bill_folders.BillFolderError as exc:
+        messages.warning(
+            request,
+            f"Saved, but its SharePoint folder could not be created: {exc}",
+        )
+        return
+    folder = bill.sharepoint_folder
+    if status == bill_folders.CREATED:
+        name = folder.name if folder else bill_folders.folder_name_for(bill.bill_number)
+        messages.success(request, f"Filed its SharePoint folder '{name}'.")
+    elif verbose:
+        if status == bill_folders.ALREADY_THERE:
+            messages.info(
+                request,
+                f"Already filed: the SharePoint folder '{bill.bill_number}' exists.",
+            )
+        else:
+            messages.info(
+                request,
+                "SharePoint filing is not configured (BILL_DRIVE / BILL_FOLDER).",
+            )
+
+
+def bill_folder_preview(request):
+    """HTMX: the SharePoint folder a typed B-number will file into."""
+    return render(
+        request,
+        "pwms/partials/bill_folder_preview.html",
+        {
+            "configured": bill_folders.filing_configured(),
+            "bill_number": (request.GET.get("bill_number") or "").strip(),
+            "folder_name": bill_folders.folder_name_for(
+                request.GET.get("bill_number") or ""
+            ),
+        },
+    )
+
+
 def bill_create(request):
     """Create a bill; the initial state is derived from its type."""
     if request.method == "POST":
@@ -1619,6 +1671,7 @@ def bill_create(request):
         form = BillForm(request.POST, user=request.user)
         if form.is_valid():
             bill = form.save()
+            _file_bill_folder(request, bill)
             messages.success(request, f'Bill "{bill.bill_number}" created.')
             notify_workflow_created(bill, actor=request.user)
             return redirect("pwms:bill_detail", public_id=bill.public_id)
@@ -1642,6 +1695,7 @@ def bill_update(request, public_id):
         form = BillForm(request.POST, instance=bill)
         if form.is_valid():
             bill = form.save()
+            _file_bill_folder(request, bill)
             messages.success(request, f'Bill "{bill.bill_number}" updated.')
             return redirect("pwms:bill_detail", public_id=bill.public_id)
     else:
@@ -1667,6 +1721,15 @@ def bill_delete(request, public_id):
         "pwms/bill-confirm-delete.html",
         {"bill": bill},
     )
+
+
+@require_POST
+def bill_file_folder(request, public_id):
+    """Re-file a bill's SharePoint folder (the detail page chip's retry)."""
+    bill = get_object_or_404(Bill, public_id=public_id)
+    require(request.user, bill, EDIT)
+    _file_bill_folder(request, bill, verbose=True)
+    return redirect("pwms:bill_detail", public_id=bill.public_id)
 
 
 def bill_version_create(request, public_id):
@@ -2337,10 +2400,27 @@ def _attachment_target(request, action):
     return target
 
 
+def _bill_filing_folder(target):
+    """A bill's own SharePoint folder; ``None`` for any other record — or bill.
+
+    Documents uploaded for a bill land here regardless of what the picker
+    posted — the record's EDIT right governs the write, so drive membership is
+    not re-checked. Linking an *existing* document keeps its real location: an
+    upload creates content, a link only records where a document already lives.
+    """
+    if getattr(target, "_meta", None) is None or target._meta.model_name != "bill":
+        return None
+    return target.sharepoint_folder
+
+
 def _attachment_context(request, target):
     """Template context for the attachment section/partials of one record."""
     meta = target._meta
     attachments = attachments_service.attachments_for(target)
+    # Bills file into their own SharePoint folder (service-linked on save); the
+    # chip and the picker's default pane read it. Other records have neither.
+    bill_folder = getattr(target, "sharepoint_folder", None)
+    is_bill = meta.model_name == "bill"
     return {
         "attachment_target": target,
         "attachment_content_type": f"{meta.app_label}.{meta.model_name}",
@@ -2354,6 +2434,9 @@ def _attachment_context(request, target):
             str(attachment.public_id) for attachment in attachments
         },
         "can_attach": resolve(request.user, target, EDIT),
+        "attachment_bill_folder": bill_folder,
+        "attachment_is_bill": is_bill,
+        "sharepoint_filing_configured": bill_folders.filing_configured(),
     }
 
 
@@ -2365,6 +2448,17 @@ def attachment_browser(request):
     # Preselect an attachment type (a meeting preselects agenda or minutes), so
     # the picker files the document under the right classification by default.
     context["attachment_default_type"] = request.GET.get("default_type", "")
+    # A bill with a filed folder opens right on it: loading its contents pane on
+    # display, but only when the user may use the drive the folder lives on.
+    bill_folder = context["attachment_bill_folder"]
+    if bill_folder is not None:
+        try:
+            attachments_service.require_drive_access(
+                request.user, bill_folder.drive.drive_id
+            )
+        except attachments_service.AttachmentError:
+            bill_folder = None
+    context["attachment_default_folder"] = bill_folder
     return render(request, "pwms/partials/attachment_browser.html", context)
 
 
@@ -2458,15 +2552,22 @@ def attachment_upload(request):
     if upload is None:
         return _attachment_response(request, target, error="No file was selected.")
     try:
-        drive = attachments_service.require_drive_access(
-            request.user, request.POST.get("drive_id")
-        )
-        folder = attachments_service.resolve_folder(
-            drive,
-            request.POST.get("folder_id"),
-            request.POST.get("folder_name", ""),
-            request.POST.get("parent_folder_id", ""),
-        )
+        # A bill with a filed folder is the destination, whatever the picker
+        # posted: the record's EDIT right governs the write, so drive membership
+        # is not re-checked. Other records keep the purely picker-driven flow.
+        forced_folder = _bill_filing_folder(target)
+        if forced_folder is not None:
+            drive, folder = forced_folder.drive, forced_folder
+        else:
+            drive = attachments_service.require_drive_access(
+                request.user, request.POST.get("drive_id")
+            )
+            folder = attachments_service.resolve_folder(
+                drive,
+                request.POST.get("folder_id"),
+                request.POST.get("folder_name", ""),
+                request.POST.get("parent_folder_id", ""),
+            )
         attachment, created = attachments_service.upload_document(
             obj=target,
             user=request.user,
@@ -2483,6 +2584,8 @@ def attachment_upload(request):
     else:
         # SharePoint kept the existing item and added a version to it.
         message = f'"{attachment.name}" uploaded as a new version.'
+    if forced_folder is not None:
+        message += f' Filed into the bill folder "{forced_folder.name}".'
     return _attachment_response(request, target, success=message)
 
 

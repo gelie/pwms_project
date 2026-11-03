@@ -491,3 +491,6 @@ if AUTH_LDAP_SERVER_URI and AUTH_LDAP_BASE_DN:
         "last_name": "sn",
         "email": "mail",
     }
+
+BILL_DRIVE = config("BILL_DRIVE", default="")
+BILL_FOLDER = config("BILL_FOLDER", default="")
