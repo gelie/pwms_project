@@ -13,7 +13,6 @@ import httpx
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.messages import get_messages
-from django.core.exceptions import PermissionDenied
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
@@ -364,6 +363,7 @@ class FileBillFolderTests(_BillFixtureTestCase):
         self.assertEqual(bill.sharepoint_folder.drive, drive)
 
     def test_a_mirror_failure_keeps_the_filing_and_drops_the_link(self):
+        self.drive.delete()  # No local row: forces the Graph lookup path.
         bill = self._make_bill()
         with (
             patch.object(graph, "get_application_token", return_value=TOKEN),
@@ -376,10 +376,11 @@ class FileBillFolderTests(_BillFixtureTestCase):
                 bill_folders.graph,
                 "get_drive",
                 new=AsyncMock(side_effect=Exception("net down")),
-            ),
+            ) as get_drive,
         ):
             status = bill_folders.file_bill_folder(bill)
 
+        get_drive.assert_awaited_once()  # The failing lookup really ran.
         self.assertEqual(status, bill_folders.CREATED)  # The filing stands.
         bill.refresh_from_db()
         self.assertIsNone(bill.sharepoint_folder)  # Only the link fell away.
@@ -526,8 +527,14 @@ class BillViewFilingTests(_BillFixtureTestCase):
             username="bystander", password="pw"
         )
         self.client.force_login(biller)
-        with self.assertRaises(PermissionDenied):
-            self.client.post(reverse("pwms:bill_file_folder", args=[bill.public_id]))
+        with patch.object(bill_folders, "file_bill_folder") as file_it:
+            response = self.client.post(
+                reverse("pwms:bill_file_folder", args=[bill.public_id])
+            )
+
+        # The test client turns PermissionDenied into a 403 response.
+        self.assertEqual(response.status_code, 403)
+        file_it.assert_not_called()
 
 
 class AttachmentUploadForBillsTests(_BillFixtureTestCase):
@@ -571,10 +578,9 @@ class AttachmentUploadForBillsTests(_BillFixtureTestCase):
         upload.assert_awaited_once_with(
             TOKEN, "drive-1", "child-item", "minutes.pdf", b"%PDF-1.4"
         )
-        messages = [str(m) for m in get_messages(response.wsgi_request)]
-        self.assertTrue(
-            any('Filed into the bill folder "B 99—2026"' in m for m in messages)
-        )
+        status = response.context["attachment_status"]
+        self.assertEqual(status["level"], "success")
+        self.assertIn('Filed into the bill folder "B 99—2026"', status["message"])
         attachment = Attachment.objects.get(item_id=_GRAPH_FILE["id"])
         self.assertEqual(attachment.sharepoint_folder, folder)
 
@@ -594,5 +600,4 @@ class AttachmentUploadForBillsTests(_BillFixtureTestCase):
         upload.assert_awaited_once_with(
             TOKEN, "drive-1", "picked-7", "minutes.pdf", b"%PDF-1.4"
         )
-        messages = [str(m) for m in get_messages(response.wsgi_request)]
-        self.assertFalse([m for m in messages if "Filed into" in m])
+        self.assertNotIn("Filed into", response.context["attachment_status"]["message"])
