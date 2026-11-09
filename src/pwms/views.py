@@ -2124,7 +2124,7 @@ def workflow_transition(request, public_id):
 
 @login_not_required
 def about(request):
-    """About page (sign-in required)."""
+    """About page (public, no sign-in required)."""
     return render(request, "pwms/about.html")
 
 

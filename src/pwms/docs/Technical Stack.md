@@ -63,7 +63,7 @@
   [API Reference](./API%20Reference.md).
 - `MIDDLEWARE`: `pwms.middleware.SiteLoginRequiredMiddleware` makes every site
   route login-required by default; public pages opt out with the
-  `login_not_required` decorator (home, about, contact). The admin and the
+  `login_not_required` decorator (home, about). The admin and the
   `api` namespace manage their own authentication.
   `pwms.api.middleware.ExternalApiUsageLogMiddleware` appends an
   `ApiUsageLog` row for every `/api/v1/` request.
