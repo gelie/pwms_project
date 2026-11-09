@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% comment %}
   Shared shell for every workflow instance detail page.
@@ -14,7 +15,10 @@
 
 {% block title %}{{ object.identifier }}{% endblock title %}
 
-{% block extra_head %}{{ referral_form.media }}{% endblock extra_head %}
+{% block extra_head %}
+  {{ referral_form.media }}
+  <script src="{% static "js/workflow-share.js" %}" defer></script>
+{% endblock extra_head %}
 
 {% block content %}
   <nav aria-label="breadcrumb">
@@ -95,6 +99,81 @@
     </div>
 
   </div>
+
+  {% if perms.share %}
+    {% comment %}
+      Share: copy the record's link, or email it to 1+ people (internal users
+      picked from a search, or any external address). Behaviour lives in
+      static/js/workflow-share.js; the email goes to pwms:workflow_share.
+    {% endcomment %}
+    <div class="modal fade"
+         id="modal-share"
+         tabindex="-1"
+         aria-labelledby="modal-share-title"
+         aria-hidden="true">
+      <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="modal-title fs-5 d-flex align-items-center gap-2" id="modal-share-title">{% lucide "share-2" size=18 %} Share</h2>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <h3 class="h6">Link</h3>
+            <div class="input-group">
+              <input type="text"
+                     class="form-control"
+                     id="share-link"
+                     readonly
+                     value="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}"
+                     aria-label="Link to this record">
+              <button type="button" class="btn btn-outline-secondary" id="share-link-copy">Copy</button>
+            </div>
+            <p class="form-text mb-0">Opens for signed-in users who have access to this record.</p>
+            <hr>
+            <h3 class="h6">Email</h3>
+            <form id="workflow-share-form"
+                  method="post"
+                  action="{% url "pwms:workflow_share" object.public_id %}"
+                  novalidate>
+              {% csrf_token %}
+              <div class="mb-3">
+                <label class="form-label" for="share-recipient-search">Add a colleague</label>
+                <input type="search"
+                       id="share-recipient-search"
+                       name="search"
+                       class="form-control"
+                       placeholder="Search by name or email"
+                       autocomplete="off"
+                       hx-get="{% url "pwms:workflow_share_recipients" object.public_id %}"
+                       hx-trigger="input changed delay:300ms, search"
+                       hx-target="#share-recipient-results">
+                <div id="share-recipient-results" class="list-group mt-1"></div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ share_form.recipients.id_for_label }}">{{ share_form.recipients.label }}</label>
+                {{ share_form.recipients }}
+                <div class="form-text">One or more addresses, internal or external, separated by commas or new lines.</div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ share_form.attach_format.id_for_label }}">{{ share_form.attach_format.label }}</label>
+                {{ share_form.attach_format }}
+                <div class="form-text">Attach a copy for people without access, who cannot open the link.</div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ share_form.message.id_for_label }}">{{ share_form.message.label }}</label>
+                {{ share_form.message }}
+              </div>
+              <div id="workflow-share-result" class="d-none" role="status"></div>
+              <div class="d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="submit" class="btn btn-primary">{% lucide "send" size=16 %} Send email</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
 
   <script type="module">
     // Module scripts run in document order, so base.html's module has already
@@ -297,6 +376,25 @@
       <div class="dropdown">
         <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Actions</button>
         <ul class="dropdown-menu dropdown-menu-end workflow-actions-menu">
+          {% comment %}
+            Share and Print are generic to every record, so they live here rather
+            than in each page's `actions` block. Share needs the `share` right
+            (a copy sent by email leaves the system); Print is always offered.
+          {% endcomment %}
+          {% if perms.share %}
+            <li>
+              <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modal-share">{% lucide "share-2" size=16 %} Share</button>
+            </li>
+          {% endif %}
+          <li>
+            <button type="button"
+                    class="dropdown-item"
+                    data-workflow-print
+                    data-print-url="{% url "pwms:workflow_document" object.public_id %}?format=html">{% lucide "printer" size=16 %} Print</button>
+          </li>
+          <li>
+            <hr class="dropdown-divider">
+          </li>
           {% block actions %}{% endblock actions %}
         </ul>
       </div>
