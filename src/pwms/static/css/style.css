@@ -1209,6 +1209,18 @@ html.password-toggle-ready .password-toggle {
     pointer-events: none;
 }
 
+/* Icon + label rows in the Actions dropdown. */
+.workflow-actions-menu .dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* The Status items stack a transition name over its target state. */
+.workflow-actions-menu .dropdown-item:has(.d-block) {
+    display: block;
+}
+
 .workflow-hero-actions {
     display: flex;
     flex-wrap: wrap;

@@ -1,21 +1,31 @@
 {% comment %}
-  Edit / Delete for a workflow detail page's toolbar.
+  Edit / Delete group of the Actions dropdown on a workflow detail page.
 
-  Include with:
+  Renders <li> items, so include it inside the `actions` block (which sits in a
+  .dropdown-menu). Include with:
     object=<the workflow instance>
     edit_url=<URL name of its update view>
     delete_url=<URL name of its delete view>
 
-  Each button appears only when the reader holds that permission on the
-  instance. The Document menu and any type-specific action (e.g. a bill's
-  "Record version") are rendered by the page that includes this, so the toolbar
-  reads in a predictable order.
+  Each item appears only when the reader holds that permission on the instance.
+  The Document group and any type-specific action (e.g. a bill's "Record
+  version") are rendered by the page that includes this, so the menu reads in a
+  predictable order.
 {% endcomment %}
+{% if perms.edit or perms.delete %}
+  <li>
+    <hr class="dropdown-divider">
+  </li>
+{% endif %}
 {% if perms.edit %}
-  <a class="btn btn-sm btn-outline-secondary"
-     href="{% url edit_url object.public_id %}">{% lucide "pencil" size=16 %} Edit</a>
+  <li>
+    <a class="dropdown-item"
+       href="{% url edit_url object.public_id %}">{% lucide "pencil" size=16 %} Edit</a>
+  </li>
 {% endif %}
 {% if perms.delete %}
-  <a class="btn btn-sm btn-outline-danger"
-     href="{% url delete_url object.public_id %}">{% lucide "trash-2" size=16 %} Delete</a>
+  <li>
+    <a class="dropdown-item text-danger"
+       href="{% url delete_url object.public_id %}">{% lucide "trash-2" size=16 %} Delete</a>
+  </li>
 {% endif %}

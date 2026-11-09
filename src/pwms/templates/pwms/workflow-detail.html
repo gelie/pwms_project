@@ -267,8 +267,39 @@
     </li>
   </ul>
   <div class="d-flex flex-nowrap flex-shrink-0 gap-2 text-nowrap">
-      <button class="btn btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">Workflows</button>
-      <button class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">Actions</button>
+      {% comment %}
+        Workflows = actions about this record's place in its workflow: moving it
+        to its next status and looking at where it has been. Progress and
+        Timeline open in modals (they are reference views, not places to work
+        from, so the reader keeps their tab). Actions = generic things you do to
+        the record itself (documents, edit, delete, ...).
+      {% endcomment %}
+      <div class="dropdown">
+        <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Workflow Actions</button>
+        <ul class="dropdown-menu dropdown-menu-end workflow-actions-menu">
+          {% include "pwms/partials/status_transitions.html" %}
+          <li>
+            <h6 class="dropdown-header">History</h6>
+          </li>
+          <li>
+            <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modal-progress">{% lucide "gauge" size=16 %} Progress <span class="workflow-tab-count ms-auto">{{ progress.percent }}%</span></button>
+          </li>
+          <li>
+            <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modal-timeline">{% lucide "history" size=16 %} Timeline <span class="workflow-tab-count ms-auto">{{ timeline_total }}</span></button>
+          </li>
+        </ul>
+      </div>
+      {% comment %}
+        Children fill `actions` with <li> items (see pwms/partials/document_actions.html
+        and workflow_actions.html), so each page's menu is
+        assembled from the same shared groups.
+      {% endcomment %}
+      <div class="dropdown">
+        <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Actions</button>
+        <ul class="dropdown-menu dropdown-menu-end workflow-actions-menu">
+          {% block actions %}{% endblock actions %}
+        </ul>
+      </div>
   </div>
   </div>
   <div class="tab-content workflow-tab-content" id="workflow-tab-content">
@@ -390,12 +421,19 @@
       </div>
     </div>
 
-    {# --- Progress ----------------------------------------------------- #}
-    <div class="tab-pane fade"
-         id="pane-progress"
-         role="tabpanel"
-         aria-labelledby="tab-progress"
-         tabindex="0">
+    {# --- Progress (modal, opened from the Workflows dropdown) ---------- #}
+    <div class="modal fade"
+         id="modal-progress"
+         tabindex="-1"
+         aria-labelledby="modal-progress-title"
+         aria-hidden="true">
+     <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+       <div class="modal-header">
+        <h2 class="modal-title fs-5 d-flex align-items-center gap-2" id="modal-progress-title">{% lucide "gauge" size=18 %} Progress</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+       </div>
+       <div class="modal-body">
       {% if not progress.has_machine %}
         <section class="workflow-card workflow-card--pad">
           <p class="workflow-muted mb-0">
@@ -533,6 +571,9 @@
           </div>
         </section>
       {% endif %}
+       </div>
+      </div>
+     </div>
     </div>
 
     {# --- Related ----------------------------------------------------- #}
@@ -646,13 +687,20 @@
       {% endblock events %}
     </div>
 
-    {# --- Timeline ---------------------------------------------------- #}
-    <div class="tab-pane fade"
-         id="pane-timeline"
-         role="tabpanel"
-         aria-labelledby="tab-timeline"
-         tabindex="0">
-      <section class="workflow-card">
+    {# --- Timeline (modal, opened from the Workflows dropdown) ---------- #}
+    <div class="modal fade"
+         id="modal-timeline"
+         tabindex="-1"
+         aria-labelledby="modal-timeline-title"
+         aria-hidden="true">
+     <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+       <div class="modal-header">
+        <h2 class="modal-title fs-5 d-flex align-items-center gap-2" id="modal-timeline-title">{% lucide "history" size=18 %} Timeline</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+       </div>
+       <div class="modal-body">
+      <section class="workflow-card mb-0">
         <div class="workflow-card-head">
           <span class="d-flex align-items-center gap-2">{% lucide "history" size=16 %} Timeline</span>
           <span class="badge badge-muted">{{ timeline_total }}</span>
@@ -748,6 +796,9 @@
           </div>
         {% endif %}
       </section>
+       </div>
+      </div>
+     </div>
     </div>
 
     {# --- Attachments -------------------------------------------------- #}
