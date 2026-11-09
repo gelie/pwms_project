@@ -249,7 +249,7 @@
               aria-controls="pane-overview"
               aria-selected="true">{% lucide "circle-dot" size=16 %}<span>Overview</span></button>
     </li>
-    <li class="nav-item" role="presentation">
+    <!--<li class="nav-item" role="presentation">
       <button class="nav-link"
               id="tab-progress"
               data-bs-toggle="tab"
@@ -261,7 +261,7 @@
         {% lucide "gauge" size=16 %}<span>Progress</span>
         <span class="workflow-tab-count" id="tab-progress-count">{{ progress.percent }}%</span>
       </button>
-    </li>
+    </li>-->
     <li class="nav-item" role="presentation">
       <button class="nav-link"
               id="tab-related"
@@ -281,7 +281,10 @@
               role="tab"
               aria-controls="pane-notes"
               aria-selected="false">{% lucide "notebook-pen" size=16 %}<span>Notes</span>
-        <span class="workflow-tab-count" id="tab-notes-count">{{ note_rows|length }}</span></button>
+        {% if note_rows %}
+        <span class="workflow-tab-count" id="tab-notes-count">{{ note_rows|length }}</span>
+        {% endif %}
+        </button>
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link"
@@ -293,7 +296,10 @@
               aria-controls="pane-events"
               aria-selected="false">
         {% lucide "activity" size=16 %}<span>Events</span>
-        <span class="workflow-tab-count" id="tab-events-count">{{ event_rows|length }}</span></button>
+        {% if event_rows %}
+        <span class="workflow-tab-count" id="tab-events-count">{{ event_rows|length }}</span>
+        {% endif %}
+        </button>
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link"
@@ -305,7 +311,9 @@
               aria-controls="pane-attachments"
               aria-selected="false">
         {% lucide "paperclip" size=16 %}<span>Attachments</span>
+        {% if attachments %}
         <span class="workflow-tab-count" id="tab-attachments-count">{{ attachments|length }}</span>
+        {% endif %}
       </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -318,7 +326,9 @@
               aria-controls="pane-referrals"
               aria-selected="false">
         {% lucide "send" size=16 %}<span>Referrals</span>
+        {% if referral_rows %}
         <span class="workflow-tab-count" id="tab-referrals-count">{{ referral_rows|length }}</span>
+        {% endif %}
       </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -331,7 +341,7 @@
               aria-controls="pane-diagram"
               aria-selected="false">{% lucide "workflow" size=16 %}<span>Diagram</span></button>
     </li>
-    <li class="nav-item" role="presentation">
+    <!--<li class="nav-item" role="presentation">
       <button class="nav-link"
               id="tab-timeline"
               data-bs-toggle="tab"
@@ -343,7 +353,7 @@
         {% lucide "history" size=16 %}<span>Timeline</span>
         <span class="workflow-tab-count" id="tab-timeline-count">{{ timeline_total }}</span>
       </button>
-    </li>
+    </li>-->
   </ul>
   <div class="d-flex flex-nowrap flex-shrink-0 gap-2 text-nowrap">
       {% comment %}
@@ -686,7 +696,7 @@
           {% if parent or children %}
             <dl class="workflow-facts">
               <div class="workflow-fact">
-                <dt>Parent</dt>
+                <dt>Parent Workflow</dt>
                 <dd>
                   {% if parent %}
                     {% if parent_url %}
@@ -699,10 +709,10 @@
                   {% endif %}
                 </dd>
               </div>
-              <div class="workflow-fact">
+              <!--<div class="workflow-fact">
                 <dt>Relationship</dt>
                 <dd>{{ object.relationship_type|default:"—" }}</dd>
-              </div>
+              </div>-->
             </dl>
             {% if children %}
               <div class="table-responsive mt-3">
@@ -954,7 +964,7 @@
       <div id="referral-status" aria-live="polite"></div>
       {% include "pwms/partials/referral_section.html" %}
 
-      <section class="workflow-card">
+      <!--<section class="workflow-card">
         <div class="workflow-card-head">
           <span class="d-flex align-items-center gap-2">{% lucide "workflow" size=16 %} Available transitions</span>
           <span class="badge badge-muted">{{ transitions|length }}</span>
@@ -1000,7 +1010,7 @@
             </tbody>
           </table>
         </div>
-      </section>
+      </section>-->
     </div>
   </div>
 {% endblock content %}
