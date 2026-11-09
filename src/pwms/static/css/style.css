@@ -1097,6 +1097,13 @@ html.password-toggle-ready .password-toggle {
 
 .workflow-hero-title {
     margin-bottom: 0.25rem;
+    color: #856911; /* 15% darker shade than theme-dark-gold */
+}
+
+.obj-identifier {
+    height: 2rem;
+    background-color: #2a8e0b !important;
+    font-size: 15px;
 }
 
 .workflow-hero-sub {
@@ -1109,6 +1116,97 @@ html.password-toggle-ready .password-toggle {
     /*flex-wrap: wrap;*/
     gap: 0.375rem;
     margin-top: 0.625rem;
+}
+
+/* Current -> Next status columns; arrows between them are drawn by simpleline.js */
+.workflow-status-flow {
+    column-gap: 5rem; /* leaves room for the arrows */
+    align-items: stretch !important;
+}
+
+/* Both headings sit at the top of their columns, so they line up. The
+   current-status button is centred vertically in the space below its heading,
+   i.e. beside the next-status buttons. */
+.workflow-status-col--current .workflow-status-current {
+    margin-block: auto;
+}
+
+.workflow-status-col {
+    min-width: 10rem;
+}
+
+.workflow-status-heading {
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--bs-secondary-color);
+}
+
+/* Colours come from State.color via the inline --state-color property. */
+.workflow-status-btn {
+    /*--bs-btn-color: #fff;*/
+    --bs-btn-color: var(--state-color);
+    --bs-btn-bg: transparent;
+    /*--bs-btn-bg: var(--state-color);*/
+    --bs-btn-border-color: var(--state-color);
+    --bs-btn-hover-color: #fff;
+    --bs-btn-hover-bg: var(--state-color);
+    --bs-btn-hover-border-color: var(--state-color);
+    --bs-btn-active-color: #fff;
+    --bs-btn-active-bg: var(--state-color);
+    --bs-btn-active-border-color: var(--state-color);
+    --bs-btn-disabled-color: var(--state-color);
+    --bs-btn-disabled-bg: transparent;
+    --bs-btn-disabled-border-color: var(--state-color);
+    --bs-btn-disabled-opacity: 1;
+}
+
+.workflow-status-btn.workflow-status-current {
+    --bs-btn-color: #fff;
+    --bs-btn-bg: var(--state-color);
+    --bs-btn-disabled-color: #fff;
+    --bs-btn-disabled-bg: var(--state-color);
+}
+
+/* Two-line option: the target state, then the action that leads to it. */
+.workflow-status-next .workflow-status-target {
+    display: block;
+}
+
+.workflow-status-next .workflow-status-action {
+    display: block;
+    margin-top: 0.1rem;
+    font-size: 0.68rem;
+    font-weight: 400;
+    line-height: 1.1;
+    text-transform: none;
+    opacity: 0.85;
+}
+
+/* Locked options: dashed, grey and not-allowed, so they read as unavailable
+   rather than broken. */
+.workflow-status-btn.workflow-status-next.is-locked {
+    --bs-btn-disabled-color: var(--bs-secondary-color);
+    --bs-btn-disabled-border-color: var(--bs-secondary-color);
+    --bs-btn-disabled-opacity: 0.8;
+    border-style: dashed;
+    cursor: not-allowed;
+    pointer-events: auto; /* a disabled button otherwise hides its not-allowed cursor and tooltip */
+}
+
+.workflow-status-note {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+/* Invisible start points the arrows leave from (positioned by script). */
+.workflow-status-anchor {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .workflow-hero-actions {
@@ -2281,4 +2379,9 @@ html.password-toggle-ready .password-toggle {
     .meeting-fab {
         transition: none;
     }
+}
+#workflow-tabs-container {
+    margin-top: 1.5rem;
+    /*background-color: var(--theme-light-gold);*/
+    border-bottom: 3px solid var(--theme-dark-gold);
 }

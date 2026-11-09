@@ -29,8 +29,8 @@
   <div class="workflow-hero">
     <div class="workflow-hero-text">
       <h1 class="workflow-hero-title">{{ object.title }}</h1>
-      <p class="workflow-hero-sub mb-2">{% block subtitle %}{{ object.identifier }}{% endblock subtitle %}</p>
-      <div class="workflow-badges-actions">
+      <!--<p class="workflow-hero-sub mb-2">{% block subtitle %}{{ object.identifier }}{% endblock subtitle %}</p>-->
+      <!--<div class="workflow-badges-actions">
         <div class="workflow-hero-badges">
           <span class="badge badge-state">{{ object.current_state.name }}</span>
           <span class="badge badge-muted">{{ object.get_priority_display }} priority</span>
@@ -39,11 +39,103 @@
           {% endif %}
           {% block badges %}{% endblock badges %}
         </div>
-        <div class="workflow-hero-actions">{% block actions %}{% endblock actions %}</div>
+        (the actions block now renders inside the Actions dropdown below)
+      </div>-->
+      <div class="d-flex align-items-center justify-content-between mt-3">
+          <span class="d-inline-flex align-items-center rounded-pill badge badge-state obj-identifier">{{ object.identifier }}</span>
+          {% comment %}
+            Current -> Next status flow. Each next-status button gets an arrow
+            drawn from the current-status button by simpleline.js (see the module
+            script below). The wrapper is position-relative so the SVG overlay
+            is positioned against it.
+          {% endcomment %}
+          <div class="workflow-status-flow position-relative d-flex flex-row align-items-center" id="workflow-status-flow">
+            <div class="workflow-status-col workflow-status-col--current d-flex flex-column align-items-stretch gap-2">
+              <span class="workflow-status-heading">Current</span>
+              <button type="button" class="rounded-pill btn btn-sm workflow-status-btn workflow-status-current" id="workflow-status-current" style="--state-color: {{ object.current_state.color }}" disabled>{{ object.current_state.name }}</button>
+            </div>
+            <div class="workflow-status-col d-flex flex-column align-items-stretch gap-2">
+              <span class="workflow-status-heading">Next</span>
+              {% for transition in transitions %}
+                {% if can_transition %}
+                  {% comment %}
+                    Each option names the state it leads to and, beneath it, the
+                    action that gets it there (omitted when the two read the same).
+                  {% endcomment %}
+                  <a class="rounded-pill btn btn-sm workflow-status-btn workflow-status-next"
+                     style="--state-color: {{ transition.to_state.color }}"
+                     data-color="{{ transition.to_state.color }}"
+                     href="{% url "pwms:workflow_transition" object.public_id %}?transition={{ transition.pk }}"
+                     title="{{ transition.name }}">
+                    <span class="workflow-status-target">{{ transition.to_state.name }}</span>
+                    {% if transition.name != transition.to_state.name %}<span class="workflow-status-action">{{ transition.name }}</span>{% endif %}
+                  </a>
+                {% else %}
+                  {# Locked: dashed and grey, with a lock, so it reads as unavailable rather than broken. #}
+                  <button type="button"
+                          class="rounded-pill btn btn-sm workflow-status-btn workflow-status-next is-locked"
+                          style="--state-color: {{ transition.to_state.color }}"
+                          data-color="{{ transition.to_state.color }}"
+                          title="You do not have permission to move this record"
+                          disabled>
+                    <span class="workflow-status-target">{% lucide "lock" size=12 %} {{ transition.to_state.name }}</span>
+                    {% if transition.name != transition.to_state.name %}<span class="workflow-status-action">{{ transition.name }}</span>{% endif %}
+                  </button>
+                {% endif %}
+              {% empty %}
+                <span class="text-muted small workflow-status-none">No transitions available.</span>
+              {% endfor %}
+              {% if transitions and not can_transition %}
+                <span class="small text-muted workflow-status-note">{% lucide "lock" size=12 %} You cannot move this record.</span>
+              {% endif %}
+            </div>
+          </div>
       </div>
+
     </div>
 
   </div>
+
+  <script type="module">
+    // Module scripts run in document order, so base.html's module has already
+    // exposed SimpleLine on window by the time this executes.
+    const flow = document.getElementById("workflow-status-flow");
+    const current = document.getElementById("workflow-status-current");
+    const nexts = Array.from(document.querySelectorAll(".workflow-status-next"));
+
+    // One start point per arrow, spread down the current button's right edge so
+    // the arrows leave separately instead of fanning from a single spot. Each is
+    // a 1px invisible anchor inside the flow (the arrows' shared container).
+    const anchors = nexts.map(() => {
+      const anchor = document.createElement("span");
+      anchor.className = "workflow-status-anchor";
+      anchor.setAttribute("aria-hidden", "true");
+      flow.appendChild(anchor);
+      return anchor;
+    });
+    function placeAnchors() {
+      anchors.forEach((anchor, i) => {
+        anchor.style.left = `${current.offsetLeft + current.offsetWidth - 1}px`;
+        anchor.style.top = `${current.offsetTop + ((i + 1) / (anchors.length + 1)) * current.offsetHeight}px`;
+      });
+    }
+    placeAnchors();
+    new ResizeObserver(placeAnchors).observe(flow);
+
+    nexts.forEach((next, i) => {
+      const locked = next.classList.contains("is-locked");
+      const line = new window.SimpleLine(anchors[i], next, {
+        color: locked ? "#6c757d" : next.dataset.color || "#255c38",
+        stroke: "3px",
+        anchors: { start: ["middle", "right"], end: ["middle", "left"] },
+        gravity: { start: 0.5, end: 0.5 },
+      });
+      // A dashed arrow for an option the reader cannot take.
+      if (locked && line.line) {
+        line.line.style.strokeDasharray = "6 4";
+      }
+    });
+  </script>
 
   {% comment %}
     The Notes / Attachments / Referrals counters carry ids so their panels' HTMX
@@ -51,6 +143,7 @@
     pwms/partials/notes_section.html, referral_section.html and
     attachment_list.html).
   {% endcomment %}
+  <div id="workflow-tabs-container" class="d-flex align-items-center justify-content-between">
   <ul class="nav nav-tabs workflow-tabs" id="workflow-tabs" role="tablist">
     <li class="nav-item" role="presentation">
       <button class="nav-link active"
@@ -158,7 +251,11 @@
       </button>
     </li>
   </ul>
-
+  <div>
+      <button class="btn btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">Workflows</button>
+      <button class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">Actions</button>
+  </div>
+  </div>
   <div class="tab-content workflow-tab-content" id="workflow-tab-content">
     {# --- Overview ---------------------------------------------------- #}
     <div class="tab-pane fade show active"
