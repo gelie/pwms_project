@@ -223,8 +223,16 @@ def visible_instances(user, queryset) -> list:
 
     Order is preserved. Uses the same :func:`resolve` chain as the detail views,
     so a listing can never surface a row whose own page would raise 403.
+
+    Instances of a disabled ``WorkflowType`` are left out of listings. Existing
+    records stay reachable by direct link: the detail views use :func:`resolve`,
+    not this function.
     """
-    return [obj for obj in queryset if resolve(user, obj, VIEW)]
+    return [
+        obj
+        for obj in queryset
+        if obj.workflow_type.enabled and resolve(user, obj, VIEW)
+    ]
 
 
 def require(

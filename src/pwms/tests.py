@@ -4336,12 +4336,16 @@ class InformationalPageTests(TestCase):
     def setUp(self):
         self.client.force_login(self.user)
 
-    def test_pages_require_login(self):
+    def test_contact_requires_login(self):
         self.client.logout()
-        for name in ("about", "contact"):
-            response = self.client.get(reverse(f"pwms:{name}"))
-            self.assertEqual(response.status_code, 302)
-            self.assertIn("/pwms/login/", response["Location"])
+        response = self.client.get(reverse("pwms:contact"))
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/pwms/login/", response["Location"])
+
+    def test_about_is_public(self):
+        self.client.logout()
+        response = self.client.get(reverse("pwms:about"))
+        self.assertEqual(response.status_code, 200)
 
     def test_about_describes_the_system(self):
         response = self.client.get(reverse("pwms:about"))
