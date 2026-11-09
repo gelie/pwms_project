@@ -69,20 +69,6 @@
                    href="#"
                    role="button"
                    data-bs-toggle="dropdown"
-                   aria-expanded="false">Groups</a>
-                <ul class="dropdown-menu">
-                  <li><a class="dropdown-item" href="{% url "pwms:my_groups" %}">My Groups</a></li>
-                  <li><a class="dropdown-item" href="{% url "pwms:all_groups" %}">All Groups</a></li>
-                </ul>
-              </li>
-              <li class="nav-item">
-                <a class="nav-link" href="{% url "pwms:people" %}">People</a>
-              </li>
-              <li class="nav-item dropdown">
-                <a class="nav-link dropdown-toggle"
-                   href="#"
-                   role="button"
-                   data-bs-toggle="dropdown"
                    aria-expanded="false">Reports</a>
                 <ul class="dropdown-menu">
                   <li><a class="dropdown-item" href="{% url "pwms:reports" %}">Report builder</a></li>
@@ -109,27 +95,69 @@
             <div class="auth-menu">
 
               {% if user.is_authenticated %}
-                <a class="nav-link auth-action auth-item"
-                   href="{% url "pwms:logout" %}"
-                   title="Sign out">
-                  {% lucide "log-out" size=20 %}
-                  <span>Log out</span>
-                </a>
-                <a class="auth-status auth-item text-decoration-none"
-                   href="{% url "pwms:user_detail" user.pk %}"
-                   title="Your profile">
-                  {% lucide "circle-user" size=20 %}
-                  <span>{{ user.get_full_name|default:user.get_username }}</span>
-                </a>
+                <div class="dropdown auth-account auth-item">
+                  <button type="button"
+                          class="auth-toggle"
+                          data-bs-toggle="dropdown"
+                          aria-expanded="false"
+                          title="Account menu">
+                    {% lucide "circle-user" size=20 %}
+                    <span>{{ user.get_full_name|default:user.get_username }}</span>
+                    {% lucide "chevron-down" size=16 %}
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-end account-menu">
+                    <li>
+                      <a class="dropdown-item" href="{% url "pwms:user_detail" user.pk %}">
+                        {% lucide "circle-user" size=18 %}
+                        <span>My profile</span>
+                      </a>
+                    </li>
+                    <li>
+                      <a class="dropdown-item" href="{% url "pwms:my_groups" %}">
+                        {% lucide "users" size=18 %}
+                        <span>My groups</span>
+                      </a>
+                    </li>
+                    <li>
+                      <a class="dropdown-item" href="{% url "pwms:all_groups" %}">
+                        {% lucide "users" size=18 %}
+                        <span>All groups</span>
+                      </a>
+                    </li>
+                    <li>
+                      <a class="dropdown-item" href="{% url "pwms:people" %}">
+                        {% lucide "users-round" size=18 %}
+                        <span>People</span>
+                      </a>
+                    </li>
+                    <li>
+                      <a class="dropdown-item" href="{% url "pwms:logout" %}">
+                        {% lucide "log-out" size=18 %}
+                        <span>Log out</span>
+                      </a>
+                    </li>
+                  </ul>
+                </div>
               {% else %}
-                <a class="nav-link auth-action auth-item" href="{% url "pwms:login" %}">
-                  {% lucide "log-in" size=20 %}
-                  <span>Log in</span>
-                </a>
-                <span class="auth-status auth-item">
-                  {% lucide "user" size=20 %}
-                  <span>Not signed in</span>
-                </span>
+                <div class="dropdown auth-account auth-item">
+                  <button type="button"
+                          class="auth-toggle"
+                          data-bs-toggle="dropdown"
+                          aria-expanded="false"
+                          title="Account menu">
+                    {% lucide "user" size=20 %}
+                    <span>Not signed in</span>
+                    {% lucide "chevron-down" size=16 %}
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-end account-menu">
+                    <li>
+                      <a class="dropdown-item" href="{% url "pwms:login" %}">
+                        {% lucide "log-in" size=18 %}
+                        <span>Log in</span>
+                      </a>
+                    </li>
+                  </ul>
+                </div>
               {% endif %}
               {% if user.is_authenticated %}
                 <div class="dropdown alerts-wrap auth-item d-flex">

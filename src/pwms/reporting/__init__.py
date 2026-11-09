@@ -21,6 +21,7 @@ from .exports import (
     response_for,
     suggested_filename,
 )
+from .instrument_sharing import send_instrument_share_email
 from .instruments import (
     INSTRUMENT_FORMATS,
     InstrumentDocument,
@@ -74,6 +75,7 @@ __all__ = [
     "resolve_share",
     "response_for",
     "response_for_instrument",
+    "send_instrument_share_email",
     "send_scheduled_shares",
     "send_share_email",
     "suggested_filename",

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% comment %}
   Shared shell for every workflow instance detail page.
@@ -14,7 +15,10 @@
 
 {% block title %}{{ object.identifier }}{% endblock title %}
 
-{% block extra_head %}{{ referral_form.media }}{% endblock extra_head %}
+{% block extra_head %}
+  {{ referral_form.media }}
+  <script src="{% static "js/workflow-share.js" %}" defer></script>
+{% endblock extra_head %}
 
 {% block content %}
   <nav aria-label="breadcrumb">
@@ -29,8 +33,8 @@
   <div class="workflow-hero">
     <div class="workflow-hero-text">
       <h1 class="workflow-hero-title">{{ object.title }}</h1>
-      <p class="workflow-hero-sub mb-2">{% block subtitle %}{{ object.identifier }}{% endblock subtitle %}</p>
-      <div class="workflow-badges-actions">
+      <!--<p class="workflow-hero-sub mb-2">{% block subtitle %}{{ object.identifier }}{% endblock subtitle %}</p>-->
+      <!--<div class="workflow-badges-actions">
         <div class="workflow-hero-badges">
           <span class="badge badge-state">{{ object.current_state.name }}</span>
           <span class="badge badge-muted">{{ object.get_priority_display }} priority</span>
@@ -39,11 +43,178 @@
           {% endif %}
           {% block badges %}{% endblock badges %}
         </div>
-        <div class="workflow-hero-actions">{% block actions %}{% endblock actions %}</div>
+        (the actions block now renders inside the Actions dropdown below)
+      </div>-->
+      <div class="d-flex align-items-center justify-content-between mt-3">
+          <span class="d-inline-flex align-items-center rounded-pill badge badge-state obj-identifier">{{ object.identifier }}</span>
+          {% comment %}
+            Current -> Next status flow. Each next-status button gets an arrow
+            drawn from the current-status button by simpleline.js (see the module
+            script below). The wrapper is position-relative so the SVG overlay
+            is positioned against it.
+          {% endcomment %}
+          <div class="workflow-status-flow position-relative d-flex flex-row align-items-center" id="workflow-status-flow">
+            <div class="workflow-status-col workflow-status-col--current d-flex flex-column align-items-stretch gap-2">
+              <span class="workflow-status-heading">Current</span>
+              <button type="button" class="rounded-pill btn btn-sm workflow-status-btn workflow-status-current" id="workflow-status-current" style="--state-color: {{ object.current_state.color }}" disabled>{{ object.current_state.name }}</button>
+            </div>
+            <div class="workflow-status-col d-flex flex-column align-items-stretch gap-2">
+              <span class="workflow-status-heading">Next</span>
+              {% for transition in transitions %}
+                {% if can_transition %}
+                  {% comment %}
+                    Each option names the state it leads to and, beneath it, the
+                    action that gets it there (omitted when the two read the same).
+                  {% endcomment %}
+                  <a class="rounded-pill btn btn-sm workflow-status-btn workflow-status-next"
+                     style="--state-color: {{ transition.to_state.color }}"
+                     data-color="{{ transition.to_state.color }}"
+                     href="{% url "pwms:workflow_transition" object.public_id %}?transition={{ transition.pk }}"
+                     title="{{ transition.name }}">
+                    <span class="workflow-status-target">{{ transition.to_state.name }}</span>
+                    {% if transition.name != transition.to_state.name %}<span class="workflow-status-action">{{ transition.name }}</span>{% endif %}
+                  </a>
+                {% else %}
+                  {# Locked: dashed and grey, with a lock, so it reads as unavailable rather than broken. #}
+                  <button type="button"
+                          class="rounded-pill btn btn-sm workflow-status-btn workflow-status-next is-locked"
+                          style="--state-color: {{ transition.to_state.color }}"
+                          data-color="{{ transition.to_state.color }}"
+                          title="You do not have permission to move this record"
+                          disabled>
+                    <span class="workflow-status-target">{% lucide "lock" size=12 %} {{ transition.to_state.name }}</span>
+                    {% if transition.name != transition.to_state.name %}<span class="workflow-status-action">{{ transition.name }}</span>{% endif %}
+                  </button>
+                {% endif %}
+              {% empty %}
+                <span class="text-muted small workflow-status-none">No transitions available.</span>
+              {% endfor %}
+              {% if transitions and not can_transition %}
+                <span class="small text-muted workflow-status-note">{% lucide "lock" size=12 %} You cannot move this record.</span>
+              {% endif %}
+            </div>
+          </div>
       </div>
+
     </div>
 
   </div>
+
+  {% if perms.share %}
+    {% comment %}
+      Share: copy the record's link, or email it to 1+ people (internal users
+      picked from a search, or any external address). Behaviour lives in
+      static/js/workflow-share.js; the email goes to pwms:workflow_share.
+    {% endcomment %}
+    <div class="modal fade"
+         id="modal-share"
+         tabindex="-1"
+         aria-labelledby="modal-share-title"
+         aria-hidden="true">
+      <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="modal-title fs-5 d-flex align-items-center gap-2" id="modal-share-title">{% lucide "share-2" size=18 %} Share</h2>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <h3 class="h6">Link</h3>
+            <div class="input-group">
+              <input type="text"
+                     class="form-control"
+                     id="share-link"
+                     readonly
+                     value="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}"
+                     aria-label="Link to this record">
+              <button type="button" class="btn btn-outline-secondary" id="share-link-copy">Copy</button>
+            </div>
+            <p class="form-text mb-0">Opens for signed-in users who have access to this record.</p>
+            <hr>
+            <h3 class="h6">Email</h3>
+            <form id="workflow-share-form"
+                  method="post"
+                  action="{% url "pwms:workflow_share" object.public_id %}"
+                  novalidate>
+              {% csrf_token %}
+              <div class="mb-3">
+                <label class="form-label" for="share-recipient-search">Add a colleague</label>
+                <input type="search"
+                       id="share-recipient-search"
+                       name="search"
+                       class="form-control"
+                       placeholder="Search by name or email"
+                       autocomplete="off"
+                       hx-get="{% url "pwms:workflow_share_recipients" object.public_id %}"
+                       hx-trigger="input changed delay:300ms, search"
+                       hx-target="#share-recipient-results">
+                <div id="share-recipient-results" class="list-group mt-1"></div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ share_form.recipients.id_for_label }}">{{ share_form.recipients.label }}</label>
+                {{ share_form.recipients }}
+                <div class="form-text">One or more addresses, internal or external, separated by commas or new lines.</div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ share_form.attach_format.id_for_label }}">{{ share_form.attach_format.label }}</label>
+                {{ share_form.attach_format }}
+                <div class="form-text">Attach a copy for people without access, who cannot open the link.</div>
+              </div>
+              <div class="mb-3">
+                <label class="form-label" for="{{ share_form.message.id_for_label }}">{{ share_form.message.label }}</label>
+                {{ share_form.message }}
+              </div>
+              <div id="workflow-share-result" class="d-none" role="status"></div>
+              <div class="d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+                <button type="submit" class="btn btn-primary">{% lucide "send" size=16 %} Send email</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  <script type="module">
+    // Module scripts run in document order, so base.html's module has already
+    // exposed SimpleLine on window by the time this executes.
+    const flow = document.getElementById("workflow-status-flow");
+    const current = document.getElementById("workflow-status-current");
+    const nexts = Array.from(document.querySelectorAll(".workflow-status-next"));
+
+    // One start point per arrow, spread down the current button's right edge so
+    // the arrows leave separately instead of fanning from a single spot. Each is
+    // a 1px invisible anchor inside the flow (the arrows' shared container).
+    const anchors = nexts.map(() => {
+      const anchor = document.createElement("span");
+      anchor.className = "workflow-status-anchor";
+      anchor.setAttribute("aria-hidden", "true");
+      flow.appendChild(anchor);
+      return anchor;
+    });
+    function placeAnchors() {
+      anchors.forEach((anchor, i) => {
+        anchor.style.left = `${current.offsetLeft + current.offsetWidth - 1}px`;
+        anchor.style.top = `${current.offsetTop + ((i + 1) / (anchors.length + 1)) * current.offsetHeight}px`;
+      });
+    }
+    placeAnchors();
+    new ResizeObserver(placeAnchors).observe(flow);
+
+    nexts.forEach((next, i) => {
+      const locked = next.classList.contains("is-locked");
+      const line = new window.SimpleLine(anchors[i], next, {
+        color: locked ? "#6c757d" : next.dataset.color || "#255c38",
+        stroke: "3px",
+        anchors: { start: ["middle", "right"], end: ["middle", "left"] },
+        gravity: { start: 0.5, end: 0.5 },
+      });
+      // A dashed arrow for an option the reader cannot take.
+      if (locked && line.line) {
+        line.line.style.strokeDasharray = "6 4";
+      }
+    });
+  </script>
 
   {% comment %}
     The Notes / Attachments / Referrals counters carry ids so their panels' HTMX
@@ -51,7 +222,23 @@
     pwms/partials/notes_section.html, referral_section.html and
     attachment_list.html).
   {% endcomment %}
-  <ul class="nav nav-tabs workflow-tabs" id="workflow-tabs" role="tablist">
+  <div id="workflow-tabs-container" class="d-flex flex-nowrap align-items-center justify-content-between gap-2">
+  {% comment %}
+    md and smaller: the tab list is hidden and a dropdown stands in for it.
+    workflow-tabs.js fills the menu from the tab buttons below and keeps its
+    label on the open tab, so there is one set of tabs and panes to maintain.
+  {% endcomment %}
+  <div class="dropdown workflow-tabs-dropdown d-lg-none">
+    <button class="btn workflow-tabs-dropdown-toggle dropdown-toggle"
+            type="button"
+            id="workflow-tabs-dropdown-toggle"
+            data-bs-toggle="dropdown"
+            aria-expanded="false">
+      <span class="workflow-tabs-dropdown-label">Overview</span>
+    </button>
+    <ul class="dropdown-menu" id="workflow-tabs-dropdown-menu" aria-labelledby="workflow-tabs-dropdown-toggle"></ul>
+  </div>
+  <ul class="nav nav-tabs workflow-tabs d-none d-lg-flex" id="workflow-tabs" role="tablist">
     <li class="nav-item" role="presentation">
       <button class="nav-link active"
               id="tab-overview"
@@ -62,7 +249,7 @@
               aria-controls="pane-overview"
               aria-selected="true">{% lucide "circle-dot" size=16 %}<span>Overview</span></button>
     </li>
-    <li class="nav-item" role="presentation">
+    <!--<li class="nav-item" role="presentation">
       <button class="nav-link"
               id="tab-progress"
               data-bs-toggle="tab"
@@ -74,7 +261,7 @@
         {% lucide "gauge" size=16 %}<span>Progress</span>
         <span class="workflow-tab-count" id="tab-progress-count">{{ progress.percent }}%</span>
       </button>
-    </li>
+    </li>-->
     <li class="nav-item" role="presentation">
       <button class="nav-link"
               id="tab-related"
@@ -94,7 +281,10 @@
               role="tab"
               aria-controls="pane-notes"
               aria-selected="false">{% lucide "notebook-pen" size=16 %}<span>Notes</span>
-        <span class="workflow-tab-count" id="tab-notes-count">{{ note_rows|length }}</span></button>
+        {% if note_rows %}
+        <span class="workflow-tab-count" id="tab-notes-count">{{ note_rows|length }}</span>
+        {% endif %}
+        </button>
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link"
@@ -106,7 +296,10 @@
               aria-controls="pane-events"
               aria-selected="false">
         {% lucide "activity" size=16 %}<span>Events</span>
-        <span class="workflow-tab-count" id="tab-events-count">{{ event_rows|length }}</span></button>
+        {% if event_rows %}
+        <span class="workflow-tab-count" id="tab-events-count">{{ event_rows|length }}</span>
+        {% endif %}
+        </button>
     </li>
     <li class="nav-item" role="presentation">
       <button class="nav-link"
@@ -118,7 +311,9 @@
               aria-controls="pane-attachments"
               aria-selected="false">
         {% lucide "paperclip" size=16 %}<span>Attachments</span>
+        {% if attachments %}
         <span class="workflow-tab-count" id="tab-attachments-count">{{ attachments|length }}</span>
+        {% endif %}
       </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -131,7 +326,9 @@
               aria-controls="pane-referrals"
               aria-selected="false">
         {% lucide "send" size=16 %}<span>Referrals</span>
+        {% if referral_rows %}
         <span class="workflow-tab-count" id="tab-referrals-count">{{ referral_rows|length }}</span>
+        {% endif %}
       </button>
     </li>
     <li class="nav-item" role="presentation">
@@ -144,7 +341,7 @@
               aria-controls="pane-diagram"
               aria-selected="false">{% lucide "workflow" size=16 %}<span>Diagram</span></button>
     </li>
-    <li class="nav-item" role="presentation">
+    <!--<li class="nav-item" role="presentation">
       <button class="nav-link"
               id="tab-timeline"
               data-bs-toggle="tab"
@@ -156,9 +353,63 @@
         {% lucide "history" size=16 %}<span>Timeline</span>
         <span class="workflow-tab-count" id="tab-timeline-count">{{ timeline_total }}</span>
       </button>
-    </li>
+    </li>-->
   </ul>
-
+  <div class="d-flex flex-nowrap flex-shrink-0 gap-2 text-nowrap">
+      {% comment %}
+        Workflows = actions about this record's place in its workflow: moving it
+        to its next status and looking at where it has been. Progress and
+        Timeline open in modals (they are reference views, not places to work
+        from, so the reader keeps their tab). Actions = generic things you do to
+        the record itself (documents, edit, delete, ...).
+      {% endcomment %}
+      <div class="dropdown">
+        <button class="btn btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Workflow Actions</button>
+        <ul class="dropdown-menu dropdown-menu-end workflow-actions-menu">
+          {% include "pwms/partials/status_transitions.html" %}
+          <li>
+            <h6 class="dropdown-header">History</h6>
+          </li>
+          <li>
+            <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modal-progress">{% lucide "gauge" size=16 %} Progress <span class="workflow-tab-count ms-auto">{{ progress.percent }}%</span></button>
+          </li>
+          <li>
+            <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modal-timeline">{% lucide "history" size=16 %} Timeline <span class="workflow-tab-count ms-auto">{{ timeline_total }}</span></button>
+          </li>
+        </ul>
+      </div>
+      {% comment %}
+        Children fill `actions` with <li> items (see pwms/partials/document_actions.html
+        and workflow_actions.html), so each page's menu is
+        assembled from the same shared groups.
+      {% endcomment %}
+      <div class="dropdown">
+        <button class="btn btn-outline-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Actions</button>
+        <ul class="dropdown-menu dropdown-menu-end workflow-actions-menu">
+          {% comment %}
+            Share and Print are generic to every record, so they live here rather
+            than in each page's `actions` block. Share needs the `share` right
+            (a copy sent by email leaves the system); Print is always offered.
+          {% endcomment %}
+          {% if perms.share %}
+            <li>
+              <button type="button" class="dropdown-item" data-bs-toggle="modal" data-bs-target="#modal-share">{% lucide "share-2" size=16 %} Share</button>
+            </li>
+          {% endif %}
+          <li>
+            <button type="button"
+                    class="dropdown-item"
+                    data-workflow-print
+                    data-print-url="{% url "pwms:workflow_document" object.public_id %}?format=html">{% lucide "printer" size=16 %} Print</button>
+          </li>
+          <li>
+            <hr class="dropdown-divider">
+          </li>
+          {% block actions %}{% endblock actions %}
+        </ul>
+      </div>
+  </div>
+  </div>
   <div class="tab-content workflow-tab-content" id="workflow-tab-content">
     {# --- Overview ---------------------------------------------------- #}
     <div class="tab-pane fade show active"
@@ -278,12 +529,19 @@
       </div>
     </div>
 
-    {# --- Progress ----------------------------------------------------- #}
-    <div class="tab-pane fade"
-         id="pane-progress"
-         role="tabpanel"
-         aria-labelledby="tab-progress"
-         tabindex="0">
+    {# --- Progress (modal, opened from the Workflows dropdown) ---------- #}
+    <div class="modal fade"
+         id="modal-progress"
+         tabindex="-1"
+         aria-labelledby="modal-progress-title"
+         aria-hidden="true">
+     <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+       <div class="modal-header">
+        <h2 class="modal-title fs-5 d-flex align-items-center gap-2" id="modal-progress-title">{% lucide "gauge" size=18 %} Progress</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+       </div>
+       <div class="modal-body">
       {% if not progress.has_machine %}
         <section class="workflow-card workflow-card--pad">
           <p class="workflow-muted mb-0">
@@ -421,6 +679,9 @@
           </div>
         </section>
       {% endif %}
+       </div>
+      </div>
+     </div>
     </div>
 
     {# --- Related ----------------------------------------------------- #}
@@ -435,7 +696,7 @@
           {% if parent or children %}
             <dl class="workflow-facts">
               <div class="workflow-fact">
-                <dt>Parent</dt>
+                <dt>Parent Workflow</dt>
                 <dd>
                   {% if parent %}
                     {% if parent_url %}
@@ -448,10 +709,10 @@
                   {% endif %}
                 </dd>
               </div>
-              <div class="workflow-fact">
+              <!--<div class="workflow-fact">
                 <dt>Relationship</dt>
                 <dd>{{ object.relationship_type|default:"—" }}</dd>
-              </div>
+              </div>-->
             </dl>
             {% if children %}
               <div class="table-responsive mt-3">
@@ -534,13 +795,20 @@
       {% endblock events %}
     </div>
 
-    {# --- Timeline ---------------------------------------------------- #}
-    <div class="tab-pane fade"
-         id="pane-timeline"
-         role="tabpanel"
-         aria-labelledby="tab-timeline"
-         tabindex="0">
-      <section class="workflow-card">
+    {# --- Timeline (modal, opened from the Workflows dropdown) ---------- #}
+    <div class="modal fade"
+         id="modal-timeline"
+         tabindex="-1"
+         aria-labelledby="modal-timeline-title"
+         aria-hidden="true">
+     <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+       <div class="modal-header">
+        <h2 class="modal-title fs-5 d-flex align-items-center gap-2" id="modal-timeline-title">{% lucide "history" size=18 %} Timeline</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+       </div>
+       <div class="modal-body">
+      <section class="workflow-card mb-0">
         <div class="workflow-card-head">
           <span class="d-flex align-items-center gap-2">{% lucide "history" size=16 %} Timeline</span>
           <span class="badge badge-muted">{{ timeline_total }}</span>
@@ -636,6 +904,9 @@
           </div>
         {% endif %}
       </section>
+       </div>
+      </div>
+     </div>
     </div>
 
     {# --- Attachments -------------------------------------------------- #}
@@ -693,7 +964,7 @@
       <div id="referral-status" aria-live="polite"></div>
       {% include "pwms/partials/referral_section.html" %}
 
-      <section class="workflow-card">
+      <!--<section class="workflow-card">
         <div class="workflow-card-head">
           <span class="d-flex align-items-center gap-2">{% lucide "workflow" size=16 %} Available transitions</span>
           <span class="badge badge-muted">{{ transitions|length }}</span>
@@ -739,7 +1010,7 @@
             </tbody>
           </table>
         </div>
-      </section>
+      </section>-->
     </div>
   </div>
 {% endblock content %}

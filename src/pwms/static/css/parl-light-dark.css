@@ -20,6 +20,9 @@
   --theme-dark-yellow: light-dark(#C79900, #C79900);
   --theme-orange: light-dark(#E17000, #E17000);
   --theme-green: light-dark(#275937, #2D663F);
+  --theme-light-green: light-dark(#5B8F22, #3C7F52);
+  --theme-lighter-green: light-dark(#99c499, #468C64);
+  --theme-lightest-green: light-dark(#ABCDA9, #56A064);
   /* Dropdown row hover. It sits ON a --theme-green menu, so it has to be LIGHTER than
      that green to read as a hover — the old #1f472c was darker and all but invisible. */
   --theme-menu-hover: light-dark(#326B44, #3C7F52);
@@ -37,6 +40,8 @@
   --bs-secondary-bg: light-dark(#f6f3ec, #242424);
   --bs-tertiary-bg: light-dark(#f8f9fa, #1C1C1C);
   --bs-emphasis-color: light-dark(#000, #F1ECE3);
+  --bs-btn-primary-bg: var(--theme-green);
+  --bs-btn-outline-primary: var(--theme-green);
 
   /* Bootstrap only switches these DERIVED colors under [data-bs-theme=dark], which
      this project does not use (base.html keeps data-bs-theme="light" while the theme

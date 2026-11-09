@@ -52,6 +52,7 @@ from .forms import (
     ResolutionAdderForm,
     WorkflowEventForm,
     WorkflowNoteForm,
+    WorkflowShareForm,
 )
 from .models import (
     AbstractLegislativeWorkflow,
@@ -95,6 +96,7 @@ from .reporting import (
     resolve_share,
     response_for,
     response_for_instrument,
+    send_instrument_share_email,
     send_share_email,
 )
 from .services import attachments as attachments_service
@@ -110,6 +112,7 @@ from .services.meetings_io import (
 from .services.permissions import (
     DELETE,
     EDIT,
+    SHARE,
     TRANSITION,
     VIEW,
     permissions_for,
@@ -988,6 +991,9 @@ def _workflow_detail_context(request, instance):
             "pwms:workflow_diagram", kwargs={"public_id": instance.public_id}
         ),
     }
+    if context["perms"].get("share"):
+        # The Share modal's email form; only built for a reader who may share.
+        context["share_form"] = WorkflowShareForm()
     context.update(_referral_context(request, instance))
     context.update(_notes_context(request, instance))
     context.update(_events_context(request, instance))
@@ -2031,6 +2037,105 @@ def workflow_diagram(request, public_id):
     # No filename= argument: the browser must render it inline, and an <img>-
     # loaded SVG cannot run any script it may carry.
     return FileResponse(path.open("rb"), content_type="image/svg+xml")
+
+
+def workflow_share_recipients(request, public_id):
+    """
+    Internal users matching a search, as HTMX buttons for the Share modal.
+
+    Only people with an email address are offered. Requires SHARE on the record,
+    the same right the send itself needs, so the endpoint cannot be used by
+    someone who may not share to browse the directory.
+    """
+    instance = _workflow_by_public_id(public_id)
+    require(request.user, instance, SHARE)
+
+    search = request.GET.get("search", "").strip()
+    users = []
+    if len(search) >= 2:
+        users = list(
+            User.objects.filter(is_active=True)
+            .exclude(email="")
+            .filter(
+                Q(username__icontains=search)
+                | Q(first_name__icontains=search)
+                | Q(last_name__icontains=search)
+                | Q(email__icontains=search)
+            )
+            .order_by("first_name", "last_name", "username")[:10]
+        )
+    return render(
+        request,
+        "pwms/partials/share_recipient_results.html",
+        {"users": users, "searched": len(search) >= 2},
+    )
+
+
+@require_POST
+def workflow_share(request, public_id):
+    """
+    Email a link to a workflow record (optionally with a copy) to 1+ people.
+
+    Recipients may be internal users or external addresses. Needs both VIEW and
+    SHARE on the record: a copy attached to an email leaves the system, so it is
+    never available to someone who could not open the record, and the share
+    right is what lets a group's members do that.
+
+    Answers JSON for the modal. A recipient who cannot open the link (an external
+    address, or an internal user without access) is reported as a warning rather
+    than refused, because sending them the link is still allowed — the modal
+    just tells the sender to attach a copy if they need it read.
+    """
+    instance = _workflow_by_public_id(public_id)
+    require(request.user, instance, VIEW)
+    require(request.user, instance, SHARE)
+
+    form = WorkflowShareForm(request.POST)
+    if not form.is_valid():
+        return JsonResponse(
+            {"success": False, "errors": form.errors.get_json_data()}, status=400
+        )
+
+    data = form.cleaned_data
+    recipients = data["recipients"]
+    attach_format = data["attach_format"]
+    link = request.build_absolute_uri(_workflow_detail_url(instance))
+
+    # Who could actually open the link? Match recipients to accounts by address.
+    cannot_open = []
+    if not attach_format:
+        for address in recipients:
+            account = User.objects.filter(is_active=True, email__iexact=address).first()
+            if account is None or not resolve(account, instance, VIEW):
+                cannot_open.append(address)
+
+    try:
+        sent = send_instrument_share_email(
+            instance,
+            sender=request.user,
+            recipients=recipients,
+            link=link,
+            message=data["message"],
+            attachment_format=attach_format,
+        )
+    except Exception as error:
+        logger.exception("Workflow %s could not be shared by email", instance.pk)
+        return JsonResponse(
+            {"success": False, "error": f"The email could not be sent: {error}"},
+            status=502,
+        )
+
+    warnings = []
+    if cannot_open:
+        warnings.append(
+            "These recipients have no access to the record, so the link will not "
+            "open for them (attach a copy to share it with them): "
+            + ", ".join(cannot_open)
+            + "."
+        )
+    return JsonResponse(
+        {"success": True, "sent": sent, "link": link, "warnings": warnings}
+    )
 
 
 # <<<<<<< Updated upstream

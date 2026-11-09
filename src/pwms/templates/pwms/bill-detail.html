@@ -14,12 +14,14 @@
 
 {% block actions %}
   {% include "pwms/partials/document_actions.html" with object=bill %}
-  {% include "pwms/partials/status_transitions.html" with object=bill %}
   {% if perms.edit %}
-    <a class="btn btn-sm btn-outline-secondary"
-       href="{% url "pwms:bill_version_create" bill.public_id %}">
-      {% lucide "file-plus" size=16 %} Record version
-    </a>
+    <li>
+      <hr class="dropdown-divider">
+    </li>
+    <li>
+      <a class="dropdown-item"
+         href="{% url "pwms:bill_version_create" bill.public_id %}">{% lucide "file-plus" size=16 %} Record version</a>
+    </li>
   {% endif %}
   {% include "pwms/partials/workflow_actions.html" with object=bill edit_url="pwms:bill_update" delete_url="pwms:bill_delete" %}
 {% endblock actions %}
