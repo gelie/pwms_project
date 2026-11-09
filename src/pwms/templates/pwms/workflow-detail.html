@@ -143,8 +143,23 @@
     pwms/partials/notes_section.html, referral_section.html and
     attachment_list.html).
   {% endcomment %}
-  <div id="workflow-tabs-container" class="d-flex align-items-center justify-content-between">
-  <ul class="nav nav-tabs workflow-tabs" id="workflow-tabs" role="tablist">
+  <div id="workflow-tabs-container" class="d-flex flex-nowrap align-items-center justify-content-between gap-2">
+  {% comment %}
+    md and smaller: the tab list is hidden and a dropdown stands in for it.
+    workflow-tabs.js fills the menu from the tab buttons below and keeps its
+    label on the open tab, so there is one set of tabs and panes to maintain.
+  {% endcomment %}
+  <div class="dropdown workflow-tabs-dropdown d-lg-none">
+    <button class="btn workflow-tabs-dropdown-toggle dropdown-toggle"
+            type="button"
+            id="workflow-tabs-dropdown-toggle"
+            data-bs-toggle="dropdown"
+            aria-expanded="false">
+      <span class="workflow-tabs-dropdown-label">Overview</span>
+    </button>
+    <ul class="dropdown-menu" id="workflow-tabs-dropdown-menu" aria-labelledby="workflow-tabs-dropdown-toggle"></ul>
+  </div>
+  <ul class="nav nav-tabs workflow-tabs d-none d-lg-flex" id="workflow-tabs" role="tablist">
     <li class="nav-item" role="presentation">
       <button class="nav-link active"
               id="tab-overview"
@@ -251,7 +266,7 @@
       </button>
     </li>
   </ul>
-  <div>
+  <div class="d-flex flex-nowrap flex-shrink-0 gap-2 text-nowrap">
       <button class="btn btn-outline-danger dropdown-toggle" data-bs-toggle="dropdown">Workflows</button>
       <button class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown">Actions</button>
   </div>

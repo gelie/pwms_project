@@ -1275,6 +1275,49 @@ html.password-toggle-ready .password-toggle {
     padding-top: 1.5rem;
 }
 
+/* md and smaller: the tab strip is replaced by this dropdown (see
+   workflow-tabs.js). min-width: 0 lets the label truncate so the Workflows /
+   Actions buttons stay on one line to its right. */
+.workflow-tabs-dropdown {
+    min-width: 0;
+    padding-block: 0.5rem;
+}
+
+.workflow-tabs-dropdown-toggle {
+    max-width: 100%;
+    background-color: var(--theme-green);
+    color: #fff;
+    font-family: var(--bs-font-serif);
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.workflow-tabs-dropdown-toggle:hover,
+.workflow-tabs-dropdown-toggle:focus,
+.workflow-tabs-dropdown-toggle.show {
+    background-color: var(--theme-green);
+    color: #fff;
+}
+
+.workflow-tabs-dropdown-label {
+    display: inline-block;
+    max-width: 12rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+    white-space: nowrap;
+}
+
+.workflow-tabs-dropdown .dropdown-item.active {
+    background-color: var(--theme-green);
+    color: #fff;
+}
+
+.workflow-tabs-dropdown .dropdown-item.active .workflow-tab-count {
+    background-color: rgba(255, 255, 255, 0.25);
+    color: #fff;
+}
+
 /* Cards hold one topic each, so a panel can be read on its own. */
 .workflow-card {
     margin-bottom: 1.5rem;
