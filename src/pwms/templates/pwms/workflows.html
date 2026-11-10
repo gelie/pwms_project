@@ -1,5 +1,9 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}Workflows{% endblock title %}
+{% block extra_head %}
+  <script src="{% static "js/deadline-modal.js" %}" defer></script>
+{% endblock extra_head %}
 {% block content %}
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <h1 class="mb-0">Workflows</h1>
@@ -104,7 +108,15 @@
                 {% include "pwms/partials/priority_badge.html" with value=workflow.priority label=workflow.get_priority_display %}
               </td>
               <td>{{ workflow.owner.get_full_name|default:workflow.owner.get_username }}</td>
-              <td>{{ workflow.deadline|date:"Y-m-d"|default:"—" }}</td>
+              {# A closed workflow's deadline no longer matters, so it is left blank. #}
+              <td>
+                {% if workflow.deadline and not workflow.current_state.is_terminal %}
+                  {% include "pwms/partials/deadline_chip.html" with workflow=workflow format="Y-m-d" %}
+                {% elif row.can_set_deadline %}
+                  {# Open, no deadline yet, and the reader may edit it. #}
+                  {% include "pwms/partials/set_deadline_button.html" with content_type=row.target_content_type object_id=row.target_object_id title=workflow.title %}
+                {% endif %}
+              </td>
             </tr>
           {% endwith %}
         {% empty %}
@@ -121,4 +133,7 @@
       </tbody>
     </table>
   </div>
+
+  {# One modal serves every row; deadline-modal.js fills in the record it is for. #}
+  {% include "pwms/partials/set_deadline_modal.html" %}
 {% endblock content %}

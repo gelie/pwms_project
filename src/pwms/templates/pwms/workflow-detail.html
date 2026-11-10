@@ -19,6 +19,8 @@
   {{ referral_form.media }}
   <script src="{% static "js/workflow-share.js" %}" defer></script>
   <script src="{% static "js/copy-button.js" %}" defer></script>
+  <script src="{% static "js/deadline-modal.js" %}" defer></script>
+  <script src="{% static "js/assign-modal.js" %}" defer></script>
 {% endblock extra_head %}
 
 {% block content %}
@@ -416,6 +418,12 @@
       </div>
   </div>
   </div>
+  {% if can_set_deadline %}
+    {% include "pwms/partials/set_deadline_modal.html" %}
+  {% endif %}
+  {% if can_assign %}
+    {% include "pwms/partials/assign_modal.html" %}
+  {% endif %}
   <div class="tab-content workflow-tab-content" id="workflow-tab-content">
     {# --- Overview ---------------------------------------------------- #}
     <div class="tab-pane fade show active"
@@ -454,7 +462,16 @@
               </div>-->
               <div class="workflow-fact">
                 <dt>Due</dt>
-                <dd>{{ object.deadline|date:"d M Y H:i"|default:"—" }}</dd>
+                <dd>
+                  {% if object.deadline %}
+                    {# Amber within 10 days, red once passed; a closed record's date stays plain. #}
+                    {% include "pwms/partials/deadline_chip.html" with workflow=object format="d M Y H:i" %}
+                  {% elif can_set_deadline %}
+                    {% include "pwms/partials/set_deadline_button.html" with content_type=target_content_type object_id=target_object_id title=object.title %}
+                  {% else %}
+                    —
+                  {% endif %}
+                </dd>
               </div>
               {% block overview_key %}{% endblock overview_key %}
             </dl>
@@ -495,6 +512,14 @@
                     <!--{% if object.assigned_to_email %}
                       <span class="workflow-muted d-block">{{ object.assigned_to_email }}</span>
                     {% endif %}-->
+                  {% elif can_assign %}
+                    {# Open, nobody assigned yet, and the reader may edit it. #}
+                    <button type="button"
+                            class="btn btn-sm btn-outline-secondary text-nowrap"
+                            data-bs-toggle="modal"
+                            data-bs-target="#modal-assign">
+                      {% lucide "user-plus" size=14 %} Assign
+                    </button>
                   {% else %}
                     —
                   {% endif %}

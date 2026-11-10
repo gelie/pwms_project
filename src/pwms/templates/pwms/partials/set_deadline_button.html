@@ -1,0 +1,11 @@
+{% comment %}
+  Opens the shared "Set deadline" modal (partials/set_deadline_modal.html) for one
+  record; deadline-modal.js copies these attributes into the modal's form.
+  Expects: content_type ("app.model"), object_id and title.
+{% endcomment %}<button type="button"
+        class="btn btn-sm btn-outline-secondary text-nowrap"
+        data-bs-toggle="modal"
+        data-bs-target="#modal-set-deadline"
+        data-deadline-content-type="{{ content_type }}"
+        data-deadline-object-id="{{ object_id }}"
+        data-deadline-title="{{ title }}">{% lucide "calendar-plus" size=14 %} Set deadline</button>

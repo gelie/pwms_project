@@ -1,0 +1,40 @@
+{% comment %}
+  The "Assign" modal on a workflow detail page: pick a person with the search
+  picker and the record is assigned to them (POST to workflow_assign, then back
+  to this page). Only rendered when the record may be assigned (``can_assign``),
+  with ``assign_form`` and the record's ``target_content_type`` / ``target_object_id``.
+  assign-modal.js clears the picker each time the modal opens.
+{% endcomment %}
+<div class="modal fade"
+     id="modal-assign"
+     tabindex="-1"
+     aria-labelledby="modal-assign-title"
+     aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content"
+          method="post"
+          action="{% url "pwms:workflow_assign" %}">
+      {% csrf_token %}
+      <input type="hidden" name="content_type" value="{{ target_content_type }}">
+      <input type="hidden" name="object_id" value="{{ target_object_id }}">
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      <div class="modal-header">
+        <h2 class="modal-title fs-5" id="modal-assign-title">Assign</h2>
+        <button type="button"
+                class="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-3">{{ object.title }}</p>
+        <div class="row">
+          {% include "pwms/_lookup_field.html" with field=assign_form.assigned_to search_url="pwms:user_search" placeholder="Type to search people..." %}
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Assign</button>
+      </div>
+    </form>
+  </div>
+</div>
