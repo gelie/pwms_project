@@ -46,6 +46,13 @@
     <script src="{% static "js/global-search.js" %}" defer></script>
     <script src="{% static "js/password-toggle.js" %}" defer></script>
     <script src="{% static "js/messages.js" %}" defer></script>
+    <script type="module">
+      import { SimpleLine } from "{% static 'js/simpleline.js' %}";
+      window.SimpleLine = SimpleLine;
+
+      // Your code...
+    </script>
+    <!--<script src="{% static "js/simpleline.js" %}" defer></script>-->
     <!--Pages override this with their own name; the title block was previously
        inert because <title> was hardcoded, so every tab read "PWMS".-->
     <title>{% block title %}PWMS{% endblock title %}</title>
@@ -65,7 +72,7 @@
     </div>
     <div id="site-footer">
       <p>
-        <a style="color: bisque" href="https://www.parliament.gov.za/">Parliament of South Africa @ <span id="current-year"></span></a>
+        <a style="color: bisque" href="https://www.parliament.gov.za/">Parliament of South Africa &copy; <span id="current-year"></span></a>
       </p>
     </div>
     <script>

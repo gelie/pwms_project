@@ -48,11 +48,82 @@
         }
     }
 
+    /**
+     * md and smaller: a dropdown replaces the tab strip. The visible tab list
+     * is hidden there, but its buttons still drive the panes; the dropdown just
+     * forwards clicks to them. Items are rebuilt each time the menu opens so the
+     * counters (which HTMX refreshes in place) are never stale.
+     */
+    var menu = document.getElementById("workflow-tabs-dropdown-menu");
+    var toggle = document.getElementById("workflow-tabs-dropdown-toggle");
+    var toggleLabel = toggle && toggle.querySelector(".workflow-tabs-dropdown-label");
+
+    function labelOf(tab) {
+        var span = tab.querySelector("span");
+        return span ? span.textContent.trim() : tab.textContent.trim();
+    }
+
+    function countOf(tab) {
+        var count = tab.querySelector(".workflow-tab-count");
+        return count ? count.textContent.trim() : "";
+    }
+
+    function syncToggle(tab) {
+        if (!toggleLabel || !tab) {
+            return;
+        }
+        toggleLabel.textContent = labelOf(tab);
+    }
+
+    function buildMenu() {
+        menu.textContent = "";
+        tabs.forEach(function (tab) {
+            var item = document.createElement("li");
+            var button = document.createElement("button");
+            button.type = "button";
+            button.className =
+                "dropdown-item d-flex align-items-center gap-2" +
+                (tab.classList.contains("active") ? " active" : "");
+
+            var icon = tab.querySelector("svg");
+            if (icon) {
+                button.appendChild(icon.cloneNode(true));
+            }
+            var text = document.createElement("span");
+            text.textContent = labelOf(tab);
+            button.appendChild(text);
+
+            var count = countOf(tab);
+            if (count) {
+                var badge = document.createElement("span");
+                badge.className = "workflow-tab-count ms-auto";
+                badge.textContent = count;
+                button.appendChild(badge);
+            }
+
+            button.addEventListener("click", function () {
+                show(tab);
+            });
+            item.appendChild(button);
+            menu.appendChild(item);
+        });
+    }
+
+    if (menu && toggle) {
+        toggle.addEventListener("show.bs.dropdown", buildMenu);
+        syncToggle(
+            tabs.filter(function (tab) {
+                return tab.classList.contains("active");
+            })[0]
+        );
+    }
+
     // Deep link on load, then keep the hash in step with the open tab.
     show(tabFor(window.location.hash));
 
     tabs.forEach(function (tab) {
         tab.addEventListener("shown.bs.tab", function (event) {
+            syncToggle(event.target);
             var pane = event.target.getAttribute("data-bs-target");
             if (pane && window.location.hash !== pane) {
                 window.history.replaceState(null, "", pane);

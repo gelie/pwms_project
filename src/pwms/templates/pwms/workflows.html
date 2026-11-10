@@ -101,9 +101,7 @@
                 <span class="badge text-bg-secondary">{{ workflow.current_state.name }}</span>
               </td>
               <td>
-                <span class="badge {% if workflow.priority == "urgent" %}text-bg-danger{% elif workflow.priority == "high" %}text-bg-warning{% elif workflow.priority == "low" %}text-bg-info{% else %}text-bg-secondary{% endif %}">
-                  {{ workflow.get_priority_display }}
-                </span>
+                {% include "pwms/partials/priority_badge.html" with value=workflow.priority label=workflow.get_priority_display %}
               </td>
               <td>{{ workflow.owner.get_full_name|default:workflow.owner.get_username }}</td>
               <td>{{ workflow.deadline|date:"Y-m-d"|default:"—" }}</td>

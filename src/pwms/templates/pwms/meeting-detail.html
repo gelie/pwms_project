@@ -21,7 +21,6 @@
 
 {% block actions %}
   {% include "pwms/partials/document_actions.html" with object=meeting %}
-  {% include "pwms/partials/status_transitions.html" with object=meeting %}
   {% include "pwms/partials/workflow_actions.html" with object=meeting edit_url="pwms:meeting_update" delete_url="pwms:meeting_delete" %}
 {% endblock actions %}
 

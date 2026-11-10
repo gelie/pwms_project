@@ -1,0 +1,6 @@
+{% comment %}
+  The one place a priority is turned into a coloured badge, so the workflow
+  list, the reports table and every detail page agree.
+  Expects: value (low / medium / high / urgent) and label (display text).
+  Colours live in style.css (.badge-priority--*).
+{% endcomment %}<span class="badge badge-priority badge-priority--{{ value }}">{{ label }}</span>

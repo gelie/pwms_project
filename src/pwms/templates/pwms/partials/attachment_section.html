@@ -19,15 +19,13 @@ carries a SharePoint filing target (a bill).
   </h2>
   <div class="d-flex align-items-center gap-2">
     {% include "pwms/partials/bill_sharepoint_folder.html" %}
-  <div class="d-flex align-items-center gap-2">
-    {% include "pwms/partials/bill_sharepoint_folder.html" %}
-  {% if can_attach %}
-    <button type="button"
-            class="btn btn-sm btn-outline-primary"
-            hx-get="{% url "pwms:attachment_browser" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}"
-            hx-target="#attachment-browser"
-            hx-swap="innerHTML">Add attachment</button>
-  {% endif %}
+    {% if can_attach %}
+      <button type="button"
+              class="btn btn-sm btn-outline-primary"
+              hx-get="{% url "pwms:attachment_browser" %}?content_type={{ attachment_content_type|urlencode }}&object_id={{ attachment_object_id|urlencode }}"
+              hx-target="#attachment-browser"
+              hx-swap="innerHTML">Add attachment</button>
+    {% endif %}
   </div>
 </div>
 <div id="attachment-status" aria-live="polite"></div>

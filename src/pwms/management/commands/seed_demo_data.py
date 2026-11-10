@@ -30,6 +30,7 @@ Usage::
 from __future__ import annotations
 
 import contextlib
+import difflib
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from unittest import mock
@@ -162,6 +163,11 @@ class Command(BaseCommand):
         "admin": "admin",
     }
 
+    #: People who only appear as delegation members (never as actors). If their
+    #: account is not in the database they are skipped with a warning rather
+    #: than aborting the seed.
+    OPTIONAL_PEOPLE = {"litchfield"}
+
     #: Committees and administrative groups the seed specs refer to by short key.
     GROUPS = {
         "ir": "Portfolio Committee on International Relations and Cooperation",
@@ -287,13 +293,32 @@ class Command(BaseCommand):
         for key, username in self.PEOPLE.items():
             user = User.objects.filter(username=username).first()
             if user is None:
-                missing.append(username)
+                if key in self.OPTIONAL_PEOPLE:
+                    self.stderr.write(
+                        self.style.WARNING(
+                            f"Optional account '{username}' not found; it will be "
+                            "left out of the seeded delegations."
+                        )
+                    )
+                else:
+                    missing.append(username)
             else:
                 self.people[key] = user
         if missing:
+            all_usernames = list(User.objects.values_list("username", flat=True))
+            lines = []
+            for username in sorted(missing):
+                stem = username.split("-")[0]
+                near = difflib.get_close_matches(username, all_usernames, n=5, cutoff=0.6)
+                near += [
+                    u for u in all_usernames if stem[1:] in u.lower() and u not in near
+                ][:5]
+                hint = f" (similar existing usernames: {', '.join(near)})" if near else ""
+                lines.append(f"{username}{hint}")
             raise CommandError(
                 "Missing the accounts the seed data is attributed to: "
-                + ", ".join(sorted(missing))
+                + "; ".join(lines)
+                + ". Fix the username in Command.PEOPLE or import the account."
             )
 
         self.events = {event.slug: event for event in EventType.objects.all()}
@@ -464,6 +489,8 @@ class Command(BaseCommand):
             (DelegationParticipant.OFFICIAL, officials),
         ):
             for key, delegation_role in people:
+                if key not in self.people:
+                    continue
                 user = self.person(key)
                 DelegationParticipant.objects.create(
                     delegation_report=record.instance,
@@ -779,7 +806,7 @@ class Command(BaseCommand):
         )
         self.advance(
             ipu,
-            "Closed",
+            "Closed – House approved",
             actor=self.person("sonjica"),
             days_ago=60,
             comment="House adopted the report; ATC publication recorded.",

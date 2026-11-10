@@ -1,0 +1,17 @@
+{% autoescape off %}Hello,
+
+{% if sender %}{{ sender.display_name }}{% else %}A colleague{% endif %} has shared a {{ type_name|lower }} with you: {% if identifier %}{{ identifier }} — {% endif %}{{ title }}.
+{% if state %}
+Current status: {{ state.name }}
+{% endif %}
+Open the record (you need to be signed in, with access to it):
+{{ link }}
+{% if has_attachment %}
+A copy of the record is attached for reading without signing in.
+{% endif %}{% if message %}
+Message from the sender:
+{{ message }}
+{% endif %}
+---
+Parliament Workflow Management System
+{% endautoescape %}

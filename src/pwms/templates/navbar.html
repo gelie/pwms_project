@@ -26,15 +26,19 @@
             <ul class="navbar-nav justify-content-start flex-grow-1 pe-3 dropdown menu"
                 id="main-horiz-menu">
               <li class="nav-item">
-                <a class="nav-link active"
-                   aria-current="page"
+                <a class="nav-link{% if nav_section == "home" %} active{% endif %}"
+                   {% if nav_section == "home" %}aria-current="page"{% endif %}
+                   aria-label="Home"
                    href="{% url "pwms:home" %}">{% lucide "house" %}</a>
               </li>
               <li class="nav-item">
-                <a class="nav-link" href="{% url "pwms:dashboard" %}">Dashboard</a>
+                <a class="nav-link{% if nav_section == "dashboard" %} active{% endif %}"
+                   {% if nav_section == "dashboard" %}aria-current="page"{% endif %}
+                   href="{% url "pwms:dashboard" %}">Dashboard</a>
               </li>
               <li class="nav-item dropdown">
-                <a class="nav-link dropdown-toggle"
+                <a class="nav-link dropdown-toggle{% if nav_section == "workflows" %} active{% endif %}"
+                   {% if nav_section == "workflows" %}aria-current="page"{% endif %}
                    href="#"
                    role="button"
                    data-bs-toggle="dropdown"
@@ -62,24 +66,13 @@
                 </ul>
               </li>
               <li class="nav-item">
-                <a class="nav-link" href="{% url "pwms:meetings" %}">Meetings</a>
+                <a class="nav-link{% if nav_section == "meetings" %} active{% endif %}"
+                   {% if nav_section == "meetings" %}aria-current="page"{% endif %}
+                   href="{% url "pwms:meetings" %}">Meetings</a>
               </li>
               <li class="nav-item dropdown">
-                <a class="nav-link dropdown-toggle"
-                   href="#"
-                   role="button"
-                   data-bs-toggle="dropdown"
-                   aria-expanded="false">Groups</a>
-                <ul class="dropdown-menu">
-                  <li><a class="dropdown-item" href="{% url "pwms:my_groups" %}">My Groups</a></li>
-                  <li><a class="dropdown-item" href="{% url "pwms:all_groups" %}">All Groups</a></li>
-                </ul>
-              </li>
-              <li class="nav-item">
-                <a class="nav-link" href="{% url "pwms:people" %}">People</a>
-              </li>
-              <li class="nav-item dropdown">
-                <a class="nav-link dropdown-toggle"
+                <a class="nav-link dropdown-toggle{% if nav_section == "reports" %} active{% endif %}"
+                   {% if nav_section == "reports" %}aria-current="page"{% endif %}
                    href="#"
                    role="button"
                    data-bs-toggle="dropdown"
@@ -98,38 +91,84 @@
                 </ul>
               </li>
               <li class="nav-item">
-                <a class="nav-link" href="{% url "pwms:about" %}">About</a>
+                <a class="nav-link{% if nav_section == "about" %} active{% endif %}"
+                   {% if nav_section == "about" %}aria-current="page"{% endif %}
+                   href="{% url "pwms:about" %}">About</a>
               </li>
               {% if user.is_superuser %}
                 <li class="nav-item">
-                  <a class="nav-link" href="{% url "admin:index" %}">Admin</a>
+                  <a class="nav-link{% if nav_section == "admin" %} active{% endif %}"
+                     {% if nav_section == "admin" %}aria-current="page"{% endif %}
+                     href="{% url "admin:index" %}">Admin</a>
                 </li>
               {% endif %}
             </ul>
             <div class="auth-menu">
 
               {% if user.is_authenticated %}
-                <a class="nav-link auth-action auth-item"
-                   href="{% url "pwms:logout" %}"
-                   title="Sign out">
-                  {% lucide "log-out" size=20 %}
-                  <span>Log out</span>
-                </a>
-                <a class="auth-status auth-item text-decoration-none"
-                   href="{% url "pwms:user_detail" user.pk %}"
-                   title="Your profile">
-                  {% lucide "circle-user" size=20 %}
-                  <span>{{ user.get_full_name|default:user.get_username }}</span>
-                </a>
+                <div class="dropdown auth-account auth-item">
+                  <button type="button"
+                          class="auth-toggle"
+                          data-bs-toggle="dropdown"
+                          aria-expanded="false"
+                          title="Account menu">
+                    {% lucide "circle-user" size=20 %}
+                    <span>{{ user.get_full_name|default:user.get_username }}</span>
+                    {% lucide "chevron-down" size=16 %}
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-end account-menu">
+                    <li>
+                      <a class="dropdown-item" href="{% url "pwms:user_detail" user.pk %}">
+                        {% lucide "circle-user" size=18 %}
+                        <span>My profile</span>
+                      </a>
+                    </li>
+                    <li>
+                      <a class="dropdown-item" href="{% url "pwms:my_groups" %}">
+                        {% lucide "users" size=18 %}
+                        <span>My groups</span>
+                      </a>
+                    </li>
+                    <li>
+                      <a class="dropdown-item" href="{% url "pwms:all_groups" %}">
+                        {% lucide "users" size=18 %}
+                        <span>All groups</span>
+                      </a>
+                    </li>
+                    <li>
+                      <a class="dropdown-item" href="{% url "pwms:people" %}">
+                        {% lucide "users-round" size=18 %}
+                        <span>People</span>
+                      </a>
+                    </li>
+                    <li>
+                      <a class="dropdown-item" href="{% url "pwms:logout" %}">
+                        {% lucide "log-out" size=18 %}
+                        <span>Log out</span>
+                      </a>
+                    </li>
+                  </ul>
+                </div>
               {% else %}
-                <a class="nav-link auth-action auth-item" href="{% url "pwms:login" %}">
-                  {% lucide "log-in" size=20 %}
-                  <span>Log in</span>
-                </a>
-                <span class="auth-status auth-item">
-                  {% lucide "user" size=20 %}
-                  <span>Not signed in</span>
-                </span>
+                <div class="dropdown auth-account auth-item">
+                  <button type="button"
+                          class="auth-toggle"
+                          data-bs-toggle="dropdown"
+                          aria-expanded="false"
+                          title="Account menu">
+                    {% lucide "user" size=20 %}
+                    <span>Not signed in</span>
+                    {% lucide "chevron-down" size=16 %}
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-end account-menu">
+                    <li>
+                      <a class="dropdown-item" href="{% url "pwms:login" %}">
+                        {% lucide "log-in" size=18 %}
+                        <span>Log in</span>
+                      </a>
+                    </li>
+                  </ul>
+                </div>
               {% endif %}
               {% if user.is_authenticated %}
                 <div class="dropdown alerts-wrap auth-item d-flex">

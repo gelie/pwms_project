@@ -22,6 +22,18 @@ urlpatterns = [
         views.workflow_diagram,
         name="workflow_diagram",
     ),
+    # Share an instrument by email (POST) and search internal recipients for the
+    # Share modal on its detail page. Keyed by public id like the routes above.
+    path(
+        "instruments/<uuid:public_id>/share/",
+        views.workflow_share,
+        name="workflow_share",
+    ),
+    path(
+        "instruments/<uuid:public_id>/share/recipients/",
+        views.workflow_share_recipients,
+        name="workflow_share_recipients",
+    ),
     # Confirm and apply one state transition on an instrument, reached from the
     # detail page's Status menu. Keyed by public id like the two routes above, so
     # every instrument shares one route.

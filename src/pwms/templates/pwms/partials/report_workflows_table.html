@@ -38,9 +38,7 @@
               <span class="badge text-bg-secondary">{{ row.state }}</span>
             </td>
             <td>
-              <span class="badge {% if row.priority_value == "urgent" %}text-bg-danger{% elif row.priority_value == "high" %}text-bg-warning{% elif row.priority_value == "low" %}text-bg-info{% else %}text-bg-secondary{% endif %}">
-                {{ row.priority }}
-              </span>
+              {% include "pwms/partials/priority_badge.html" with value=row.priority_value label=row.priority %}
             </td>
             <td>{{ row.owner }}</td>
             <td class="text-nowrap">{{ row.deadline|date:"Y-m-d"|default:"—" }}</td>
