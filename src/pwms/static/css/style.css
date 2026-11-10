@@ -1680,6 +1680,34 @@ html.password-toggle-ready .password-toggle {
     color: light-dark(#fff, #121212);
 }
 
+/* Deadline date in a list: plain by default, amber when it falls within 10
+   days, red once it has passed (see Workflow.deadline_status). Both fills keep
+   at least 4.5:1 contrast with their text. */
+.deadline-chip {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: 0.25rem;
+    white-space: nowrap;
+}
+
+/* A plain date has no fill to pad, so it lines up with the text around it. */
+.deadline-chip:not([class*="--"]) {
+    padding-left: 0;
+    padding-right: 0;
+}
+
+.deadline-chip--due_soon {
+    background-color: #f2a900;
+    color: #121212;
+    font-weight: 600;
+}
+
+.deadline-chip--overdue {
+    background-color: #b3261e;
+    color: #fff;
+    font-weight: 600;
+}
+
 /* A state badge painted with State.color, matching the status button at the top
    of the detail page. The colour arrives via an inline --state-color property;
    it falls back to the theme green when a state has none. */

@@ -1474,3 +1474,39 @@ class MeetingAttendanceRecordForm(forms.Form):
             attrs={"class": "form-control form-control-sm", "placeholder": "Remark"}
         ),
     )
+
+
+class WorkflowDeadlineForm(forms.Form):
+    """The date posted from the workflow register's "Set deadline" button.
+
+    A date rather than a date-time: the register shows dates only. The view turns
+    it into the end of that day, so a deadline set for today is not already overdue.
+    """
+
+    deadline = forms.DateField(
+        label="Deadline",
+        input_formats=["%Y-%m-%d"],
+        widget=forms.DateInput(
+            attrs={"type": "date", "class": "form-control form-control-sm"}
+        ),
+    )
+
+
+class WorkflowAssignForm(forms.Form):
+    """The person picked in the detail page's "Assign" modal.
+
+    Rendered as the search picker (the hidden pk plus a text box), because the
+    list of people is far too long for a <select>. Only active accounts qualify,
+    the same set the record's own form offers.
+    """
+
+    assigned_to = forms.ModelChoiceField(
+        queryset=User.objects.none(),
+        label="Assign to",
+        error_messages={"required": "Choose a person from the list."},
+        widget=forms.HiddenInput(),
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["assigned_to"].queryset = User.objects.filter(is_active=True)

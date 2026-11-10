@@ -1,3 +1,5 @@
+from datetime import timedelta
+
 from django.contrib.contenttypes.fields import GenericForeignKey, GenericRelation
 from django.contrib.contenttypes.models import ContentType
 from django.core.exceptions import ValidationError
@@ -12,6 +14,9 @@ _UNSET = object()
 
 #: BR12 identifier inserted on reports whose due date has expired while open.
 OVERDUE_IDENTIFIER = "Due date expired – pending follow up"
+
+#: A deadline this many days away (or fewer) is flagged as due soon.
+DUE_SOON_DAYS = 10
 
 from .. import state_colors
 from .base import BaseModel
@@ -340,6 +345,27 @@ class AbstractLegislativeWorkflow(BaseModel):
     def overdue_identifier(self):
         """BR12 flag text; empty string when the workflow is not overdue."""
         return OVERDUE_IDENTIFIER if self.is_overdue else ""
+
+    @property
+    def deadline_status(self):
+        """
+        How urgent the deadline is: ``"overdue"``, ``"due_soon"`` or ``""``.
+
+        ``"overdue"`` is :attr:`is_overdue`. ``"due_soon"`` means an open
+        workflow whose deadline falls within :data:`DUE_SOON_DAYS` days. A
+        workflow with no deadline, one that is further out, and one in a
+        terminal state (whose deadline no longer matters) all give ``""``.
+        """
+        if not self.deadline or not self.current_state_id:
+            return ""
+        if self.current_state.is_terminal:
+            return ""
+        now = timezone.now()
+        if self.deadline < now:
+            return "overdue"
+        if self.deadline <= now + timedelta(days=DUE_SOON_DAYS):
+            return "due_soon"
+        return ""
 
     def materialize_group_access(self):
         """

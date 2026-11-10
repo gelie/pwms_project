@@ -281,6 +281,18 @@ urlpatterns = [
         views.referral_recall,
         name="referral_recall",
     ),
+    # Give a record without a deadline one, from the workflow register.
+    path(
+        "workflows/deadline/",
+        views.workflow_set_deadline,
+        name="workflow_set_deadline",
+    ),
+    # Give a record that has nobody assigned someone, from its detail page.
+    path(
+        "workflows/assign/",
+        views.workflow_assign,
+        name="workflow_assign",
+    ),
     # Notes: one cross-type route each, since any instrument can carry them.
     path("notes/add/", views.workflow_notes_add, name="workflow_notes_add"),
     path(

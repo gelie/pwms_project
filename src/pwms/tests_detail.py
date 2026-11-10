@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 import tempfile
 from contextlib import contextmanager
+from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -675,6 +676,484 @@ class WorkflowDetailOverviewTests(DetailPageTestCase):
 
         self.assertIn("Print", actions_menu)
         self.assertIn(reverse("pwms:bill_update", args=[bill.public_id]), actions_menu)
+
+
+class DeadlineStatusTests(DetailPageTestCase):
+    """``deadline_status`` and how the workflow register shows the deadline."""
+
+    def _report_due(self, delta, **overrides):
+        deadline = None if delta is None else timezone.now() + delta
+        return self.make_report(deadline=deadline, **overrides)
+
+    def _closed_state(self):
+        return self.types["Delegation Report"].states.filter(is_terminal=True).first()
+
+    def test_no_deadline_has_no_status(self):
+        self.assertEqual(self._report_due(None).deadline_status, "")
+
+    def test_a_past_deadline_is_overdue(self):
+        self.assertEqual(
+            self._report_due(timedelta(days=-1)).deadline_status, "overdue"
+        )
+
+    def test_a_deadline_within_ten_days_is_due_soon(self):
+        for days in (0.5, 1, 9, 9.9):
+            with self.subTest(days=days):
+                report = self._report_due(timedelta(days=days))
+                self.assertEqual(report.deadline_status, "due_soon")
+
+    def test_a_deadline_beyond_ten_days_has_no_status(self):
+        self.assertEqual(self._report_due(timedelta(days=10.1)).deadline_status, "")
+        self.assertEqual(self._report_due(timedelta(days=60)).deadline_status, "")
+
+    def test_a_closed_workflow_has_no_status_even_when_past_due(self):
+        report = self._report_due(
+            timedelta(days=-30), current_state=self._closed_state()
+        )
+        self.assertEqual(report.deadline_status, "")
+
+    def test_status_agrees_with_is_overdue(self):
+        for delta in (None, timedelta(days=-3), timedelta(days=3), timedelta(days=40)):
+            with self.subTest(delta=delta):
+                report = self._report_due(delta)
+                self.assertEqual(report.deadline_status == "overdue", report.is_overdue)
+
+    def _register(self):
+        response = self.client.get(reverse("pwms:workflows"))
+        self.assertEqual(response.status_code, 200)
+        return response.content.decode()
+
+    def _chip(self, report, status=""):
+        css = f"deadline-chip deadline-chip--{status}" if status else "deadline-chip"
+        date = timezone.localtime(report.deadline).strftime("%Y-%m-%d")
+        return f'class="{css}"', date
+
+    def test_register_marks_an_overdue_date_red(self):
+        report = self._report_due(timedelta(days=-2))
+
+        page = self._register()
+
+        css, date = self._chip(report, "overdue")
+        self.assertIn(css, page)
+        self.assertIn(f">{date}</span>", page)
+        self.assertIn("deadline-chip--overdue", page)
+        self.assertNotIn("deadline-chip--due_soon", page)
+
+    def test_register_marks_a_date_within_ten_days_amber(self):
+        report = self._report_due(timedelta(days=5))
+
+        page = self._register()
+
+        css, date = self._chip(report, "due_soon")
+        self.assertIn(css, page)
+        self.assertIn(f">{date}</span>", page)
+        self.assertNotIn("deadline-chip--overdue", page)
+
+    def test_register_leaves_a_distant_date_plain(self):
+        report = self._report_due(timedelta(days=45))
+
+        page = self._register()
+
+        css, date = self._chip(report)
+        self.assertIn(css, page)
+        self.assertIn(f">{date}</span>", page)
+        self.assertNotIn("deadline-chip--", page)
+
+    def test_register_hides_the_date_of_a_closed_workflow(self):
+        report = self._report_due(
+            timedelta(days=-30), current_state=self._closed_state()
+        )
+
+        page = self._register()
+
+        self.assertIn(report.title, page)
+        _, date = self._chip(report)
+        self.assertNotIn(date, page)
+        self.assertNotIn("deadline-chip", page)
+
+    def test_register_shows_nothing_when_there_is_no_deadline(self):
+        self._report_due(None)
+
+        self.assertNotIn('class="deadline-chip', self._register())
+
+    # -- the detail page's Due row ------------------------------------------
+    def _detail(self, report):
+        response = self.client.get(
+            reverse("pwms:delegation_report_detail", args=[report.public_id])
+        )
+        self.assertEqual(response.status_code, 200)
+        return live_markup(response)
+
+    def _due_row(self, page):
+        row = page.split("<dt>Due</dt>", 1)[1].split("<dd>", 1)[1].split("</dd>", 1)[0]
+        return " ".join(row.split())
+
+    def test_detail_marks_an_overdue_date_red(self):
+        report = self._report_due(timedelta(days=-2))
+
+        row = self._due_row(self._detail(report))
+
+        self.assertIn('class="deadline-chip deadline-chip--overdue"', row)
+        local = timezone.localtime(report.deadline)
+        self.assertIn(f">{local.strftime('%d %b %Y %H:%M')}</span>", row)
+
+    def test_detail_marks_a_date_within_ten_days_amber(self):
+        report = self._report_due(timedelta(days=4))
+
+        row = self._due_row(self._detail(report))
+
+        self.assertIn('class="deadline-chip deadline-chip--due_soon"', row)
+
+    def test_detail_leaves_a_distant_date_plain(self):
+        report = self._report_due(timedelta(days=45))
+
+        row = self._due_row(self._detail(report))
+
+        self.assertIn('class="deadline-chip"', row)
+        self.assertNotIn("deadline-chip--", row)
+
+    def test_detail_keeps_a_closed_records_date_but_uncoloured(self):
+        report = self._report_due(
+            timedelta(days=-30), current_state=self._closed_state()
+        )
+
+        row = self._due_row(self._detail(report))
+
+        self.assertIn('class="deadline-chip"', row)
+        self.assertNotIn("deadline-chip--", row)
+
+    def test_detail_offers_set_deadline_when_there_is_none(self):
+        report = self._report_due(None)
+
+        page = self._detail(report)
+
+        row = self._due_row(page)
+        self.assertIn("Set deadline", row)
+        self.assertIn(f'data-deadline-object-id="{report.pk}"', row)
+        self.assertIn('data-deadline-content-type="pwms.delegationreport"', row)
+        # The modal it opens is on the page, posting back to this same page.
+        self.assertIn('id="modal-set-deadline"', page)
+        detail_path = reverse("pwms:delegation_report_detail", args=[report.public_id])
+        self.assertIn(f'name="next" value="{detail_path}"', page)
+
+    def test_detail_has_no_button_or_modal_when_there_is_a_deadline(self):
+        report = self._report_due(timedelta(days=30))
+
+        page = self._detail(report)
+
+        self.assertNotIn("data-deadline-object-id", page)
+        self.assertNotIn('id="modal-set-deadline"', page)
+
+    def test_detail_shows_a_dash_for_a_closed_record_without_a_deadline(self):
+        report = self._report_due(None, current_state=self._closed_state())
+
+        page = self._detail(report)
+
+        self.assertEqual(self._due_row(page), "—")
+        self.assertNotIn("data-deadline-object-id", page)
+        self.assertNotIn('id="modal-set-deadline"', page)
+
+
+class SetDeadlineTests(DetailPageTestCase):
+    """The register's "Set deadline" button and the endpoint behind it."""
+
+    URL = "pwms:workflow_set_deadline"
+
+    def _closed_state(self):
+        return self.types["Delegation Report"].states.filter(is_terminal=True).first()
+
+    def _post(self, report, **overrides):
+        data = {
+            "content_type": "pwms.delegationreport",
+            "object_id": report.pk,
+            "deadline": "2027-03-15",
+            "next": "/pwms/workflows/?q=report",
+        }
+        data.update(overrides)
+        return self.client.post(reverse(self.URL), data)
+
+    def _register(self):
+        response = self.client.get(reverse("pwms:workflows"))
+        self.assertEqual(response.status_code, 200)
+        return response.content.decode()
+
+    # -- the button ---------------------------------------------------------
+    def test_button_is_offered_on_an_open_row_without_a_deadline(self):
+        report = self.make_report()
+
+        page = self._register()
+
+        self.assertIn("Set deadline", page)
+        self.assertIn(f'data-deadline-object-id="{report.pk}"', page)
+        self.assertIn('data-deadline-content-type="pwms.delegationreport"', page)
+        self.assertIn('id="modal-set-deadline"', page)
+
+    def test_no_button_when_the_row_already_has_a_deadline(self):
+        self.make_report(deadline=timezone.now() + timedelta(days=30))
+
+        self.assertNotIn("data-deadline-object-id", self._register())
+
+    def test_no_button_on_a_closed_row(self):
+        self.make_report(current_state=self._closed_state())
+
+        self.assertNotIn("data-deadline-object-id", self._register())
+
+    def test_a_meeting_is_never_offered_a_deadline(self):
+        from .models import Meeting
+        from .views import _can_offer_deadline
+
+        state = self.types["Delegation Report"].get_initial_state()
+        meeting = Meeting(current_state=state, deadline=None)
+
+        self.assertFalse(_can_offer_deadline(self.user, meeting))
+
+    # -- the endpoint -------------------------------------------------------
+    def test_it_sets_the_deadline_to_the_end_of_the_chosen_day(self):
+        report = self.make_report()
+
+        response = self._post(report)
+
+        self.assertRedirects(
+            response, "/pwms/workflows/?q=report", fetch_redirect_response=False
+        )
+        report.refresh_from_db()
+        local = timezone.localtime(report.deadline)
+        self.assertEqual(local.strftime("%Y-%m-%d %H:%M"), "2027-03-15 23:59")
+
+    def test_the_message_confirms_it(self):
+        report = self.make_report()
+
+        response = self._post(report, next=reverse("pwms:workflows"))
+        page = self.client.get(response["Location"]).content.decode()
+
+        self.assertIn("Deadline set.", page)
+
+    def test_the_button_disappears_once_a_deadline_is_set(self):
+        report = self.make_report()
+        self._post(report)
+
+        page = self._register()
+
+        self.assertNotIn("data-deadline-object-id", page)
+        self.assertIn("2027-03-15", page)
+
+    def test_a_closed_record_takes_no_deadline(self):
+        report = self.make_report(current_state=self._closed_state())
+
+        self._post(report)
+
+        report.refresh_from_db()
+        self.assertIsNone(report.deadline)
+
+    def test_an_existing_deadline_is_not_overwritten(self):
+        existing = timezone.now() + timedelta(days=20)
+        report = self.make_report(deadline=existing)
+
+        self._post(report)
+
+        report.refresh_from_db()
+        self.assertEqual(report.deadline, existing)
+
+    def test_an_invalid_date_changes_nothing(self):
+        report = self.make_report()
+
+        for bad in ("", "not-a-date", "15/03/2027"):
+            with self.subTest(value=bad):
+                response = self._post(report, deadline=bad)
+                self.assertEqual(response.status_code, 302)
+                report.refresh_from_db()
+                self.assertIsNone(report.deadline)
+
+    def test_an_unsafe_next_falls_back_to_the_register(self):
+        report = self.make_report()
+
+        response = self._post(report, next="https://evil.example/steal")
+
+        self.assertEqual(response["Location"], reverse("pwms:workflows"))
+
+    def test_it_needs_the_edit_right(self):
+        report = self.make_report()
+        outsider = get_user_model().objects.create_user(
+            username="deadline-outsider", password="pw"
+        )
+        self.client.force_login(outsider)
+
+        response = self._post(report)
+
+        self.assertEqual(response.status_code, 403)
+        report.refresh_from_db()
+        self.assertIsNone(report.deadline)
+
+    def test_it_only_accepts_post(self):
+        self.assertEqual(self.client.get(reverse(self.URL)).status_code, 405)
+
+    def test_it_refuses_an_unknown_target(self):
+        report = self.make_report()
+
+        response = self._post(report, content_type="auth.user")
+
+        self.assertEqual(response.status_code, 404)
+
+
+class AssignTests(DetailPageTestCase):
+    """The detail page's "Assign" button and the endpoint behind it."""
+
+    URL = "pwms:workflow_assign"
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.person = get_user_model().objects.create_user(
+            username="assignee", first_name="Ada", last_name="Assignee", password="pw"
+        )
+
+    def _closed_state(self):
+        return self.types["Delegation Report"].states.filter(is_terminal=True).first()
+
+    def _detail_url(self, report):
+        return reverse("pwms:delegation_report_detail", args=[report.public_id])
+
+    def _detail(self, report):
+        response = self.client.get(self._detail_url(report))
+        self.assertEqual(response.status_code, 200)
+        return live_markup(response)
+
+    def _assigned_row(self, page):
+        row = (
+            page.split("<dt>Assigned to</dt>", 1)[1]
+            .split("<dd>", 1)[1]
+            .split("</dd>", 1)[0]
+        )
+        return " ".join(row.split())
+
+    def _post(self, report, **overrides):
+        data = {
+            "content_type": "pwms.delegationreport",
+            "object_id": report.pk,
+            "assigned_to": self.person.pk,
+            "next": self._detail_url(report),
+        }
+        data.update(overrides)
+        return self.client.post(reverse(self.URL), data)
+
+    # -- the button ---------------------------------------------------------
+    def test_button_is_offered_when_nobody_is_assigned(self):
+        report = self.make_report()
+
+        page = self._detail(report)
+
+        self.assertIn("Assign", self._assigned_row(page))
+        self.assertIn('data-bs-target="#modal-assign"', self._assigned_row(page))
+        self.assertIn('id="modal-assign"', page)
+
+    def test_the_modal_holds_the_user_search_picker(self):
+        report = self.make_report()
+
+        page = self._detail(report)
+
+        modal = page.split('id="modal-assign"', 1)[1]
+        self.assertIn('name="assigned_to"', modal)
+        self.assertIn(f'hx-get="{reverse("pwms:user_search")}"', modal)
+        self.assertIn(f'name="object_id" value="{report.pk}"', modal)
+        self.assertIn('name="content_type" value="pwms.delegationreport"', modal)
+        self.assertIn(f'name="next" value="{self._detail_url(report)}"', modal)
+
+    def test_no_button_once_someone_is_assigned(self):
+        report = self.make_report(assigned_to=self.person)
+
+        page = self._detail(report)
+
+        self.assertIn("Ada Assignee", self._assigned_row(page))
+        self.assertNotIn("modal-assign", page)
+
+    def test_no_button_on_a_closed_record(self):
+        report = self.make_report(current_state=self._closed_state())
+
+        page = self._detail(report)
+
+        self.assertEqual(self._assigned_row(page), "—")
+        self.assertNotIn("modal-assign", page)
+
+    # -- the endpoint -------------------------------------------------------
+    def test_it_assigns_the_chosen_person_and_returns_to_the_page(self):
+        report = self.make_report()
+
+        response = self._post(report)
+
+        self.assertRedirects(
+            response, self._detail_url(report), fetch_redirect_response=False
+        )
+        report.refresh_from_db()
+        self.assertEqual(report.assigned_to, self.person)
+
+    def test_the_page_then_names_them_and_confirms_it(self):
+        report = self.make_report()
+        self._post(report)
+
+        page = self.client.get(self._detail_url(report)).content.decode()
+
+        self.assertIn("Assigned to Ada Assignee.", page)
+        self.assertNotIn(
+            "modal-assign", live_markup(self.client.get(self._detail_url(report)))
+        )
+
+    def test_a_closed_record_takes_no_assignee(self):
+        report = self.make_report(current_state=self._closed_state())
+
+        self._post(report)
+
+        report.refresh_from_db()
+        self.assertIsNone(report.assigned_to)
+
+    def test_an_existing_assignee_is_not_replaced(self):
+        other = get_user_model().objects.create_user(username="first", password="pw")
+        report = self.make_report(assigned_to=other)
+
+        self._post(report)
+
+        report.refresh_from_db()
+        self.assertEqual(report.assigned_to, other)
+
+    def test_nothing_chosen_or_a_bad_choice_changes_nothing(self):
+        report = self.make_report()
+        inactive = get_user_model().objects.create_user(
+            username="gone", password="pw", is_active=False
+        )
+
+        for bad in ("", "999999", "abc", inactive.pk):
+            with self.subTest(value=bad):
+                response = self._post(report, assigned_to=bad)
+                self.assertEqual(response.status_code, 302)
+                report.refresh_from_db()
+                self.assertIsNone(report.assigned_to)
+
+    def test_an_unsafe_next_falls_back_to_the_register(self):
+        report = self.make_report()
+
+        response = self._post(report, next="https://evil.example/steal")
+
+        self.assertEqual(response["Location"], reverse("pwms:workflows"))
+
+    def test_it_needs_the_edit_right(self):
+        report = self.make_report()
+        outsider = get_user_model().objects.create_user(
+            username="assign-outsider", password="pw"
+        )
+        self.client.force_login(outsider)
+
+        response = self._post(report)
+
+        self.assertEqual(response.status_code, 403)
+        report.refresh_from_db()
+        self.assertIsNone(report.assigned_to)
+
+    def test_it_only_accepts_post(self):
+        self.assertEqual(self.client.get(reverse(self.URL)).status_code, 405)
+
+    def test_it_refuses_an_unknown_target(self):
+        report = self.make_report()
+
+        self.assertEqual(self._post(report, content_type="auth.user").status_code, 404)
 
 
 #: A minimal stand-in for a rendered diagram.

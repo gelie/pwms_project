@@ -1,0 +1,43 @@
+{% comment %}
+  The one "Set deadline" modal on a page, shared by every button that opens it
+  (partials/set_deadline_button.html). It posts to workflow_set_deadline and the
+  reader comes back to this same page. deadline-modal.js fills in which record
+  it is for each time it opens, so include that script on the page too.
+{% endcomment %}
+<div class="modal fade"
+     id="modal-set-deadline"
+     tabindex="-1"
+     aria-labelledby="modal-set-deadline-title"
+     aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content"
+          method="post"
+          action="{% url "pwms:workflow_set_deadline" %}">
+      {% csrf_token %}
+      <input type="hidden" name="content_type" id="set-deadline-content-type">
+      <input type="hidden" name="object_id" id="set-deadline-object-id">
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      <div class="modal-header">
+        <h2 class="modal-title fs-5" id="modal-set-deadline-title">Set deadline</h2>
+        <button type="button"
+                class="btn-close"
+                data-bs-dismiss="modal"
+                aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-3" id="set-deadline-title"></p>
+        <label class="form-label" for="set-deadline-date">Deadline</label>
+        <input class="form-control"
+               type="date"
+               name="deadline"
+               id="set-deadline-date"
+               required>
+        <div class="form-text">Due by the end of this day.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Set deadline</button>
+      </div>
+    </form>
+  </div>
+</div>

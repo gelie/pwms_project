@@ -27,6 +27,7 @@ from django.http import (
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 
@@ -50,6 +51,8 @@ from .forms import (
     ReferralForm,
     ReportShareForm,
     ResolutionAdderForm,
+    WorkflowAssignForm,
+    WorkflowDeadlineForm,
     WorkflowEventForm,
     WorkflowNoteForm,
     WorkflowShareForm,
@@ -384,6 +387,8 @@ def workflows(request):
             "object": instance,
             "url": _workflow_detail_url(instance),
             "identifier": _workflow_identifier(instance),
+            "can_set_deadline": _can_offer_deadline(request.user, instance),
+            **_target_identifiers(instance),
         }
         for instance in accessible
         if (not needle or needle in _workflow_search_text(instance))
@@ -407,6 +412,114 @@ def workflows(request):
         "has_filters": bool(query or type_filter or state_filter or priority_filter),
     }
     return render(request, "pwms/workflows.html", context)
+
+
+def _return_to(request):
+    """Where a POST from the register or a detail page sends the reader back.
+
+    The ``next`` the form carried, if it stays on this site; otherwise the
+    workflow register, so a forged value cannot redirect anywhere else.
+    """
+    destination = request.POST.get("next", "")
+    if url_has_allowed_host_and_scheme(
+        destination,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return destination
+    return reverse("pwms:workflows")
+
+
+def _can_offer_assignment(user, instance):
+    """
+    Whether a detail page should offer "Assign" on ``instance``.
+
+    Only for an open record that has nobody assigned yet and whose reader may edit
+    it. A closed record owes no further action, so nobody needs assigning to it.
+    """
+    if instance.assigned_to_id is not None or instance.current_state.is_terminal:
+        return False
+    return resolve(user, instance, EDIT)
+
+
+@require_POST
+def workflow_assign(request):
+    """Give a record that has nobody assigned someone, from its detail page.
+
+    A closed record takes no assignee, and one that already has an assignee is
+    left alone: reassigning is an edit, made on the record's own form. Either way
+    the reader goes back to the page they came from.
+    """
+    target = _workflow_target(request, EDIT)
+    destination = _return_to(request)
+
+    if target.current_state.is_terminal:
+        messages.error(request, _("A closed workflow does not take an assignee."))
+    elif target.assigned_to_id is not None:
+        messages.error(
+            request,
+            _("That workflow is already assigned. Edit it on its own page."),
+        )
+    else:
+        form = WorkflowAssignForm(request.POST)
+        if form.is_valid():
+            person = form.cleaned_data["assigned_to"]
+            target.assigned_to = person
+            target.save(update_fields=["assigned_to", "updated_at"])
+            messages.success(
+                request, _("Assigned to %(name)s.") % {"name": person.display_name}
+            )
+        else:
+            messages.error(request, _("Choose a person from the list."))
+    return redirect(destination)
+
+
+def _can_offer_deadline(user, instance):
+    """
+    Whether the register should offer "Set deadline" on ``instance``.
+
+    Only for an open record with no deadline yet whose reader may edit it. A
+    meeting is left out: it is scheduled by its start time and its form has no
+    deadline. The permission lookup is the last test, so it only costs a query for
+    the rows that could show the button.
+    """
+    if (
+        instance.deadline is not None
+        or instance.current_state.is_terminal
+        or isinstance(instance, Meeting)
+    ):
+        return False
+    return resolve(user, instance, EDIT)
+
+
+@require_POST
+def workflow_set_deadline(request):
+    """Give a record that has no deadline one, from the workflow register.
+
+    The deadline is the end of the chosen day in the server's time zone. A closed
+    record takes none (its deadline no longer matters), and one that already has a
+    deadline is left alone: changing it is an edit, made on the record's own form.
+    Either way the reader goes back to the page they came from.
+    """
+    target = _workflow_target(request, EDIT)
+    destination = _return_to(request)
+
+    if target.current_state.is_terminal:
+        messages.error(request, _("A closed workflow does not take a deadline."))
+    elif target.deadline is not None:
+        messages.error(
+            request, _("That workflow already has a deadline. Edit it on its own page.")
+        )
+    else:
+        form = WorkflowDeadlineForm(request.POST)
+        if form.is_valid():
+            end_of_day = datetime.combine(form.cleaned_data["deadline"], time(23, 59))
+            target.deadline = timezone.make_aware(end_of_day)
+            target.save(update_fields=["deadline", "updated_at"])
+            messages.success(request, _("Deadline set."))
+        else:
+            messages.error(request, _("Enter a valid date for the deadline."))
+    return redirect(destination)
 
 
 def _text_search(query, *fields):
@@ -978,6 +1091,11 @@ def _workflow_detail_context(request, instance):
         # but only to a reader who may take one: `transition` is a capability of
         # its own, separate from `edit`, so it is not one of `perms`.
         "can_transition": resolve(request.user, instance, TRANSITION),
+        # The "Set deadline" button beside an empty Due date (same rule as the
+        # workflow register).
+        "can_set_deadline": _can_offer_deadline(request.user, instance),
+        # The "Assign" button beside an empty Assigned to, and the picker it opens.
+        "can_assign": _can_offer_assignment(request.user, instance),
         # The Progress tab: where the record sits in its type's state machine.
         "progress": workflow_progress(instance),
         # The tab renders the newest rows and says how many there are in total.
@@ -991,6 +1109,8 @@ def _workflow_detail_context(request, instance):
             "pwms:workflow_diagram", kwargs={"public_id": instance.public_id}
         ),
     }
+    if context["can_assign"]:
+        context["assign_form"] = WorkflowAssignForm()
     if context["perms"].get("share"):
         # The Share modal's email form; only built for a reader who may share.
         context["share_form"] = WorkflowShareForm()
