@@ -57,7 +57,7 @@
             <td>{{ bill.title }}</td>
             <td>{{ bill.get_bill_type_display|default:"—" }}</td>
             <td>
-              <span class="badge text-bg-secondary">{{ bill.current_state.name }}</span>
+              {% include "pwms/partials/state_badge.html" with state=bill.current_state %}
             </td>
             <td>
               <span class="badge text-bg-info">{{ bill.public_status }}</span>

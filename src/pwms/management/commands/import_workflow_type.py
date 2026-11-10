@@ -20,6 +20,7 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Q
 
+from pwms.state_colors import state_color
 from workflows.models import Group, Role, State, Transition, WorkflowType
 
 FORMAT_VERSION = 1
@@ -175,7 +176,13 @@ class Command(BaseCommand):
             "is_terminal": data.get("is_terminal", False),
             "allows_referrals": data.get("allows_referrals", True),
             "order": data.get("order", 0),
-            "color": data.get("color", "#5b8f22"),
+            # A definition without a colour gets the standard one for the role.
+            "color": data.get("color")
+            or state_color(
+                is_initial=data.get("is_initial", False),
+                is_terminal=data.get("is_terminal", False),
+                name=data["name"],
+            ),
         }
         if slug:
             fields["slug"] = slug

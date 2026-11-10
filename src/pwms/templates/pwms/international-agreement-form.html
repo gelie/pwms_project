@@ -39,9 +39,9 @@
       {% endif %}
       {% include "pwms/_form_field.html" with field=form.title wrapper_class="col-12" %}
       {% include "pwms/_form_field.html" with field=form.description wrapper_class="col-12" %}
-      {% include "pwms/_picker_field.html" with field=form.assigned_to search_url="pwms:user_search" placeholder="Type to search users..." selected_name=form.picker_labels.assigned_to wrapper_class="col-12 col-md-6" %}
-      {% include "pwms/_form_field.html" with field=form.deadline wrapper_class="col-12 col-md-6" %}
-      {% include "pwms/_form_field.html" with field=form.priority wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_picker_field.html" with field=form.assigned_to search_url="pwms:user_search" placeholder="Type to search users..." selected_name=form.picker_labels.assigned_to wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_form_field.html" with field=form.priority wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_form_field.html" with field=form.deadline wrapper_class="col-12 col-md-4" %}
     </div>
     <h2 class="h5 mb-3">Agreement details</h2>
     <div class="row g-3 mb-4">
@@ -51,10 +51,10 @@
       {% include "pwms/_picker_field.html" with field=form.responsible_minister search_url="pwms:user_search" placeholder="Type to search ministers..." selected_name=form.picker_labels.responsible_minister wrapper_class="col-12 col-md-6" %}
       {% include "pwms/_form_field.html" with field=form.responsible_minister_name wrapper_class="col-12 col-md-6" %}
       {% include "pwms/_form_field.html" with field=form.referral_committees wrapper_class="col-12" %}
-      {% include "pwms/_form_field.html" with field=form.atc_reference wrapper_class="col-12" %}
+      {% include "pwms/_form_field.html" with field=form.agreement_document_url wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_form_field.html" with field=form.atc_reference wrapper_class="col-4" %}
+      {% include "pwms/_form_field.html" with field=form.explanatory_memorandum_url wrapper_class="col-12 col-md-4" %}
       {% include "pwms/_form_field.html" with field=form.notes wrapper_class="col-12" %}
-      {% include "pwms/_form_field.html" with field=form.agreement_document_url wrapper_class="col-12 col-md-6" %}
-      {% include "pwms/_form_field.html" with field=form.explanatory_memorandum_url wrapper_class="col-12 col-md-6" %}
     </div>
     <div class="d-flex flex-wrap gap-2">
       <button class="btn btn-primary" type="submit">

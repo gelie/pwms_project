@@ -7,6 +7,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Prefetch
 from django.utils import timezone
 
+from pwms import state_colors
 from pwms.models import State, Transition, WorkflowType
 
 # --- Visual language -------------------------------------------------------
@@ -15,9 +16,19 @@ from pwms.models import State, Transition, WorkflowType
 FONT = "DejaVu Sans"
 
 PALETTE = {
-    "initial": {"fill": "#2F7D32", "border": "#1B5E20", "text": "#FFFFFF"},
-    "regular": {"fill": "#1F4E9C", "border": "#163A73", "text": "#FFFFFF"},
-    "terminal": {"fill": "#B23A30", "border": "#7F241D", "text": "#FFFFFF"},
+    # Role colours are the standard state colours (pwms.state_colors), the same
+    # ones State.color carries and the badges use, so a diagram matches the app.
+    "initial": {"fill": state_colors.INITIAL, "border": "#434f5f", "text": "#FFFFFF"},
+    "regular": {
+        "fill": state_colors.IN_PROGRESS,
+        "border": "#2d5f3e",
+        "text": "#FFFFFF",
+    },
+    "terminal": {
+        "fill": state_colors.TERMINAL,
+        "border": "#0d3a20",
+        "text": "#FFFFFF",
+    },
     "custom": {"fill": "#334155", "border": "#1E293B", "text": "#FFFFFF"},
     "edge": "#475569",
     "comment": "#B45309",
@@ -411,7 +422,12 @@ class Command(BaseCommand):
 
         def representative(states, role):
             for state in states:
-                if state.color and state.color.lower() not in DEFAULT_STATE_COLORS:
+                # Red marks a failed ending, so it never stands for "Closed".
+                if (
+                    state.color
+                    and state.color.lower() not in DEFAULT_STATE_COLORS
+                    and state.color.lower() != state_colors.UNSUCCESSFUL
+                ):
                     return state.color
             return PALETTE[role]["fill"]
 

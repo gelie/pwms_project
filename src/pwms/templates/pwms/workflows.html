@@ -98,7 +98,7 @@
               </td>
               <td>{{ workflow.workflow_type.name }}</td>
               <td>
-                <span class="badge text-bg-secondary">{{ workflow.current_state.name }}</span>
+                {% include "pwms/partials/state_badge.html" with state=workflow.current_state %}
               </td>
               <td>
                 {% include "pwms/partials/priority_badge.html" with value=workflow.priority label=workflow.get_priority_display %}

@@ -260,6 +260,10 @@ class DelegationReportForm(WorkflowInstanceFormMixin, forms.ModelForm):
 
     initial_workflow_type = "Delegation Report"
 
+    # The report's status is moved only by the transition machine (the detail
+    # page's workflow menu), so the edit form renders it read-only.
+    protect_current_state = True
+
     engagement_start_date = forms.DateField(
         required=False,
         widget=DatePickerInput(attrs={"class": "form-control"}),
@@ -501,21 +505,35 @@ class DelegationReportUpdateForm(forms.ModelForm):
 
     def __init__(self, *args, report=None, **kwargs):
         super().__init__(*args, **kwargs)
-        # A report's own type owns the states an update may leave it in, exactly as
-        # the report's own form limits its ``current_state``.
+        # An update records a report's status; it never moves it. Status changes
+        # go through the transition engine (the detail page's workflow menu), which
+        # checks guards and permissions and logs the move. So the field is
+        # display-only: it offers just the report's own state, and being disabled
+        # Django ignores whatever a hand-crafted POST puts there and uses the
+        # report's state instead.
+        state_field = self.fields["resulting_state"]
+        state_field.disabled = True
+        state_field.label = "Current state"
+        state_field.help_text = (
+            "The report's status, recorded with this update. Change it from "
+            "the workflow menu, not here."
+        )
         states = State.objects.none()
-        if report is not None and report.workflow_type_id:
-            states = report.workflow_type.states.all().order_by("order", "name")
-        self.fields["resulting_state"].queryset = states
-        if report is not None and not self.is_bound:
-            # An update usually leaves the report where it is, so guess its status.
-            self.initial.setdefault("resulting_state", report.current_state_id)
+        if report is not None and report.current_state_id:
+            states = State.objects.filter(pk=report.current_state_id)
+            self.initial["resulting_state"] = report.current_state_id
+        state_field.queryset = states
 
 
 class InternationalResolutionForm(WorkflowInstanceFormMixin, forms.ModelForm):
     """Create/update form for an :class:`InternationalResolution`."""
 
     initial_workflow_type = "International Resolution"
+
+    # The resolution's status is moved only by the transition machine (the detail
+    # page's workflow menu), so the edit form renders it read-only and ignores any
+    # posted value.
+    protect_current_state = True
 
     #: The report a resolution came out of is an optional parent link stored in
     #: ``WorkflowRelationship`` rather than a column, so it is a plain form field
@@ -680,6 +698,10 @@ class InternationalAgreementForm(WorkflowInstanceFormMixin, forms.ModelForm):
     """Create/update form for an :class:`InternationalAgreement` (BRS BR02)."""
 
     initial_workflow_type = "International Agreement"
+
+    # The agreement's status is moved only by the transition machine (the detail
+    # page's workflow menu), so the edit form renders it read-only.
+    protect_current_state = True
 
     atc_tabling_date = forms.DateField(
         required=False,

@@ -1,0 +1,5 @@
+{% comment %}
+  The one place a workflow state is turned into a coloured badge, so every list
+  and detail page agrees. Expects: state (a State). The colour is State.color,
+  set to the standard colour for the state's role (see pwms/state_colors.py).
+{% endcomment %}<span class="badge badge-state-color" style="--state-color: {{ state.color }}">{{ state.name }}</span>

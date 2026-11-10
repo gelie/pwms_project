@@ -35,7 +35,7 @@
             </td>
             <td>{{ row.type }}</td>
             <td>
-              <span class="badge text-bg-secondary">{{ row.state }}</span>
+              <span class="badge badge-state-color" style="--state-color: {{ row.state_color }}">{{ row.state }}</span>
             </td>
             <td>
               {% include "pwms/partials/priority_badge.html" with value=row.priority_value label=row.priority %}

@@ -15,6 +15,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from django.db.models import Q
 
+from pwms.state_colors import state_color
 from workflows.models import State, WorkflowType
 
 
@@ -83,7 +84,10 @@ class Command(BaseCommand):
             is_terminal = row.get("is_terminal", "false").lower() == "true"
             allows_referrals = row.get("allows_referrals", "true").lower() == "true"
             order = int(row.get("order", 0))
-            color = row.get("color", "#5b8f22")
+            # A CSV without a colour gets the standard one for the state's role.
+            color = (row.get("color") or "").strip() or state_color(
+                is_initial=is_initial, is_terminal=is_terminal, name=name
+            )
 
             # Optional explicit ID (for backwards compatibility with older CSVs).
             # If omitted or empty, Django will auto-generate a UUID7.

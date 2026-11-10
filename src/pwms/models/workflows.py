@@ -13,6 +13,7 @@ _UNSET = object()
 #: BR12 identifier inserted on reports whose due date has expired while open.
 OVERDUE_IDENTIFIER = "Due date expired – pending follow up"
 
+from .. import state_colors
 from .base import BaseModel
 from .permissions import Role
 from .users import User
@@ -1271,8 +1272,22 @@ class State(BaseModel):
 
     # Visual properties
     color = models.CharField(
-        max_length=7, default="#5b8f22", help_text="Hex color code"
+        max_length=7,
+        default=state_colors.IN_PROGRESS,
+        help_text=(
+            "Hex color code. Use the standard colour for the state's role "
+            "(see the default_color property) so every workflow looks alike."
+        ),
     )
+
+    @property
+    def default_color(self):
+        """The standard colour for this state's role (see ``pwms.state_colors``)."""
+        return state_colors.state_color(
+            is_initial=self.is_initial,
+            is_terminal=self.is_terminal,
+            name=self.name,
+        )
 
     class Meta:
         ordering = ["workflow_type", "order", "name"]

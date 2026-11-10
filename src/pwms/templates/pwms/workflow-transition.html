@@ -33,9 +33,9 @@
   <section class="workflow-card workflow-card--pad">
     <h2 class="workflow-card-title">{{ object.title }}</h2>
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-      <span class="badge badge-state">{{ object.current_state.name }}</span>
+      {% include "pwms/partials/state_badge.html" with state=object.current_state %}
       <span aria-hidden="true">{% lucide "move-right" size=16 %}</span>
-      <span class="badge badge-state">{{ transition.to_state.name }}</span>
+      {% include "pwms/partials/state_badge.html" with state=transition.to_state %}
       <span class="workflow-muted">via “{{ transition.name }}”</span>
     </div>
 
