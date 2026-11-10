@@ -7,6 +7,7 @@ into a single Timeline table (see :mod:`pwms.services.history`).
 
 from __future__ import annotations
 
+import re
 import tempfile
 from contextlib import contextmanager
 from pathlib import Path
@@ -28,24 +29,56 @@ from .models import (
     InternationalResolution,
     Role,
     TransitionLog,
+    WorkflowNote,
     WorkflowType,
 )
 from .services.history import _audit_entry, instance_timeline
 from .services.progress import workflow_progress
 from .utils.diagrams import workflow_type_stem
 
-#: The pane ids the shared detail template renders, in tab order.
+#: The tabbed panes the shared detail template renders, in tab order.
 DETAIL_PANES = (
     "overview",
-    "progress",
     "related",
     "notes",
     "events",
-    "timeline",
     "attachments",
     "diagram",
     "referrals",
 )
+
+#: Reference views that open as modals from the Workflow Actions menu. They used
+#: to be tabs, so they have no tab button and no ``pane-`` element any more.
+DETAIL_MODALS = ("progress", "timeline")
+
+
+def live_markup(response):
+    """
+    The rendered page with HTML comments removed.
+
+    Markup commented out with ``<!-- -->`` in the template is still sent to the
+    browser, so ``assertNotContains`` cannot tell a retired element from a live
+    one. Stripping comments checks what the browser actually renders.
+    """
+    return re.sub(r"<!--.*?-->", "", response.content.decode(), flags=re.DOTALL)
+
+
+def header_menus(response):
+    """
+    The two header dropdowns' items, as ``(workflow_menu, actions_menu)``.
+
+    The first menu is the record's workflow menu (status moves, Progress,
+    Timeline, type-specific workflow items); the second is the generic Actions
+    menu (Share, Print, documents, Edit, Delete). Found by position rather than
+    by button label so a rename does not break the tests.
+    """
+    menus = re.findall(
+        r'<ul class="dropdown-menu dropdown-menu-end workflow-actions-menu">(.*?)</ul>',
+        live_markup(response),
+        flags=re.DOTALL,
+    )
+    assert len(menus) == 2, f"expected two header menus, found {len(menus)}"
+    return menus[0], menus[1]
 
 
 class DetailPageTestCase(TestCase):
@@ -364,9 +397,36 @@ class WorkflowDetailViewTests(DetailPageTestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+        page = live_markup(response)
         for pane in DETAIL_PANES:
-            self.assertContains(response, f'id="pane-{pane}"')
-            self.assertContains(response, f'id="tab-{pane}"')
+            self.assertIn(f'id="pane-{pane}"', page)
+            self.assertIn(f'id="tab-{pane}"', page)
+
+    def test_progress_and_timeline_are_modals_not_tabs(self):
+        report = self.make_report()
+
+        response = self.client.get(
+            reverse("pwms:delegation_report_detail", args=[report.public_id])
+        )
+
+        page = live_markup(response)
+        for name in DETAIL_MODALS:
+            self.assertIn(f'id="modal-{name}"', page)
+            self.assertNotIn(f'id="pane-{name}"', page)
+            self.assertNotIn(f'id="tab-{name}"', page)
+
+    def test_workflow_menu_opens_progress_and_timeline(self):
+        report = self.make_report()
+
+        response = self.client.get(
+            reverse("pwms:delegation_report_detail", args=[report.public_id])
+        )
+
+        workflow_menu, actions_menu = header_menus(response)
+        self.assertIn('data-bs-target="#modal-progress"', workflow_menu)
+        self.assertIn('data-bs-target="#modal-timeline"', workflow_menu)
+        self.assertNotIn("#modal-progress", actions_menu)
+        self.assertNotIn("#modal-timeline", actions_menu)
 
     def test_every_instrument_renders_its_detail_page(self):
         report = self.make_report()
@@ -399,22 +459,23 @@ class WorkflowDetailViewTests(DetailPageTestCase):
                     reverse(f"pwms:{name}", args=[instance.public_id])
                 )
                 self.assertEqual(response.status_code, 200)
-                self.assertContains(response, 'id="pane-timeline"')
+                self.assertContains(response, 'id="modal-progress"')
+                self.assertContains(response, 'id="modal-timeline"')
 
-    def test_progress_tab_shows_the_completion(self):
+    def test_progress_modal_shows_the_completion(self):
         report = self.make_report()
 
         response = self.client.get(
             reverse("pwms:delegation_report_detail", args=[report.public_id])
         )
 
-        self.assertContains(response, 'id="pane-progress"')
+        self.assertContains(response, 'id="modal-progress"')
         self.assertContains(response, 'aria-label="0 percent complete"')
         # The whole sequence is rendered, terminal state included.
         self.assertContains(response, "Awaiting PGIR approval")
         self.assertContains(response, "Closed – House approved")
 
-    def test_timeline_tab_shows_transitions_and_crud_together(self):
+    def test_timeline_modal_shows_transitions_and_crud_together(self):
         report = self.make_report()
         report.description = "Edited once"
         report.save()
@@ -431,7 +492,7 @@ class WorkflowDetailViewTests(DetailPageTestCase):
         # ...so the old separate "Audit trail" section is gone.
         self.assertNotContains(response, "Workflow audit trail")
 
-    def test_timeline_tab_counts_the_rows(self):
+    def test_timeline_modal_counts_the_rows(self):
         report = self.make_report()
         self.add_transition(report, actor=self.user)
 
@@ -439,30 +500,180 @@ class WorkflowDetailViewTests(DetailPageTestCase):
             reverse("pwms:delegation_report_detail", args=[report.public_id])
         )
 
-        # Two rows: the create and the transition.
-        self.assertContains(
-            response,
-            '<span class="workflow-tab-count" id="tab-timeline-count">2</span>',
+        page = live_markup(response)
+        # Two rows: the create and the transition. The count sits on the menu
+        # item that opens the modal and in the modal's own header.
+        self.assertIn(
+            'Timeline <span class="workflow-tab-count ms-auto">2</span>', page
         )
+        self.assertIn('<span class="badge badge-muted">2</span>', page)
 
-    def test_the_panelled_tab_counters_carry_out_of_band_target_ids(self):
+    def test_progress_menu_item_shows_the_percentage(self):
         report = self.make_report()
+
         response = self.client.get(
             reverse("pwms:delegation_report_detail", args=[report.public_id])
         )
 
-        # The panels' HTMX responses refresh these counters out-of-band, so the
-        # spans in the tab bar have to be addressable by id...
+        self.assertIn(
+            'Progress <span class="workflow-tab-count ms-auto">0%</span>',
+            live_markup(response),
+        )
+
+    def test_tab_counters_are_left_out_while_there_is_nothing_to_count(self):
+        report = self.make_report()
+
+        response = self.client.get(
+            reverse("pwms:delegation_report_detail", args=[report.public_id])
+        )
+
+        page = live_markup(response)
         for element_id in (
-            "tab-progress-count",
             "tab-notes-count",
+            "tab-events-count",
             "tab-attachments-count",
             "tab-referrals-count",
-            "tab-timeline-count",
         ):
-            self.assertContains(response, f'id="{element_id}"')
-        # ...and the first paint renders them in place, never out-of-band.
+            self.assertNotIn(f'id="{element_id}"', page)
+
+    def test_tab_counters_render_in_place_once_there_are_rows(self):
+        report = self.make_report()
+        WorkflowNote.objects.create(
+            content_type=ContentType.objects.get_for_model(report),
+            object_id=report.pk,
+            author=self.user,
+            body="Chased the committee",
+        )
+
+        response = self.client.get(
+            reverse("pwms:delegation_report_detail", args=[report.public_id])
+        )
+
+        self.assertIn(
+            '<span class="workflow-tab-count" id="tab-notes-count">1</span>',
+            live_markup(response),
+        )
+        # The first paint renders counters in place, never out-of-band.
         self.assertNotContains(response, "hx-swap-oob")
+
+
+class WorkflowDetailOverviewTests(DetailPageTestCase):
+    """What the Overview tab shows: key facts, the record line, admin details."""
+
+    def _get(self, instance, name="delegation_report_detail"):
+        return self.client.get(reverse(f"pwms:{name}", args=[instance.public_id]))
+
+    def _make_bill(self):
+        bill_type = self.types["Bill"]
+        return Bill.objects.create(
+            workflow_type=bill_type,
+            current_state=bill_type.get_initial_state(),
+            title="A bill",
+            bill_number="B OVERVIEW-1",
+            owner=self.user,
+        )
+
+    def test_priority_is_a_badge_in_its_own_colour(self):
+        for priority, label in (
+            ("low", "Low"),
+            ("medium", "Medium"),
+            ("high", "High"),
+            ("urgent", "Urgent"),
+        ):
+            with self.subTest(priority=priority):
+                report = self.make_report(priority=priority)
+
+                page = live_markup(self._get(report))
+
+                self.assertIn(
+                    f'<span class="badge badge-priority badge-priority--{priority}">'
+                    f"{label}</span>",
+                    page,
+                )
+
+    def test_state_badges_take_the_states_own_colour(self):
+        report = self.make_report()
+        state = report.current_state
+        state.color = "#123abc"
+        state.save(update_fields=["color"])
+
+        page = live_markup(self._get(report))
+
+        badge = (
+            f'<span class="badge badge-state-color" style="--state-color: #123abc">'
+            f"{state.name}</span>"
+        )
+        # Key information and the Progress modal's "Current state" row.
+        self.assertEqual(page.count(badge), 2)
+
+    def test_record_dates_are_one_muted_line(self):
+        report = self.make_report()
+        created = timezone.localtime(report.created_at).strftime("%d %b %Y")
+        updated = timezone.localtime(report.updated_at).strftime("%d %b %Y")
+
+        response = self._get(report)
+
+        self.assertContains(
+            response,
+            f"Created {created} · Updated {updated}",
+        )
+        self.assertContains(response, 'class="workflow-record-line"')
+        # The two cards the line replaces are gone.
+        self.assertNotContains(response, "System information")
+        self.assertNotContains(response, "Last updated")
+
+    def test_technical_details_are_hidden_from_ordinary_users(self):
+        report = self.make_report()
+
+        response = self._get(report)
+
+        self.assertNotContains(response, "Technical details")
+        self.assertNotContains(response, "data-copy-text")
+        self.assertNotContains(response, "Hierarchy level")
+
+    def test_technical_details_are_collapsed_for_a_superuser(self):
+        report = self.make_report()
+        admin = get_user_model().objects.create_superuser(
+            username="detail-admin", email="admin@example.com", password="pw"
+        )
+        self.client.force_login(admin)
+
+        response = self._get(report)
+
+        self.assertContains(response, "Technical details")
+        # A native <details> with no `open` attribute starts collapsed.
+        self.assertContains(response, '<details class="workflow-technical">')
+        self.assertContains(response, "Hierarchy level")
+        # The ID has a copy button carrying the value to copy.
+        self.assertContains(response, f'data-copy-text="{report.public_id}"')
+        self.assertContains(response, "js/copy-button.js")
+
+    def test_record_version_is_a_workflow_action_on_a_bill(self):
+        bill = self._make_bill()
+        url = reverse("pwms:bill_version_create", args=[bill.public_id])
+
+        workflow_menu, actions_menu = header_menus(self._get(bill, "bill_detail"))
+
+        self.assertIn(url, workflow_menu)
+        self.assertIn("Record version", workflow_menu)
+        self.assertNotIn(url, actions_menu)
+        self.assertNotIn("Record version", actions_menu)
+
+    def test_other_instruments_have_no_record_version_item(self):
+        report = self.make_report()
+
+        workflow_menu, actions_menu = header_menus(self._get(report))
+
+        self.assertNotIn("Record version", workflow_menu)
+        self.assertNotIn("Record version", actions_menu)
+
+    def test_a_bill_keeps_share_print_and_edit_under_actions(self):
+        bill = self._make_bill()
+
+        _, actions_menu = header_menus(self._get(bill, "bill_detail"))
+
+        self.assertIn("Print", actions_menu)
+        self.assertIn(reverse("pwms:bill_update", args=[bill.public_id]), actions_menu)
 
 
 #: A minimal stand-in for a rendered diagram.

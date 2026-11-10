@@ -770,8 +770,9 @@ class ReportUpdateAddTests(TestCase):
     @staticmethod
     def _panes(page):
         """The Overview and Related panes, split out by their pane ids."""
+        # The Progress modal is the first thing after the Overview pane.
         overview = page.split('id="pane-overview"', 1)[1].split(
-            'id="pane-progress"', 1
+            'id="modal-progress"', 1
         )[0]
         related = page.split('id="pane-related"', 1)[1].split('id="pane-notes"', 1)[0]
         return overview, related
@@ -1011,8 +1012,12 @@ class EventAddTests(TestCase):
     def test_a_recorded_event_lands_on_the_timeline(self):
         self._record_event(notes="ATC published in the papers.")
         response = self.client.get(self._detail_url())
-        self.assertContains(response, 'id="pane-timeline"')
-        self.assertContains(response, "ATC published in the papers.")
+        # The timeline is a modal now, so look inside it rather than anywhere on
+        # the page (the Events tab shows the same notes).
+        self.assertContains(response, 'id="modal-timeline"')
+        timeline = response.content.decode().split('id="modal-timeline"', 1)[1]
+        timeline = timeline.split('id="pane-attachments"', 1)[0]
+        self.assertIn("ATC published in the papers.", timeline)
 
     def test_the_add_response_refreshes_the_events_tab_counter_out_of_band(self):
         response = self._record_event(htmx=True)
