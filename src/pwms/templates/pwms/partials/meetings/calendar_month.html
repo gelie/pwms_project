@@ -68,7 +68,7 @@
             </div>
           </div>
           {% if meeting.current_state_id %}
-            <span class="badge badge-state">{{ meeting.current_state.name }}</span>
+            {% include "pwms/partials/state_badge.html" with state=meeting.current_state %}
           {% endif %}
         </li>
       {% empty %}

@@ -83,7 +83,7 @@ when one was just captured.
             <td>{{ row.object.title }}</td>
             <td>{{ row.object.adoption_date|date:"d M Y"|default:"—" }}</td>
             <td>
-              <span class="badge badge-state">{{ row.object.current_state.name }}</span>
+              {% include "pwms/partials/state_badge.html" with state=row.object.current_state %}
             </td>
           </tr>
         {% empty %}

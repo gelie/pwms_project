@@ -446,12 +446,12 @@
                 <dt>Priority</dt>
                 <dd>{% include "pwms/partials/priority_badge.html" with value=object.priority label=object.get_priority_display %}</dd>
               </div>
-              <div class="workflow-fact">
+              <!--<div class="workflow-fact">
                 <dt>State</dt>
                 <dd>
-                  <span class="badge badge-state-color" style="--state-color: {{ object.current_state.color }}">{{ object.current_state.name }}</span>
+                  {% include "pwms/partials/state_badge.html" with state=object.current_state %}
                 </dd>
-              </div>
+              </div>-->
               <div class="workflow-fact">
                 <dt>Due</dt>
                 <dd>{{ object.deadline|date:"d M Y H:i"|default:"—" }}</dd>
@@ -492,9 +492,9 @@
                       <span class="workflow-avatar">{{ object.assigned_to.display_name|slice:":1" }}</span>
                       <span>{{ object.assigned_to.display_name }}</span>
                     </span>
-                    {% if object.assigned_to_email %}
+                    <!--{% if object.assigned_to_email %}
                       <span class="workflow-muted d-block">{{ object.assigned_to_email }}</span>
-                    {% endif %}
+                    {% endif %}-->
                   {% else %}
                     —
                   {% endif %}
@@ -592,7 +592,7 @@
                 <div class="workflow-fact">
                   <dt>Current state</dt>
                   <dd>
-                    <span class="badge badge-state-color" style="--state-color: {{ object.current_state.color }}">{{ object.current_state.name }}</span>
+                    {% include "pwms/partials/state_badge.html" with state=object.current_state %}
                   </dd>
                 </div>
                 <div class="workflow-fact">
@@ -747,7 +747,7 @@
                         <td>{{ row.object.title }}</td>
                         <td>{{ row.object.workflow_type.name }}</td>
                         <td>
-                          <span class="badge badge-state-color" style="--state-color: {{ row.object.current_state.color }}">{{ row.object.current_state.name }}</span>
+                          {% include "pwms/partials/state_badge.html" with state=row.object.current_state %}
                         </td>
                       </tr>
                     {% endfor %}

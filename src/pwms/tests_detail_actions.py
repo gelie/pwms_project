@@ -736,13 +736,52 @@ class ReportUpdateAddTests(TestCase):
             self.report.unmet_transition_conditions(self._close_transition())
         )
 
-    def test_the_status_may_not_come_from_another_type(self):
-        other = WorkflowType.objects.get(name="International Resolution")
-        response = self._post_update(resulting_state=other.states.first().pk)
+    def test_the_status_field_is_read_only_and_shows_the_reports_state(self):
+        response = self.client.get(self._detail_url())
 
         self.assertEqual(response.status_code, 200)
-        self.assertFalse(self.report.updates.exists())
-        self.assertContains(response, "Select a valid choice")
+        field = response.context["update_form"].fields["resulting_state"]
+        self.assertTrue(field.disabled)
+        # Nothing to pick: the one option is the report's own state.
+        self.assertEqual(list(field.queryset), [self.report.current_state])
+        self.assertRegex(
+            response.content.decode(),
+            r'<select[^>]*name="resulting_state"[^>]*\bdisabled\b',
+        )
+        self.assertContains(response, "Change it from the workflow menu")
+
+    def test_an_update_records_the_reports_current_state(self):
+        self._post_update(notes="Chased the department.")
+
+        update = self.report.updates.get()
+        self.assertEqual(update.resulting_state, self.report.current_state)
+
+    def test_an_update_cannot_move_the_report(self):
+        """Only a transition moves a report, even on a hand-crafted POST."""
+        original = self.report.current_state
+        target = self.report.workflow_type.states.exclude(pk=original.pk).first()
+        self.assertIsNotNone(target)
+
+        response = self._post_update(
+            resulting_state=target.pk, atc_reference="ATC 2026 No 12"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.report.refresh_from_db()
+        self.assertEqual(self.report.current_state, original)
+        # The update is still recorded, against the state the report is in.
+        self.assertEqual(self.report.updates.get().resulting_state, original)
+
+    def test_a_state_from_another_type_is_ignored(self):
+        other = WorkflowType.objects.get(name="International Resolution")
+        response = self._post_update(
+            resulting_state=other.states.first().pk, notes="Crafted"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            self.report.updates.get().resulting_state, self.report.current_state
+        )
 
     def test_recording_an_update_needs_the_edit_right(self):
         self.client.force_login(self.outsider)

@@ -1474,7 +1474,7 @@ class WorkflowCrudViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, report.reference_number)
 
-        # Update: workflow_type is fixed, current_state is editable instead.
+        # Update: workflow_type is fixed, current_state is shown read-only.
         edit = self.client.get(
             reverse("pwms:delegation_report_update", args=[report.public_id])
         )
@@ -1676,6 +1676,127 @@ class WorkflowCrudViewTests(TestCase):
             InternationalResolution.objects.get(pk=resolution.pk).parent_workflow
         )
 
+    def test_resolution_edit_form_shows_the_state_read_only(self):
+        self.client.post(
+            reverse("pwms:international_resolution_create"),
+            self._resolution_payload(),
+        )
+        resolution = InternationalResolution.objects.get(resolution_number="IR-CRUD-1")
+
+        response = self.client.get(
+            reverse("pwms:international_resolution_update", args=[resolution.public_id])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        field = response.context["form"].fields["current_state"]
+        self.assertTrue(field.disabled)
+        # Only the record's own state is offered, so there is nothing to pick.
+        self.assertEqual(list(field.queryset), [resolution.current_state])
+        self.assertRegex(
+            response.content.decode(),
+            r'<select[^>]*name="current_state"[^>]*\bdisabled\b',
+        )
+        self.assertContains(response, "not by editing it")
+
+    def test_resolution_update_cannot_move_the_state(self):
+        """Only a transition changes the state, even on a hand-crafted POST."""
+        self.client.post(
+            reverse("pwms:international_resolution_create"),
+            self._resolution_payload(),
+        )
+        resolution = InternationalResolution.objects.get(resolution_number="IR-CRUD-1")
+        original = resolution.current_state_id
+        other = self.resolution_type.states.exclude(pk=original).first()
+        self.assertIsNotNone(other)
+
+        response = self.client.post(
+            reverse(
+                "pwms:international_resolution_update", args=[resolution.public_id]
+            ),
+            self._resolution_payload(current_state=other.pk, priority="high"),
+        )
+
+        self.assertRedirects(
+            response,
+            reverse(
+                "pwms:international_resolution_detail", args=[resolution.public_id]
+            ),
+        )
+        resolution.refresh_from_db()
+        self.assertEqual(resolution.current_state_id, original)
+        # The rest of the form still saved.
+        self.assertEqual(resolution.priority, "high")
+
+    def _protected_state_cases(self):
+        """``(name, create URL, update URL name, model, payload, lookup)`` per form."""
+        return (
+            (
+                "delegation report",
+                "pwms:delegation_report_create",
+                "pwms:delegation_report_update",
+                DelegationReport,
+                self._report_payload,
+                {"engagement_name": "CRUD engagement"},
+            ),
+            (
+                "international agreement",
+                "pwms:international_agreement_create",
+                "pwms:international_agreement_update",
+                InternationalAgreement,
+                self._agreement_payload,
+                {"title": "CRUD agreement"},
+            ),
+        )
+
+    def test_report_and_agreement_edit_forms_show_the_state_read_only(self):
+        for name, create, update, model, payload, lookup in (
+            self._protected_state_cases()
+        ):
+            with self.subTest(form=name):
+                self.client.post(reverse(create), payload())
+                instance = model.objects.get(**lookup)
+
+                response = self.client.get(reverse(update, args=[instance.public_id]))
+
+                self.assertEqual(response.status_code, 200)
+                field = response.context["form"].fields["current_state"]
+                self.assertTrue(field.disabled)
+                self.assertEqual(list(field.queryset), [instance.current_state])
+                self.assertRegex(
+                    response.content.decode(),
+                    r'<select[^>]*name="current_state"[^>]*\bdisabled\b',
+                )
+                self.assertContains(response, "not by editing it")
+
+    def test_report_and_agreement_updates_cannot_move_the_state(self):
+        """Only a transition changes the state, even on a hand-crafted POST."""
+        for name, create, update, model, payload, lookup in (
+            self._protected_state_cases()
+        ):
+            with self.subTest(form=name):
+                self.client.post(reverse(create), payload())
+                instance = model.objects.get(**lookup)
+                original = instance.current_state_id
+                other = instance.workflow_type.states.exclude(pk=original).first()
+                self.assertIsNotNone(other)
+
+                response = self.client.post(
+                    reverse(update, args=[instance.public_id]),
+                    payload(current_state=other.pk, priority="high"),
+                )
+
+                self.assertEqual(response.status_code, 302)
+                instance.refresh_from_db()
+                self.assertEqual(instance.current_state_id, original)
+                # The rest of the form still saved.
+                self.assertEqual(instance.priority, "high")
+
+    def test_resolution_create_form_has_no_state_field(self):
+        response = self.client.get(reverse("pwms:international_resolution_create"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("current_state", response.context["form"].fields)
+
     def test_international_resolution_crud_cycle(self):
         response = self.client.post(
             reverse("pwms:international_resolution_create"),
@@ -1739,7 +1860,7 @@ class WorkflowCrudViewTests(TestCase):
         self.assertContains(response, agreement.reference_number)
         self.assertContains(response, "Department of Justice")
 
-        # Update: workflow_type is fixed, current_state is editable instead.
+        # Update: workflow_type is fixed, current_state is shown read-only.
         edit = self.client.get(
             reverse("pwms:international_agreement_update", args=[agreement.public_id])
         )
@@ -1846,7 +1967,7 @@ class WorkflowCrudViewTests(TestCase):
         self.assertContains(detail, "Version history")
         self.assertContains(detail, "B 99—2026 (1st amendment)")
 
-        # Update: workflow_type is fixed, current_state is editable instead.
+        # Update: workflow_type is fixed, current_state is shown read-only.
         edit = self.client.get(reverse("pwms:bill_update", args=[bill.public_id]))
         self.assertContains(edit, "current_state")
         self.assertNotContains(edit, 'name="workflow_type"')

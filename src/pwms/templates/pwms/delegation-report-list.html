@@ -66,7 +66,7 @@
               {% endif %}
             </td>
             <td>
-              <span class="badge text-bg-secondary">{{ report.current_state.name }}</span>
+              {% include "pwms/partials/state_badge.html" with state=report.current_state %}
             </td>
             <td>{{ report.owner.get_full_name|default:report.owner.get_username }}</td>
             <td>{{ report.deadline|date:"Y-m-d H:i"|default:"—" }}</td>

@@ -603,8 +603,9 @@ class WorkflowDetailOverviewTests(DetailPageTestCase):
             f'<span class="badge badge-state-color" style="--state-color: #123abc">'
             f"{state.name}</span>"
         )
-        # Key information and the Progress modal's "Current state" row.
-        self.assertEqual(page.count(badge), 2)
+        # The Progress modal's "Current state" row. (Key information no longer
+        # repeats the state: the status buttons at the top of the page show it.)
+        self.assertEqual(page.count(badge), 1)
 
     def test_record_dates_are_one_muted_line(self):
         report = self.make_report()

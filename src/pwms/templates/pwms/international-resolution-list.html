@@ -57,7 +57,7 @@
             </td>
             <td>{{ resolution.title }}</td>
             <td>
-              <span class="badge text-bg-secondary">{{ resolution.current_state.name }}</span>
+              {% include "pwms/partials/state_badge.html" with state=resolution.current_state %}
             </td>
             <td>{{ resolution.responsible_group.name|default:"—" }}</td>
             <td>{{ resolution.owner.get_full_name|default:resolution.owner.get_username }}</td>
