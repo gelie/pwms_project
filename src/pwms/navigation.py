@@ -72,6 +72,47 @@ def creatable_workflow_types(user):
     return entries
 
 
+#: URL-name prefixes -> main-nav item, checked in order. A page highlights the
+#: item it lives under: every workflow type's list/create/detail/update page, the
+#: shared workflow actions (share, transition, notes, referrals...) and the
+#: bills register all belong to "Workflows". Pages with no entry (profile,
+#: alerts, groups, AJAX helpers) highlight nothing.
+NAV_SECTIONS = (
+    ("dashboard", "dashboard"),
+    ("workflow", "workflows"),
+    ("delegation_report", "workflows"),
+    ("international_", "workflows"),
+    ("bill", "workflows"),
+    ("referral_", "workflows"),
+    ("meeting", "meetings"),
+    ("report", "reports"),
+    ("about", "about"),
+)
+
+
+def nav_section(resolver_match):
+    """
+    Main-nav item the resolved URL belongs to, or ``""`` when it has none.
+
+    ``home`` is matched exactly; the rest by :data:`NAV_SECTIONS` prefix. The
+    admin lives in its own URL namespace.
+    """
+    if resolver_match is None:
+        return ""
+    if "admin" in resolver_match.namespaces:
+        return "admin"
+    name = resolver_match.url_name or ""
+    if name == "home":
+        return "home"
+    for prefix, section in NAV_SECTIONS:
+        if name.startswith(prefix):
+            return section
+    return ""
+
+
 def navigation(request):
     """Context processor exposing the dynamic navigation menu entries."""
-    return {"creatable_workflow_types": creatable_workflow_types(request.user)}
+    return {
+        "creatable_workflow_types": creatable_workflow_types(request.user),
+        "nav_section": nav_section(getattr(request, "resolver_match", None)),
+    }

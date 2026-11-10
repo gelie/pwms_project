@@ -70,7 +70,7 @@
             </td>
             <td>{{ report.owner.get_full_name|default:report.owner.get_username }}</td>
             <td>{{ report.deadline|date:"Y-m-d H:i"|default:"—" }}</td>
-            <td>{{ report.get_priority_display }}</td>
+            <td>{% include "pwms/partials/priority_badge.html" with value=report.priority label=report.get_priority_display %}</td>
             <td class="text-end">
               {% if report.pk in editable_pks %}
                 <a class="btn btn-sm btn-outline-secondary"

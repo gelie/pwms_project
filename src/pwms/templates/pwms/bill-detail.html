@@ -12,17 +12,23 @@
   <span class="badge badge-info">{{ bill.public_status }}</span>
 {% endblock badges %}
 
-{% block actions %}
-  {% include "pwms/partials/document_actions.html" with object=bill %}
+{% block workflow_actions %}
   {% if perms.edit %}
     <li>
       <hr class="dropdown-divider">
+    </li>
+    <li>
+      <h6 class="dropdown-header">Versions</h6>
     </li>
     <li>
       <a class="dropdown-item"
          href="{% url "pwms:bill_version_create" bill.public_id %}">{% lucide "file-plus" size=16 %} Record version</a>
     </li>
   {% endif %}
+{% endblock workflow_actions %}
+
+{% block actions %}
+  {% include "pwms/partials/document_actions.html" with object=bill %}
   {% include "pwms/partials/workflow_actions.html" with object=bill edit_url="pwms:bill_update" delete_url="pwms:bill_delete" %}
 {% endblock actions %}
 

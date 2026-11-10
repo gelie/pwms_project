@@ -8,9 +8,10 @@
     delete_url=<URL name of its delete view>
 
   Each item appears only when the reader holds that permission on the instance.
-  The Document group and any type-specific action (e.g. a bill's "Record
-  version") are rendered by the page that includes this, so the menu reads in a
-  predictable order.
+  The Document group is rendered by the page that includes this, so the menu
+  reads in a predictable order. Type-specific workflow actions (e.g. a bill's
+  "Record version") go in the page's `workflow_actions` block instead, which
+  sits in the Workflow Actions dropdown.
 {% endcomment %}
 {% if perms.edit or perms.delete %}
   <li>
