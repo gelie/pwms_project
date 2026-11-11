@@ -1159,12 +1159,16 @@ html.password-toggle-ready .password-toggle {
    tabs hold. Everything is driven by the theme variables, so light and dark
    come out of the same rules.
  * ------------------------------------------------------------------ */
+/* Header: the title on the left, the status flow on the right. They are centred
+   against each other, so a short title sits level with the flow instead of
+   topping a tall empty band, and the flow rises to meet it. Below the wrap
+   breakpoint the flow drops under the title. */
 .workflow-hero {
     display: flex;
     flex-wrap: wrap;
     justify-content: space-between;
-    align-items: flex-start;
-    gap: 1rem;
+    align-items: center;
+    gap: 1rem 1.5rem;
     padding: 1.25rem 1.5rem;
     border: 1px solid var(--bs-border-color);
     border-left: 5px solid var(--theme-green);
@@ -1173,7 +1177,13 @@ html.password-toggle-ready .password-toggle {
 }
 
 .workflow-hero-text {
-    width: 100%;
+    /* Takes the room the flow leaves, and wraps rather than squeezing it. */
+    flex: 1 1 18rem;
+    min-width: 0;
+}
+
+.workflow-hero-ref {
+    margin-top: 0.5rem;
 }
 
 .workflow-badges-actions {
@@ -1185,9 +1195,11 @@ html.password-toggle-ready .password-toggle {
 }
 
 .workflow-hero-title {
-    margin-bottom: 0.25rem;
+    margin-bottom: 0;
     /*color: #856911; /* 15% darker shade than theme-dark-gold */
     color: var(--theme-green);
+    /* A very long title wraps instead of widening the header. */
+    overflow-wrap: anywhere;
 }
 
 .obj-identifier {

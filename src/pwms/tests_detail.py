@@ -608,6 +608,45 @@ class WorkflowDetailOverviewTests(DetailPageTestCase):
         # repeats the state: the status buttons at the top of the page show it.)
         self.assertEqual(page.count(badge), 1)
 
+    def test_the_hero_shows_the_reference_when_there_is_one(self):
+        report = self.make_report()
+
+        page = live_markup(self._get(report))
+
+        self.assertIn('class="workflow-hero-ref', page)
+        self.assertIn(report.identifier, page)
+
+    def test_the_hero_has_no_empty_reference_pill(self):
+        """A record without a reference (e.g. an unnumbered bill) shows no pill."""
+        bill = Bill.objects.create(
+            workflow_type=self.types["Bill"],
+            current_state=self.types["Bill"].get_initial_state(),
+            title="A bill with no number yet",
+            bill_number="",
+            owner=self.user,
+        )
+
+        page = live_markup(self._get(bill, "bill_detail"))
+
+        self.assertIn("A bill with no number yet", page)
+        self.assertNotIn("workflow-hero-ref", page)
+        self.assertNotIn("obj-identifier", page)
+
+    def test_the_title_and_status_flow_are_siblings_in_the_hero(self):
+        """The flow sits beside the title, not in a row beneath it."""
+        report = self.make_report()
+
+        page = live_markup(self._get(report))
+
+        hero = page.split('class="workflow-hero"', 1)[1]
+        between = hero.split('class="workflow-hero-text"', 1)[1].split(
+            'id="workflow-status-flow"', 1
+        )[0]
+        # The title block closes before the flow begins, so the two are siblings
+        # side by side in the hero rather than the flow sitting under the title.
+        self.assertEqual(between.count("</div>"), 1)
+        self.assertIn('id="workflow-status-flow"', hero)
+
     def test_record_dates_are_one_muted_line(self):
         report = self.make_report()
         created = timezone.localtime(report.created_at).strftime("%d %b %Y")
