@@ -1,5 +1,8 @@
 {% comment %}
-  A deadline date, coloured by how close it is: plain by default, amber within
-  10 days, red once passed (Workflow.deadline_status; colours in style.css).
-  Expects: workflow (a record with a deadline) and format (a date filter format).
-{% endcomment %}{% with status=workflow.deadline_status %}<span class="deadline-chip{% if status %} deadline-chip--{{ status }}{% endif %}"{% if status == "overdue" %} title="Overdue"{% elif status == "due_soon" %} title="Due within 10 days"{% endif %}>{{ workflow.deadline|date:format }}</span>{% endwith %}
+  A deadline date, flagged by how close it is: plain by default, an amber tint
+  with a clock within 10 days, a red tint with a warning triangle once passed
+  (Workflow.deadline_status; colours in style.css). The icon says the same thing
+  as the colour, so the flag still reads in greyscale and to colour-blind
+  readers. Expects: workflow (a record with a deadline) and format (a date
+  filter format).
+{% endcomment %}{% with status=workflow.deadline_status %}<span class="deadline-chip{% if status %} deadline-chip--{{ status }}{% endif %}"{% if status == "overdue" %} title="Overdue"{% elif status == "due_soon" %} title="Due within 10 days"{% endif %}>{% if status == "overdue" %}{% lucide "triangle-alert" size=12 %}{% elif status == "due_soon" %}{% lucide "clock" size=12 %}{% endif %}{{ workflow.deadline|date:format }}</span>{% endwith %}
