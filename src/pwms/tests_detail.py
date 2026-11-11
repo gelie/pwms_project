@@ -798,6 +798,37 @@ class DeadlineStatusTests(DetailPageTestCase):
         self.assertIn(f">{date}</span>", page)
         self.assertNotIn("deadline-chip--", page)
 
+    def _chip_markup(self, page, report, status):
+        """The inner markup of the chip carrying ``status`` for ``report``."""
+        css, _ = self._chip(report, status)
+        return page.split(css, 1)[1].split("</span>", 1)[0]
+
+    def test_register_marks_overdue_with_a_warning_icon(self):
+        report = self._report_due(timedelta(days=-2))
+
+        chip = self._chip_markup(self._register(), report, "overdue")
+
+        # The icon repeats the colour, so the flag reads without colour too.
+        self.assertIn("<svg", chip)
+        self.assertIn("Overdue", chip)
+
+    def test_register_marks_due_soon_with_a_clock_icon(self):
+        report = self._report_due(timedelta(days=5))
+
+        chip = self._chip_markup(self._register(), report, "due_soon")
+
+        self.assertIn("<svg", chip)
+        self.assertIn("Due within 10 days", chip)
+
+    def test_register_gives_a_distant_date_no_icon(self):
+        report = self._report_due(timedelta(days=45))
+
+        page = self._register()
+
+        css, _ = self._chip(report)
+        chip = page.split(css, 1)[1].split("</span>", 1)[0]
+        self.assertNotIn("<svg", chip)
+
     def test_register_hides_the_date_of_a_closed_workflow(self):
         report = self._report_due(
             timedelta(days=-30), current_state=self._closed_state()
@@ -833,6 +864,9 @@ class DeadlineStatusTests(DetailPageTestCase):
         row = self._due_row(self._detail(report))
 
         self.assertIn('class="deadline-chip deadline-chip--overdue"', row)
+        # Same icon language as the register, and as the dashboard's Overdue card.
+        self.assertIn("<svg", row)
+        self.assertIn("Overdue", row)
         local = timezone.localtime(report.deadline)
         self.assertIn(f">{local.strftime('%d %b %Y %H:%M')}</span>", row)
 
@@ -842,6 +876,8 @@ class DeadlineStatusTests(DetailPageTestCase):
         row = self._due_row(self._detail(report))
 
         self.assertIn('class="deadline-chip deadline-chip--due_soon"', row)
+        self.assertIn("<svg", row)
+        self.assertIn("Due within 10 days", row)
 
     def test_detail_leaves_a_distant_date_plain(self):
         report = self._report_due(timedelta(days=45))
@@ -850,6 +886,7 @@ class DeadlineStatusTests(DetailPageTestCase):
 
         self.assertIn('class="deadline-chip"', row)
         self.assertNotIn("deadline-chip--", row)
+        self.assertNotIn("<svg", row)
 
     def test_detail_keeps_a_closed_records_date_but_uncoloured(self):
         report = self._report_due(
@@ -860,6 +897,7 @@ class DeadlineStatusTests(DetailPageTestCase):
 
         self.assertIn('class="deadline-chip"', row)
         self.assertNotIn("deadline-chip--", row)
+        self.assertNotIn("<svg", row)
 
     def test_detail_offers_set_deadline_when_there_is_none(self):
         report = self._report_due(None)

@@ -1692,14 +1692,23 @@ html.password-toggle-ready .password-toggle {
     color: light-dark(#fff, #121212);
 }
 
-/* Deadline date in a list: plain by default, amber when it falls within 10
-   days, red once it has passed (see Workflow.deadline_status). Both fills keep
-   at least 4.5:1 contrast with their text. */
+/* Deadline date in a list or a card: plain by default, an amber tint with a
+   clock when it falls within 10 days, a red tint with a warning triangle once it
+   has passed (see Workflow.deadline_status). The tints are a wash rather than a
+   solid fill, so a run of due-soon rows reads as a nudge instead of a row of
+   alerts; overdue keeps the louder red because it is the exceptional case. Text
+   and tint keep at least 4.5:1 contrast. */
 .deadline-chip {
     display: inline-block;
     padding: 0.15rem 0.5rem;
     border-radius: 0.25rem;
     white-space: nowrap;
+}
+
+/* The icon carries the same meaning as the colour, and sits on the text baseline. */
+.deadline-chip svg {
+    margin-right: 0.3rem;
+    vertical-align: -0.15em;
 }
 
 /* A plain date has no fill to pad, so it lines up with the text around it. */
@@ -1709,14 +1718,14 @@ html.password-toggle-ready .password-toggle {
 }
 
 .deadline-chip--due_soon {
-    background-color: #f2a900;
-    color: #121212;
+    background-color: color-mix(in srgb, #f2a900 18%, transparent);
+    color: light-dark(#8a5a00, #f2c25a);
     font-weight: 600;
 }
 
 .deadline-chip--overdue {
-    background-color: #b3261e;
-    color: #fff;
+    background-color: color-mix(in srgb, #b3261e 14%, transparent);
+    color: light-dark(#9b1c16, #ff9a91);
     font-weight: 600;
 }
 
