@@ -587,8 +587,8 @@ class WorkflowDetailOverviewTests(DetailPageTestCase):
                 page = live_markup(self._get(report))
 
                 self.assertIn(
-                    f'<span class="badge badge-priority badge-priority--{priority}">'
-                    f"{label}</span>",
+                    f'<span class="rounded-pill badge badge-priority '
+                    f'badge-priority--{priority}">{label}</span>',
                     page,
                 )
 
