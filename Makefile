@@ -44,6 +44,7 @@ test: ## Run the full suite (needs PostgreSQL, see README quickstart)
 		pwms.tests_referral_access \
 		pwms.tests_referrals \
 		pwms.tests_reports \
+		pwms.tests_reset_groups \
 		pwms.tests_state_colors \
 		pwms.tests_transitions
 
@@ -62,6 +63,7 @@ coverage: ## Run the suite under coverage and print a report
 		pwms.tests_referral_access \
 		pwms.tests_referrals \
 		pwms.tests_reports \
+		pwms.tests_reset_groups \
 		pwms.tests_state_colors \
 		pwms.tests_transitions
 	$(UV) run coverage report --show-missing

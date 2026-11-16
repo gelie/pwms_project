@@ -21,7 +21,9 @@ from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from .forms import BillForm, InternationalAgreementForm
+from .management.commands.sync_base import OracleSyncBase
 from .management.commands.sync_users_oracle import Command
+from .membership.resolver import Alias, GroupResolver
 from .membership.sync_service import MembershipSyncService
 from .models import (
     Bill,
@@ -352,10 +354,10 @@ class OracleSyncIdentityGuardTests(TestCase):
     def setUp(self):
         self.command = Command()
         self.command._membership_sync = MembershipSyncService(
-            group_cache={},
             role_cache={},
             strip_group_code_prefix=self.command.strip_group_code_prefix,
             normalize_role_name=self.command.normalize_role_name,
+            resolver=GroupResolver(normalize=lambda value: value),
         )
         self.by_id = {}
         self.by_username = {}
@@ -445,7 +447,7 @@ class OracleSyncIdentityGuardTests(TestCase):
         ministry = Group.objects.get(name="Health", group_type="ministry")
         committee = Group.objects.create(
             name="Standing Committee on Public Accounts",
-            group_type="public_accounts_committee",
+            group_type="committee",
         )
         GroupMembership.objects.create(
             user=user, group=ministry, role=Role.objects.get(name="Minister")
@@ -489,10 +491,10 @@ class OracleSyncSupervisorTests(TestCase):
     def setUp(self):
         self.command = Command()
         self.command._membership_sync = MembershipSyncService(
-            group_cache={},
             role_cache={},
             strip_group_code_prefix=self.command.strip_group_code_prefix,
             normalize_role_name=self.command.normalize_role_name,
+            resolver=GroupResolver(normalize=lambda value: value),
         )
 
     @staticmethod
@@ -626,11 +628,29 @@ class OracleSyncProfileTests(TestCase):
 
     def setUp(self):
         self.command = Command()
+        # A minimal seeded tree: the resolver only indexes the administration
+        # subtree, and the profile tests resolve their units by unique name.
+        self.admin = Group.objects.create(
+            name="Parliament Administration", group_type="administration"
+        )
+        self.secretary = Group.objects.create(
+            name="Secretary to Parliament", group_type="office", parent=self.admin
+        )
+        self.section = Group.objects.create(
+            name="Sync Test Section", group_type="section", parent=self.secretary
+        )
+        self.division = Group.objects.create(
+            name="Sync Test Division", group_type="division", parent=self.secretary
+        )
+        self.resolver = GroupResolver.from_database(
+            normalize=lambda value: value, aliases=[]
+        )
+        self.command._resolver = self.resolver
         self.command._membership_sync = MembershipSyncService(
-            group_cache={},
             role_cache={},
             strip_group_code_prefix=self.command.strip_group_code_prefix,
             normalize_role_name=self.command.normalize_role_name,
+            resolver=self.resolver,
         )
 
     @staticmethod
@@ -672,9 +692,7 @@ class OracleSyncProfileTests(TestCase):
         )
 
     def test_positiondesc_and_department_are_written_on_update(self):
-        department = Group.objects.create(
-            name="Sync Test Section", group_type="section"
-        )
+        department = self.section
         user = User.objects.create_user(
             username="z.mkhize", password="pw", identity_source="erp"
         )
@@ -694,9 +712,7 @@ class OracleSyncProfileTests(TestCase):
         self.assertEqual(user.department_id, department.pk)
 
     def test_new_user_gets_positiondesc_and_department(self):
-        department = Group.objects.create(
-            name="Sync Test Division", group_type="division"
-        )
+        department = self.division
 
         self._sync(
             self._row(
@@ -736,3 +752,322 @@ class OracleSyncProfileTests(TestCase):
         user.refresh_from_db()
         self.assertEqual(user.positiondesc, "New Position")
         self.assertEqual(user.department_id, existing.pk)
+
+
+class PartyAffiliationTests(TestCase):
+    """Party is derived from the party group, and the sync keeps it current."""
+
+    def setUp(self):
+        self.service = MembershipSyncService(
+            role_cache={},
+            strip_group_code_prefix=lambda value: value,
+            normalize_role_name=lambda positiondesc, employee_type: "",
+            resolver=GroupResolver(normalize=lambda value: value),
+        )
+        self.user = User.objects.create_user(username="p.member", password="pw")
+
+    @staticmethod
+    def _row(*, partycode, employeetype="Member", positiondesc="Member: NA"):
+        return (
+            "Mr",
+            "Mkhize",
+            "Zwelini",
+            "",
+            "p.member@parliament.gov.za",
+            "9001015800085",
+            "Male",
+            positiondesc,
+            employeetype,
+            partycode,
+            "p.member",
+            "",
+            "",
+        )
+
+    def test_current_party_is_derived_from_the_party_group(self):
+        self.service.sync_user_membership(self.user, self._row(partycode="ANC"))
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.current_party.name, "ANC")
+        self.assertEqual(self.user.party_affiliation, "ANC")
+        # The annotation used by list/search/serialisation agrees.
+        annotated = User.with_party_affiliation().get(pk=self.user.pk)
+        self.assertEqual(annotated.party_affiliation, "ANC")
+
+    def test_party_change_ends_the_previous_membership(self):
+        self.service.sync_user_membership(self.user, self._row(partycode="ANC"))
+        self.service.sync_user_membership(self.user, self._row(partycode="DA"))
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.party_affiliation, "DA")
+        anc = GroupMembership.objects.get(user=self.user, group__name="ANC")
+        self.assertFalse(anc.is_active)
+        self.assertIsNotNone(anc.end_date)
+        # The House-members membership is not a party and must survive.
+        self.assertTrue(
+            GroupMembership.objects.filter(
+                user=self.user, group__name="NA Members", is_active=True
+            ).exists()
+        )
+
+    def test_staff_row_ends_every_party_membership(self):
+        self.service.sync_user_membership(self.user, self._row(partycode="ANC"))
+        self.service.sync_user_membership(
+            self.user,
+            self._row(
+                partycode="",
+                employeetype="Staff",
+                positiondesc="Administrative Officer",
+            ),
+        )
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.party_affiliation, "")
+        self.assertFalse(
+            GroupMembership.objects.filter(
+                user=self.user, group__group_type="party", is_active=True
+            ).exists()
+        )
+
+    def test_dry_run_does_not_end_memberships(self):
+        self.service.sync_user_membership(self.user, self._row(partycode="ANC"))
+
+        result = self.service.sync_user_membership(
+            self.user, self._row(partycode="DA"), dry_run=True
+        )
+
+        self.assertEqual(result["ended"], 1)
+        self.assertTrue(
+            GroupMembership.objects.filter(
+                user=self.user, group__name="ANC", is_active=True
+            ).exists()
+        )
+
+
+class GroupCodePrefixTests(TestCase):
+    """Administrative prefixes are matched case-insensitively.
+
+    Oracle writes both ``60300-ISS: …`` and ``Household: …``. The mixed-case
+    entries in the prefix list used to be compared against ``.upper()``, so
+    those units silently lost their hierarchy and collapsed onto the leaf name.
+    """
+
+    def setUp(self):
+        self.base = OracleSyncBase()
+
+    def test_a_mixed_case_prefix_keeps_the_hierarchy(self):
+        self.assertEqual(
+            self.base.strip_group_code_prefix(
+                "60302-Household: Auxiliary Services Unit"
+            ),
+            "Household: Auxiliary Services Unit",
+        )
+        self.assertEqual(
+            self.base.strip_group_code_prefix(
+                "15052-Protection Services: Physical Security Unit"
+            ),
+            "Protection Services: Physical Security Unit",
+        )
+
+    def test_an_uppercase_prefix_still_keeps_the_hierarchy(self):
+        self.assertEqual(
+            self.base.strip_group_code_prefix("12345-ICT: CIO: Security"),
+            "ICT: CIO: Security",
+        )
+
+    def test_a_non_administrative_prefix_still_uses_the_leaf(self):
+        self.assertEqual(
+            self.base.strip_group_code_prefix("80002-Members: NA: National Assembly"),
+            "National Assembly",
+        )
+
+
+class SeededStaffMembershipTests(TestCase):
+    """Staff memberships resolve through the seeded tree, not a name cache."""
+
+    ALIASES = [
+        Alias(
+            child="LEG: Legal Advice Unit",
+            parent="LEGAL SERVICES SECTION",
+            path=(
+                "Secretary to Parliament/Core Business Branch/Legal Services/"
+                "Legal Advice Unit"
+            ),
+        ),
+        Alias(
+            child="CBS: Committee Support Unit",
+            parent="CBS: COMMITTEES SECTION",
+            path=(
+                "Secretary to Parliament/Core Business Branch/"
+                "Committee Support Services/Committee Support Unit"
+            ),
+        ),
+    ]
+
+    def setUp(self):
+        admin = Group.objects.create(
+            name="Parliament Administration", group_type="administration"
+        )
+        secretary = Group.objects.create(
+            name="Secretary to Parliament", group_type="office", parent=admin
+        )
+        branch = Group.objects.create(
+            name="Core Business Branch", group_type="branch", parent=secretary
+        )
+        self.legal = Group.objects.create(
+            name="Legal Services", group_type="division", parent=branch
+        )
+        self.legal_unit = Group.objects.create(
+            name="Legal Advice Unit", group_type="unit", parent=self.legal
+        )
+        self.committees = Group.objects.create(
+            name="Committee Support Services", group_type="division", parent=branch
+        )
+        self.committees_unit = Group.objects.create(
+            name="Committee Support Unit", group_type="unit", parent=self.committees
+        )
+        # An executive appointment that reconciliation must never end.
+        self.ministry = Group.objects.create(
+            name="Test Ministry", group_type="ministry"
+        )
+
+        self.user = User.objects.create_user(username="s.staff", password="pw")
+        self.resolver = GroupResolver.from_database(
+            normalize=lambda value: value, aliases=self.ALIASES
+        )
+        self.service = MembershipSyncService(
+            role_cache={},
+            strip_group_code_prefix=lambda value: value,
+            normalize_role_name=lambda positiondesc, employee_type: "",
+            resolver=self.resolver,
+        )
+
+    @staticmethod
+    def _row(child_org, parent_org, *, username="s.staff", employeetype="Staff"):
+        return (
+            "Ms",
+            "Dlamini",
+            "Sipho",
+            "",
+            f"{username}@parliament.gov.za",
+            "9001015800085",
+            "Female",
+            "Legal Advisor",
+            employeetype,
+            "",
+            username,
+            child_org,
+            parent_org,
+        )
+
+    def _legal_row(self):
+        return self._row("LEG: Legal Advice Unit", "LEGAL SERVICES SECTION")
+
+    def _committees_row(self):
+        return self._row("CBS: Committee Support Unit", "CBS: COMMITTEES SECTION")
+
+    def test_staff_get_the_unit_and_its_division(self):
+        result = self.service.sync_user_membership(self.user, self._legal_row())
+
+        self.assertEqual(result["created"], 2)
+        active = set(
+            GroupMembership.objects.filter(user=self.user, is_active=True).values_list(
+                "group__name", flat=True
+            )
+        )
+        self.assertEqual(active, {"Legal Advice Unit", "Legal Services"})
+
+    def test_moving_unit_ends_the_previous_memberships(self):
+        self.service.sync_user_membership(self.user, self._legal_row())
+
+        result = self.service.sync_user_membership(self.user, self._committees_row())
+
+        self.assertEqual(result["created"], 2)
+        self.assertEqual(result["ended"], 2)
+        active = set(
+            GroupMembership.objects.filter(user=self.user, is_active=True).values_list(
+                "group__name", flat=True
+            )
+        )
+        self.assertEqual(
+            active, {"Committee Support Unit", "Committee Support Services"}
+        )
+        ended = GroupMembership.objects.filter(user=self.user, is_active=False)
+        self.assertEqual(ended.count(), 2)
+        self.assertTrue(all(row.end_date is not None for row in ended))
+
+    def test_unresolved_org_leaves_existing_memberships_alone(self):
+        self.service.sync_user_membership(self.user, self._legal_row())
+
+        result = self.service.sync_user_membership(
+            self.user, self._row("UNKNOWN: Unit", "UNKNOWN SECTION")
+        )
+
+        self.assertEqual(result["created"], 0)
+        self.assertEqual(result["ended"], 0)
+        self.assertEqual(
+            GroupMembership.objects.filter(user=self.user, is_active=True).count(), 2
+        )
+
+    def test_executive_appointments_survive_an_org_move(self):
+        role, _ = Role.objects.get_or_create(name="Minister")
+        GroupMembership.objects.create(
+            user=self.user, group=self.ministry, role=role
+        )
+        self.service.sync_user_membership(self.user, self._legal_row())
+
+        self.service.sync_user_membership(self.user, self._committees_row())
+
+        self.assertTrue(
+            GroupMembership.objects.filter(
+                user=self.user, group=self.ministry, is_active=True
+            ).exists()
+        )
+
+    def test_dry_run_reports_the_move_without_ending_anything(self):
+        self.service.sync_user_membership(self.user, self._legal_row())
+
+        result = self.service.sync_user_membership(
+            self.user, self._committees_row(), dry_run=True
+        )
+
+        self.assertEqual(result["ended"], 2)
+        active = set(
+            GroupMembership.objects.filter(user=self.user, is_active=True).values_list(
+                "group__name", flat=True
+            )
+        )
+        self.assertEqual(active, {"Legal Advice Unit", "Legal Services"})
+
+    def test_a_collapsed_name_does_not_borrow_another_units_alias(self):
+        """Aliases key on the raw name, not the normalised one.
+
+        ``strip_group_code_prefix`` reduces both "14501-PPS: …: Man & Gen" and
+        "86100-PBO: Director: Man & Gen" to "Man & Gen". Keying aliases on that
+        would hand the PBO director the publishing unit's alias.
+        """
+        base = OracleSyncBase()
+        resolver = GroupResolver.from_database(
+            normalize=base.strip_group_code_prefix,
+            aliases=[
+                Alias(
+                    child="14501-PPS: Production and Publishing: Man & Gen",
+                    parent="55200-PCS: PRODUCTION AND PUBLISHING SECTION (PPS)",
+                    path=(
+                        "Secretary to Parliament/Core Business Branch/Legal Services"
+                    ),
+                ),
+            ],
+        )
+
+        aliased = resolver.resolve_org(
+            "14501-PPS: Production and Publishing: Man & Gen",
+            "55200-PCS: PRODUCTION AND PUBLISHING SECTION (PPS)",
+        )
+        self.assertEqual(aliased.method, "alias-child")
+
+        bystander = resolver.resolve_org(
+            "86100-PBO: Director: Man & Gen",
+            "86000-PBO: PARLIAMENTARY BUDGET OFFICE (PBO) SECTION",
+        )
+        self.assertFalse(bystander.resolved)

@@ -96,11 +96,11 @@ Django user with parliamentary profile fields:
 | `identity_source` | `erp` (owned by `sync_users_oracle`) or `local` (owned by PWMS — e.g. Ministers appointed from outside the ERP) |
 | `employee_id` | ERP `EMPLOYEEID` (unique, nullable); `SUPERVISORID` resolves to a User through it |
 | `positiondesc`, `supervisor` (self FK) | reporting; `positiondesc` is written from the ERP |
-| `department` (FK `Group`) | home department; `sync_users_oracle` links it to the child org group, falling back to the parent |
+| `department` (FK `Group`) | home department; `sync_users_oracle` links it to the group the Oracle org pair resolves to in the seeded tree |
 | `date_of_birth`, `date_joined_parliament`, `termination_date` | lifecycle |
 | `idno_encrypted`, `idno_hmac` | ID number stored encrypted; HMAC (key from `IDNO_HMAC_KEY`) enables unique lookup |
 | `is_mp`, `is_staff_member`, `is_active` | flags |
-| `constituency`, `party_affiliation` | political attributes |
+| `constituency`, `party_affiliation` | political attributes; `party_affiliation` is **derived** from the user's active `party` membership |
 
 Methods include membership/role helpers (`User.ministers()`, `current_portfolio`, `has_role_in_group(...)`). `User.can_transition_workflow(...)` is **legacy and unused** — it is called from nowhere and reads `workflow_instance.group`, an attribute the instance does not have.
 
@@ -111,7 +111,7 @@ Hierarchical organisational unit:
 | Field | Notes |
 | --- | --- |
 | `name`, `short_name`, `slug` (unique) | identity |
-| `group_type` | legislature, house, portfolio/select/special/ad-hoc/joint/internal committee, administration, office, division, section, business_unit, party, executive, presidency, ministry, department, province, premier, delegation |
+| `group_type` | `parliament`, `house`, `delegation`, `committees`, `committee`, `members`, `parties`, `administration`, `branch`, `division`, `office`, `section`, `unit`, `party`, `executive`, `presidency`, `ministry`, `municipality`, `department`, `province` |
 | `parent` (Tree FK) | MPTT hierarchy |
 | `description`, `is_active`, `contact_email`, `contact_phone`, `location`, `start_date`, `end_date` | metadata |
 

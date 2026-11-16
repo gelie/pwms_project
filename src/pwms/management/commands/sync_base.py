@@ -1,7 +1,6 @@
 """
-Base class for Oracle sync commands with shared connection and utility methods.
-
-Provides common functionality for sync_groups_oracle, sync_roles_oracle, and sync_users_oracle.
+Base class for the Oracle sync commands (``sync_roles_oracle``,
+``sync_users_oracle``) with shared connection and utility methods.
 """
 
 import logging
@@ -14,6 +13,45 @@ except ImportError:
 
 from decouple import config
 from django.core.management.base import BaseCommand, CommandError
+
+#: First colon-separated part of an administrative Oracle org name. Keeping the
+#: hierarchy for these avoids collapsing distinct units onto the same leaf name
+#: (``Household: Auxiliary Services Unit`` must not become
+#: ``Auxiliary Services Unit``). Compared case-insensitively: Oracle mixes cases
+#: (``60300-ISS: …`` but ``Household: …``).
+ADMIN_GROUP_PREFIXES = frozenset(
+    {
+        "ICT",
+        "TAO",
+        "HR",
+        "FIN",
+        "SEC",
+        "COM",
+        "LEG",
+        "PRO",
+        "SMG",
+        "CBS",
+        "CFO",
+        "FMO",
+        "HC",
+        "IRP",
+        "KIS",
+        "LSO",
+        "MSS",
+        "NA",
+        "NCOP",
+        "PCSD",
+        "RM",
+        "RMI",
+        "SCM",
+        "CAE",
+        "CATERING",
+        "HOUSEHOLD",
+        "ISS",
+        "OSTP",
+        "PROTECTION SERVICES",
+    }
+)
 
 
 class OracleSyncBase(BaseCommand):
@@ -274,6 +312,7 @@ class OracleSyncBase(BaseCommand):
             "80002-Members: NA: National Assembly" -> "National Assembly"
             "12345-CBS: PP: PARLIAMENTARY PUBLIC PARTICIPATION SECTION" -> "Parliamentary Public Participation Section"
             "60350-ISS: CATERING SERVICES SECTION" -> "Catering Services Section"
+            "60302-Household: Auxiliary Services Unit" -> "Household: Auxiliary Services Unit"
             "ICT: CIO: Man and Gen" -> "ICT: CIO: Man and Gen"  # Preserve hierarchy
             "TAO: Man and Gen" -> "TAO: Man and Gen"  # Preserve hierarchy
             "MEMBERS SECTION" -> "Members Section"
@@ -290,41 +329,10 @@ class OracleSyncBase(BaseCommand):
         # Split by colon to analyze hierarchy
         parts = [part.strip() for part in name.split(":")]
 
-        # Check if this is an administrative group that needs hierarchy preservation
-        # Administrative groups typically start with department codes like ICT, TAO, HR, etc.
-        admin_prefixes = [
-            "ICT",
-            "TAO",
-            "HR",
-            "FIN",
-            "SEC",
-            "COM",
-            "LEG",
-            "PRO",
-            "SMG",
-            "CBS",
-            "CFO",
-            "FMO",
-            "HC",
-            "IRP",
-            "KIS",
-            "LSO",
-            "MSS",
-            "NA",
-            "NCOP",
-            "PCSD",
-            "RM",
-            "RMI",
-            "SCM",
-            "CAE",
-            "Catering",
-            "Household",
-            "ISS",
-            "OSTP",
-            "Protection Services",
-        ]
-
-        if len(parts) > 1 and parts[0].upper() in admin_prefixes:
+        # Administrative groups start with a division code or name (ICT, TAO,
+        # Household, Protection Services, ...); the comparison is uppercase
+        # because Oracle does not capitalise these consistently.
+        if len(parts) > 1 and parts[0].upper() in ADMIN_GROUP_PREFIXES:
             # Administrative group - preserve hierarchy to avoid collisions
             normalized_parts = []
             for part in parts:

@@ -14,22 +14,28 @@ All commands live in `pwms/management/commands/` and run as:
 > `send_overdue_alerts`) import `workflows.tasks` *inside a function body*, so
 > the command still loads and only fails when that code path runs.
 >
-> The reworked Oracle sync suite (`sync_groups_oracle`, `sync_roles_oracle`,
-> `sync_users_oracle`), `scrape_parliament_committees`, `generate_diagrams`,
-> `populate_sites`, `load_places`, `import_groups`, `import_bill_versions`,
-> `import_meetings`, `check_referral_deadlines`, `send_scheduled_report_shares`,
-> `sync_type_group_access` and `show_workflow_hierarchy` import `pwms.models`
-> directly and run cleanly; the `legacy` / `pending repoint` statuses below apply
-> to the rest.
+> The reworked Oracle sync suite (`sync_roles_oracle`, `sync_users_oracle`),
+> `seed_structure`, `audit_group_mapping`, `scrape_parliament_committees`,
+> `generate_diagrams`, `populate_sites`, `load_places`, `import_groups`,
+> `import_bill_versions`, `import_meetings`, `check_referral_deadlines`,
+> `send_scheduled_report_shares`, `sync_type_group_access` and
+> `show_workflow_hierarchy` import `pwms.models` directly and run cleanly; the
+> `legacy` / `pending repoint` statuses below apply to the rest.
 
-## Synchronisation (Oracle / legacy source)
+## Synchronisation (Oracle ERP)
 
 | Command | Purpose | Status |
 | --- | --- | --- |
 | `sync_base` | shared base for the Oracle suite (`OracleSyncBase`) — a helper module, **not** an invokable command | helper |
-| `sync_groups_oracle` | build the Parliament group hierarchy from Oracle (org tree under `Administration`) | ✅ live |
+| `sync_groups_oracle` | **retired** — the tree is curated by `seed_structure`; the command exits with guidance | ⛔ retired |
 | `sync_roles_oracle` | create/update standard parliamentary roles (deduped, case/acronym normalised) | ✅ live |
-| `sync_users_oracle` | import users & group memberships from Oracle via `pwms/membership/sync_service.py` | ✅ live |
+| `sync_users_oracle` | import users, departments and memberships from Oracle, resolved against the seeded tree | ✅ live |
+
+> **No parallel tree.** `sync_users_oracle` resolves each ERP
+> `(CHILD_ORG_NAME, PARENT_ORG_NAME)` pair onto the curated tree (see [Group &
+> organisation data](#group--organisation-data)) through
+> `pwms/membership/resolver.py` and `group_aliases.csv`. The Oracle-built
+> `Administration` tree is gone, and `sync_groups_oracle` no longer creates one.
 
 > **Identity ownership.** `sync_users_oracle` owns only users whose
 > `identity_source` is `erp`: locally managed users (`identity_source="local"`,
@@ -49,11 +55,15 @@ All commands live in `pwms/management/commands/` and run as:
 > absent from the feed, or whose id is not stored, leaves the line **untouched**
 > rather than clearing it. Disable with `--skip-supervisors`.
 >
-> **Profile fields.** `User.positiondesc` is written from the ERP
-> `POSITIONDESC`, and `User.department` is linked to the child org group
-> (`CHILD_ORG_NAME`, falling back to `PARENT_ORG_NAME`). An org name that cannot
-> be resolved leaves any existing department link untouched rather than clearing
-> it. Roles remain on `GroupMembership` — the sync resolves the post from
+> **Profile and memberships.** `User.positiondesc` is written from the ERP
+> `POSITIONDESC`. `User.department` and the staff memberships (the resolved unit
+> plus the level above it) come from the same resolver, so the profile and
+> access cannot disagree. A pair that does not resolve leaves the existing
+> department and memberships **untouched** and is listed at the end of the run.
+> MPs get a membership in `NA Members` / `NCOP Members` and in their party group
+> under `NA Parties` / `NCOP Parties`; a party change ends the previous
+> membership instead of deleting it, so `User.party_affiliation` follows Oracle.
+> Roles remain on `GroupMembership` — the sync resolves the post from
 > `positiondesc` there, so `User` does not need a separate role foreign key.
 
 ## SharePoint (Graph) sync
@@ -88,31 +98,75 @@ pointing at them) survive.
 
 | Command | Purpose | Status |
 | --- | --- | --- |
+| `seed_structure` | create/update the curated Parliament tree (legislative per term + permanent administration) | ✅ live — see below |
+| `audit_group_mapping` | report how Oracle org pairs resolve onto the seeded tree, and write the alias table | ✅ live — see below |
+| `reset_groups` | empty `Group` / `GroupMembership` for a rebuild while keeping every other table (`--dry-run`, transactional) | ✅ live |
 | `import_groups` | import group names from a CSV/text list as `Group` records under a parent group | ✅ live |
 | `generate_group_tree` | render the group MPTT hierarchy as a Graphviz/Mermaid diagram, optionally rooted at one group | ✅ live — see below |
-| `compare_org_hierarchy` | diff PWMS's group hierarchy against the tree Oracle's supervisor chain implies | ✅ live — see below |
+| `compare_org_hierarchy` | read-only diff of Oracle's reporting tree against the stored hierarchy | ⚠️ reference only — see below |
 
 Key options: `--parent NAME_OR_SLUG` (required) is the group the names hang
-under; `--type GROUP_TYPE` (required) must be one of `Group.GROUP_TYPE_CHOICES`
+under; `--type GROUP_TYPE` (required) must be one of `Group.Type.choices`
 (e.g. `ministry`). The file is parsed as blank-line-separated sections — each
 section's first line is a heading and the rest are names — and `--section NAME`
 imports a single section only. Names are whitespace-normalised and matched on
 the `(name, parent)` natural key, so re-running is safe. `--dry-run` previews the
 changes.
 
-### Organisation hierarchy
+### The seeded tree
 
-`sync_groups_oracle` builds the group tree from Oracle's `(CHILD_ORG_NAME,
-PARENT_ORG_NAME)` pair, which relates a **cost centre** to its **org unit** — not
-an org unit to its parent. The unit-to-unit containment therefore never arrived,
-so every org unit hung directly off `Administration` and a division's sections
-were indistinguishable from unrelated divisions.
+`seed_structure` is the source of truth for the hierarchy. It is idempotent and
+creates:
 
-The containment is recoverable from the `EMPLOYEEID` / `SUPERVISORID` chain — a
-unit's parent is the unit its manager reports into — but only weakly, because a
-reporting line is not always an org line. `compare_org_hierarchy` derives that
-tree and diffs it against what PWMS stores, **read-only**, so the change can be
-reviewed before anything moves:
+* the legislative tree, once per `ParliamentTerm` — Parliament → House →
+  `Members` / `Parties` containers, committees and provincial delegations;
+* the permanent administration tree — `Parliament Administration` → `Secretary
+  to Parliament` → `Offices and Divisions`, `Core Business Branch` and `Support
+  Services Branch`.
+
+`--dry-run` runs the same seeding inside the transaction and rolls it back, so
+the reported created/updated counts are exact. Identity is `external_id` for
+committees (their parliament.gov.za id), `short_name` for the coded nodes, and
+`(name, parent)` otherwise, so a rename or a re-parent updates the row instead
+of duplicating it.
+
+### Mapping Oracle onto the seeded tree
+
+Oracle's labels differ from the curated ones, so the ERP is mapped onto the tree
+by an alias table instead of by name. `audit_group_mapping` fetches each
+distinct `(CHILD_ORG_NAME, PARENT_ORG_NAME)` pair and reports how it resolves,
+ordered by the number of active people behind it:
+
+```bash
+python manage.py audit_group_mapping --csv /tmp/org-map.csv
+# fill seeded_path for the unresolved rows, then
+python manage.py audit_group_mapping --pairs-csv /tmp/org-map.csv \
+    --alias-file /tmp/org-map.csv
+```
+
+`seeded_path` must point inside the administration subtree; `/` or `>` separate
+the levels, matching is case-insensitive, the `Parliament Administration` prefix
+is optional, and a bare name is accepted when it is unique. Rows may be left
+blank — they simply stay unresolved. Alias keys are the **raw** Oracle names
+(case/whitespace-insensitive), so unrelated units whose names collapse to the
+same leaf cannot share an alias.
+
+The packaged table is `pwms/membership/group_aliases.csv`, which
+`sync_users_oracle` reads by default; `--org-map PATH` overrides it, and `--term
+N` scopes Houses to a `ParliamentTerm` (default: the term in force today).
+
+> Deploying this to a server with existing data is a maintenance-window job:
+> see the [Group Overhaul Checklist](./Group%20Overhaul%20Checklist.md) before
+> running `reset_groups` or `seed_structure`.
+
+### Comparing with Oracle's reporting tree
+
+`compare_org_hierarchy` remains available as a read-only analysis: it derives
+the containment the `EMPLOYEEID` / `SUPERVISORID` chain implies and diffs it
+against the stored tree. Reporting lines are not org lines, so this is evidence,
+not an instruction — and because the stored tree is curated, treat the diff as a
+check on naming and coverage. There is no automatic apply step any more;
+corrections belong in `seed_structure` or `group_aliases.csv`.
 
 ```bash
 python manage.py compare_org_hierarchy --prefix IRP
@@ -125,17 +179,6 @@ python manage.py compare_org_hierarchy --prefix IRP
 | `--json` | machine-readable output |
 | `--strict` | exit non-zero when any unit differs or is missing |
 | `--verbose` | log each inferred edge |
-
-`sync_groups_oracle --infer-org-parents` applies the inferred tree. Because a
-single outward report is as likely a functional reporting line as real
-containment, only edges corroborated by `--infer-min-votes` of a unit's people
-(default `2`) are used; the rest are left where they were, and the command logs
-how many weakly-evidenced edges it dropped. `--dry-run` previews the result.
-
-| Option | Effect |
-| --- | --- |
-| `--infer-org-parents` | nest each org unit under the unit its manager reports into |
-| `--infer-min-votes N` | reports required to corroborate an edge (default 2) |
 
 ### Group hierarchy diagrams
 

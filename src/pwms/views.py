@@ -610,7 +610,7 @@ def all_groups(request):
         "query": query,
         "type_choices": [
             (value, label)
-            for value, label in Group.GROUP_TYPE_CHOICES
+            for value, label in Group.Type.choices
             if value in in_use
         ],
         "has_filters": bool(query or type_filter),

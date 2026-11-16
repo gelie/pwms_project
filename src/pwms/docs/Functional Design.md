@@ -20,9 +20,12 @@ and the typical flows. It complements the structural documents
 
 ## 2. Identity & organisation management
 
-- **Users** are created from the admin and/or synchronised from the legacy Oracle
-  source (`sync_users_oracle*` commands). Users carry parliamentary profile data
-  (title, party, constituency, membership dates, encrypted ID number).
+- **Users** are created from the admin and/or synchronised from the Oracle ERP
+  (`sync_users_oracle`). Users carry parliamentary profile data (title,
+  constituency, membership dates, encrypted ID number); party is derived from
+  their active party `Group` membership. Oracle organisations are resolved onto
+  the curated tree created by `seed_structure` through
+  `pwms/membership/resolver.py` and `group_aliases.csv`.
 - **Sign-in** uses Active Directory (LDAP) when configured, falling back to the
   local database for identities with no AD account and a break-glass superuser
   during an outage; the login form has a show/hide password toggle. The

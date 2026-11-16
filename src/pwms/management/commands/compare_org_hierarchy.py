@@ -1,16 +1,16 @@
-"""Diff PWMS's group hierarchy against the tree Oracle's supervisor data implies.
+"""Read-only diff of Oracle's implied hierarchy against the stored group tree.
 
-``sync_groups_oracle`` builds the organisational tree from
-``(CHILD_ORG_NAME, PARENT_ORG_NAME)`` edges, which pair a cost centre with its
-org unit — not an org unit with its parent. The result is a flat forest: every
-org unit hangs directly off ``Administration`` and the division/section
-relationship is lost.
+The ERP's organisation pair (``CHILD_ORG_NAME`` / ``PARENT_ORG_NAME``) relates a
+cost centre to its unit, not a unit to its parent. The unit-to-unit containment
+lives in the ``EMPLOYEEID`` / ``SUPERVISORID`` chain (see
+:mod:`pwms.membership.org_hierarchy`); this command derives the tree that chain
+implies and compares it with the parents PWMS stores.
 
-The real containment lives in the ``EMPLOYEEID`` / ``SUPERVISORID`` chain (see
-:mod:`pwms.membership.org_hierarchy`). This read-only command derives the tree
-that chain implies and compares it with the tree PWMS stores, so the gap is
-visible before anything is re-parented. Apply it with
-``sync_groups_oracle --infer-org-parents``.
+The stored tree is now curated by ``seed_structure`` and keyed to the ERP through
+``pwms/membership/group_aliases.csv``, not built from Oracle unit names. The diff
+is therefore **evidence only** — it flags naming/coverage gaps, and no longer
+has an automatic apply step. Corrections belong in ``seed_structure`` or the
+alias table.
 
 Usage:
     python manage.py compare_org_hierarchy
@@ -176,5 +176,7 @@ class Command(OracleSyncBase):
             f"{summary['differs']} differ, {summary['missing']} missing"
         )
         self.stdout.write(
-            "Apply with: python manage.py sync_groups_oracle --infer-org-parents"
+            "The stored tree is curated by 'manage.py seed_structure'; correct it "
+            "there (or in pwms/membership/group_aliases.csv), not by re-running "
+            "an Oracle group sync."
         )

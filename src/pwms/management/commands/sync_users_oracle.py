@@ -1,17 +1,20 @@
 """
 Django management command to sync users from Oracle database (optimized for daily sync).
 
-This command is optimized for daily user synchronization and assumes that groups and roles
-have already been synced using sync_groups_oracle and sync_roles_oracle commands.
+Membership and department resolution both use the curated group tree created by
+``seed_structure``: :class:`pwms.membership.resolver.GroupResolver` maps Oracle's
+``(CHILD_ORG_NAME, PARENT_ORG_NAME)`` pair onto it through
+``pwms/membership/group_aliases.csv`` (built with ``audit_group_mapping``). The
+Oracle-built group tree this command used to depend on is retired.
 
 Key optimizations:
 - Pre-loads all groups and roles into memory at start
 - Batch processing with efficient queries
-- Org groups/roles are looked up from cache; MP party + house-members groups
-  (and the MP/Staff roles) are created on demand when missing
+- Org groups/roles are looked up through the resolver; MP party + house-members
+  groups (and the MP/Staff roles) are created on demand when missing
 - Writes the ERP ``POSITIONDESC`` to ``User.positiondesc`` and links
-  ``User.department`` to the child org group (falling back to the parent org),
-  so the profile reflects the same assignment that drives the memberships
+  ``User.department`` to the resolved seeded group, so the profile reflects the
+  same assignment that drives the memberships
 - Optimized for speed (target: <2 minutes for 1600+ users)
 - Users whose ``identity_source`` is not ``erp`` are managed in PWMS (Ministers
   appointed from outside the ERP, scraper placeholders, admin accounts): the
@@ -20,21 +23,28 @@ Key optimizations:
 - Links each user to their manager from the Oracle ``EMPLOYEEID`` / ``SUPERVISORID``
   chain (``User.supervisor``) in a second pass, once every user exists; disable
   with ``--skip-supervisors``
+- An Oracle organisation pair that does not resolve leaves the existing
+  department and memberships untouched, and is listed at the end of the run
 
 Usage:
     python manage.py sync_users_oracle
     python manage.py sync_users_oracle --dry-run
     python manage.py sync_users_oracle --verbose
+    python manage.py sync_users_oracle --org-map path/to/aliases.csv
 """
 
+from collections import Counter
 from time import perf_counter
 
 from django.core.management.base import CommandError
 from django.utils import timezone
 
 from pwms.management.commands.sync_base import OracleSyncBase
+from pwms.membership.org_hierarchy import restore_acronym_case
+from pwms.membership.resolver import GroupResolver, ResolverError
 from pwms.membership.sync_service import MembershipSyncService
 from pwms.models import Group, GroupMembership, Role, User
+from pwms.models.groups import ParliamentTerm
 
 
 class Command(OracleSyncBase):
@@ -58,14 +68,21 @@ class Command(OracleSyncBase):
                 "fixed_passwords": 0,
                 "supervisors_linked": 0,
                 "supervisors_unresolved": 0,
+                "departments_resolved": 0,
+                "departments_unresolved": 0,
             }
         )
-        self._group_cache = {}
         self._role_cache = {}
         self._membership_sync: MembershipSyncService | None = None
         #: EMPLOYEEID -> User for every row handled this run; lets the supervisor
-        #: pass resolve the chain in a dry run, where nothing is written.
+        #: pass resolve the chain even in a dry run, where nothing is written.
         self._employee_users: dict[str, User] = {}
+        self._org_map: str | None = None
+        self._term_number: int | None = None
+        self._term: ParliamentTerm | None = None
+        self._resolver: GroupResolver | None = None
+        #: Oracle org pair -> unresolved department count, for the run report.
+        self._unresolved_orgs: Counter[str] = Counter()
 
     def add_arguments(self, parser):
         self.add_common_arguments(parser)
@@ -93,6 +110,24 @@ class Command(OracleSyncBase):
                 "EMPLOYEEID / SUPERVISORID chain"
             ),
         )
+        parser.add_argument(
+            "--org-map",
+            type=str,
+            default=None,
+            help=(
+                "Alias CSV mapping Oracle org names to seeded paths "
+                "(default: pwms/membership/group_aliases.csv)."
+            ),
+        )
+        parser.add_argument(
+            "--term",
+            type=int,
+            default=None,
+            help=(
+                "ParliamentTerm.number used to scope Houses (default: the term "
+                "in force today)."
+            ),
+        )
 
     def handle(self, *args, **options):
         """Main command handler."""
@@ -109,6 +144,9 @@ class Command(OracleSyncBase):
         force_update = options["force_update"]
         skip_deactivation = options["skip_deactivation"]
         skip_supervisors = options["skip_supervisors"]
+
+        self._org_map = options["org_map"]
+        self._term_number = options["term"]
 
         if dry_run:
             self.stdout.write(
@@ -141,8 +179,10 @@ class Command(OracleSyncBase):
                     )
                 )
 
+        except CommandError:
+            raise
         except Exception as e:
-            self.logger.error(f"User sync failed: {e!s}", exc_info=True)
+            self.logger.exception("User sync failed")
             self.stats["errors"] += 1
             raise CommandError(f"❌ User sync failed: {e!s}")
 
@@ -265,44 +305,88 @@ class Command(OracleSyncBase):
             raise
 
     def preload_groups_and_roles(self):
-        """Pre-load all groups and roles into memory for fast lookup."""
+        """Load the seeded group tree and roles into memory.
+
+        The tree is indexed once through :class:`GroupResolver`, and the
+        membership service receives the same resolver, so the department link
+        and the memberships cannot disagree.
+        """
         self.logger.info("📚 Pre-loading groups and roles into memory...")
 
-        # Load all groups
-        for group in Group.objects.all():
-            sanitized_name = self.strip_group_code_prefix(group.name)
-            self._group_cache[sanitized_name] = group
-            self._group_cache[group.name] = group
+        resolver = self._load_groups()
 
-        # Load all roles
         for role in Role.objects.all():
             self._role_cache[role.name] = role
 
-        # Verify required groups exist
-        required_groups = [
-            "National Assembly",
-            "National Council of Provinces",
-            "Administration",
-        ]
-        missing_groups = [g for g in required_groups if g not in self._group_cache]
-
-        if missing_groups:
-            raise CommandError(
-                f"Missing required groups: {', '.join(missing_groups)}\n"
-                f"Please run 'python manage.py sync_groups_oracle' first."
-            )
-
         self.logger.info(
-            f"✅ Loaded {len(set(self._group_cache.values()))} groups and {len(self._role_cache)} roles"
+            f"✅ Loaded {resolver.indexed_group_count} groups and "
+            f"{len(self._role_cache)} roles"
         )
 
-        # Initialise the membership sync service with the loaded caches
         self._membership_sync = MembershipSyncService(
-            group_cache=self._group_cache,
             role_cache=self._role_cache,
             strip_group_code_prefix=self.strip_group_code_prefix,
             normalize_role_name=self.normalize_role_name,
+            resolver=resolver,
         )
+
+    def _load_groups(self) -> GroupResolver:
+        """Index ``seed_structure``'s tree and validate the nodes this run needs."""
+        self._term = self._resolve_term()
+        try:
+            self._resolver = GroupResolver.from_database(
+                normalize=self._normalize_org_name,
+                alias_file=self._org_map,
+                term=self._term,
+            )
+        except ResolverError as exc:
+            raise CommandError(str(exc)) from exc
+
+        if self._resolver.alias_conflicts:
+            self.logger.info(
+                "Ignored ambiguous aliases: %s",
+                ", ".join(self._resolver.alias_conflicts),
+            )
+
+        self.logger.info(
+            "Resolving departments and staff memberships against the seeded "
+            "group tree."
+        )
+
+        missing = []
+        admin_root = self._resolver.admin_root
+        secretary = (
+            admin_root is not None
+            and admin_root.children.filter(name="Secretary to Parliament").exists()
+        )
+        if not secretary:
+            missing.append("Secretary to Parliament")
+        if self._resolver.resolve_house("NA") is None:
+            missing.append("National Assembly")
+        if self._resolver.resolve_house("NCOP") is None:
+            missing.append("National Council of Provinces")
+        if missing:
+            raise CommandError(
+                "The seeded tree is incomplete: missing "
+                + ", ".join(missing)
+                + ". Run 'python manage.py seed_structure' first."
+            )
+
+        return self._resolver
+
+    def _resolve_term(self) -> ParliamentTerm | None:
+        if self._term_number is None:
+            return GroupResolver.active_term()
+        try:
+            return ParliamentTerm.objects.get(number=self._term_number)
+        except ParliamentTerm.DoesNotExist as exc:
+            raise CommandError(
+                f"ParliamentTerm number={self._term_number} does not exist."
+            ) from exc
+
+    def _normalize_org_name(self, raw: str) -> str:
+        """Canonical PWMS spelling for a raw Oracle unit / cost-centre name."""
+        return restore_acronym_case(self.strip_group_code_prefix(raw or ""))
 
     def _resolve_department_group(
         self, child_org_name: str | None, parent_org_name: str | None
@@ -310,25 +394,35 @@ class Command(OracleSyncBase):
         """Resolve the user's home department from the Oracle org pair.
 
         Oracle's ``CHILD_ORG_NAME`` is the most specific unit (the section or
-        cost centre); ``PARENT_ORG_NAME`` is its parent division. Prefer the
-        child, fall back to the parent, and use the same sanitised names as the
-        group cache. An unknown name simply leaves the existing department
-        untouched rather than clearing a manually maintained link.
+        cost centre); ``PARENT_ORG_NAME`` is its parent division.
+
+        With the resolver the pair goes through the seeded tree: an alias hit
+        first, then deterministic name matches. An unresolved pair returns
+        ``None`` so the existing department is left alone, and is counted for
+        the end-of-run report.
         """
-        for raw_name in (child_org_name, parent_org_name):
-            name = self.strip_group_code_prefix((raw_name or "").strip())
-            if not name:
-                continue
+        resolver = self._resolver
+        if resolver is None:  # pragma: no cover - preload_groups_and_roles sets it
+            return None
 
-            group = self._group_cache.get(name)
-            if group is not None:
-                return group
+        no_child = not (child_org_name or "").strip()
+        no_parent = not (parent_org_name or "").strip()
+        if no_child and no_parent:
+            # Oracle carries no organisation for this person; nothing to
+            # resolve and nothing to report.
+            return None
 
-            group = Group.objects.filter(name=name).first()
-            if group is not None:
-                self._group_cache[name] = group
-                return group
+        resolution = resolver.resolve_org(child_org_name, parent_org_name)
+        if resolution.resolved:
+            self.stats["departments_resolved"] += 1
+            return resolution.group
 
+        self.stats["departments_unresolved"] += 1
+        pair = (
+            f"{(child_org_name or '').strip()} / "
+            f"{(parent_org_name or '').strip()}"
+        )
+        self._unresolved_orgs[pair] += 1
         return None
 
     def process_user_batch(
@@ -375,11 +469,9 @@ class Command(OracleSyncBase):
                     force_update,
                     dry_run,
                 )
-            except Exception as e:
+            except Exception:
                 username = oracle_user[10] if len(oracle_user) > 10 else "unknown"
-                self.logger.error(
-                    f"Error processing user {username}: {e!s}", exc_info=True
-                )
+                self.logger.exception(f"Error processing user {username}")
                 self.stats["errors"] += 1
 
     def process_single_user(
@@ -398,16 +490,16 @@ class Command(OracleSyncBase):
         values = list(oracle_user or [])
         values += [""] * max(0, 15 - len(values))
         (
-            title,
-            lastname,
-            firstname,
-            middlenames,
+            _title,
+            _lastname,
+            _firstname,
+            _middlenames,
             email,
             idno,
             sex,
             positiondesc,
             employeetype,
-            partycode,
+            _partycode,  # party is owned by the membership sync now
             username,
             child_org_name,
             parent_org_name,
@@ -480,7 +572,6 @@ class Command(OracleSyncBase):
                     user.last_name = name_data["last_name"]
                     user.title = name_data["title"]
                     user.employee_type = employee_type
-                    user.party_affiliation = partycode or ""
                     user.gender = sex.lower() if sex else ""
                     user.is_mp = is_mp
                     user.is_active = True
@@ -517,7 +608,6 @@ class Command(OracleSyncBase):
                     last_name=name_data["last_name"],
                     title=name_data["title"],
                     employee_type=employee_type,
-                    party_affiliation=partycode or "",
                     gender=sex.lower() if sex else "",
                     is_mp=is_mp,
                     is_active=True,
@@ -540,7 +630,6 @@ class Command(OracleSyncBase):
                     last_name=name_data["last_name"],
                     title=name_data["title"],
                     employee_type=employee_type,
-                    party_affiliation=partycode or "",
                     gender=sex.lower() if sex else "",
                     is_mp=is_mp,
                     is_active=True,
@@ -582,6 +671,8 @@ class Command(OracleSyncBase):
 
         self.stats["new_memberships"] += result.get("created", 0)
         self.stats["updated_memberships"] += result.get("updated", 0)
+        # Party changes end the previous party membership rather than replacing it.
+        self.stats["deactivated_memberships"] += result.get("ended", 0)
         # Skipped means a group/role could not be resolved for this user.
         self.stats["warnings"] += result.get("skipped", 0)
 
@@ -657,10 +748,9 @@ class Command(OracleSyncBase):
 
                     if active_count:
                         deactivatable_qs.update(is_active=False, end_date=today)
-                except Exception as e:
-                    self.logger.error(
-                        f"Error deactivating user {user.username}: {e!s}",
-                        exc_info=True,
+                except Exception:
+                    self.logger.exception(
+                        f"Error deactivating user {user.username}"
                     )
                     self.stats["errors"] += 1
                     continue
@@ -836,6 +926,21 @@ class Command(OracleSyncBase):
             "   Preserved executive memberships: "
             f"{self.stats['preserved_executive_memberships']}"
         )
+
+        term_label = (
+            f"{self._term.number} ({self._term.name})"
+            if self._term is not None
+            else "none"
+        )
+        self.stdout.write("\n🌱 SEEDED GROUP TREE:")
+        self.stdout.write(f"   Term: {term_label}")
+        self.stdout.write(
+            "   Departments resolved / unresolved: "
+            f"{self.stats['departments_resolved']} / "
+            f"{self.stats['departments_unresolved']}"
+        )
+        for pair, count in self._unresolved_orgs.most_common(10):
+            self.stdout.write(f"     {count:>4}  {pair or '—'}")
 
         self.stdout.write("\n🪜 REPORTING LINE:")
         self.stdout.write(

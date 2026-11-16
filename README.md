@@ -57,7 +57,7 @@ ContentType-linked RBAC layer, and everything that happens to an instrument is
   It exposes read-only **users**, **groups**, **memberships** and **bills**, plus a
   **cross-resource search** endpoint and **OpenAPI / Swagger** docs. The previous
   DRF API under `/api/` has been retired.
-- **Admin, background jobs, management commands** for sync (Oracle/legacy), scraping, notifications and diagram generation.
+- **Admin, background jobs, management commands** for sync (Oracle ERP onto the curated group tree), scraping, notifications and diagram generation.
 
 ---
 
@@ -110,6 +110,7 @@ The self-documentation lives in [`pwms/docs/`](src/pwms/docs/):
 | [Search Lookups](src/pwms/docs/Search%20Lookups.md) | HTMX search pickers and the country → city cascade |
 | [Meetings Import & Export](src/pwms/docs/Meetings%20Import%20%26%20Export.md) | The CSV/XLSX format the Meetings calendar imports and exports |
 | [Management Commands](src/pwms/docs/Management%20Commands.md) | Every `manage.py` command and its purpose |
+| [Group Overhaul Checklist](src/pwms/docs/Group%20Overhaul%20Checklist.md) | Runbook for moving an existing server onto the seeded group tree and resolver-backed user sync |
 | [SharePoint Sync](src/pwms/docs/SharePoint%20Sync.md) | `populate_sites`, the local `Sharepoint*` tables and document attachments |
 | [Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md) | Email, notifications, SharePoint, exports and what remains |
 | [User Manual Introduction](src/pwms/docs/User%20Manual%20Introduction.md) | *Systems Overview* and *The Purpose* in plain language |

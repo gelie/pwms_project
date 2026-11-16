@@ -51,7 +51,7 @@ PALETTE = {
 }
 
 #: Group type -> colour family. Types absent here fall back to ``"other"``.
-#: Keep in step with ``Group.GROUP_TYPE_CHOICES``.
+#: Keep in step with ``Group.TYPE_CHOICES``.
 TYPE_FAMILIES = {
     "legislature": "chamber",
     "parliament": "chamber",
@@ -75,7 +75,9 @@ TYPE_FAMILIES = {
     "section": "administration",
     "business_unit": "administration",
     "party": "political",
+    "parties": "political",
     "member": "political",
+    "members": "political",
     "province": "local",
     "municipality": "local",
     "delegation": "delegation",
@@ -138,7 +140,7 @@ FAMILY_STYLE = {
 DEFAULT_FAMILY = "other"
 
 #: The full set of valid group types, used to reject typos in ``--group-type``.
-VALID_GROUP_TYPES = {choice for choice, _ in Group.GROUP_TYPE_CHOICES}
+VALID_GROUP_TYPES = {choice for choice, _ in Group.Type.choices}
 
 
 class Command(BaseCommand):

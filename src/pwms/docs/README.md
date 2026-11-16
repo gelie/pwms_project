@@ -16,6 +16,13 @@ order, or used as reference while developing.
 9. [SharePoint Sync](./SharePoint%20Sync.md) — the `populate_sites` command, the local `Sharepoint*` tables, and document attachments/versioning.
 10. [Roadmap & Planned Integrations](./Roadmap%20&%20Planned%20Integrations.md) — email, notifications, SharePoint and other plans.
 
+## Runbooks
+
+- [Group Overhaul Checklist](./Group%20Overhaul%20Checklist.md) — moving an
+  existing server onto the seeded group tree and the resolver-backed Oracle user
+  sync: backups, exports, reset vs. re-seed, alias mapping, reconnection of
+  workflow types and records, validation and rollback.
+
 ## User-facing documents
 
 These are written for end users rather than developers, and are the only ones

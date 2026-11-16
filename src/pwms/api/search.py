@@ -26,7 +26,9 @@ USER_SEARCH_FIELDS: dict[str, tuple[str, ...]] = {
     "positiondesc": ("positiondesc",),
     "department": ("department__name",),
     "constituency": ("constituency",),
-    "party_affiliation": ("party_affiliation",),
+    # Derived from the user's active party membership, annotated on the queryset
+    # by ``User.with_party_affiliation()``.
+    "party_affiliation": ("party_affiliation_name",),
     "phone": ("phone",),
 }
 

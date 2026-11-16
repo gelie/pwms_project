@@ -205,17 +205,77 @@ def seed_meeting_workflow(apps, schema_editor):
 def unseed_meeting_workflow(apps, schema_editor):
     """Reverse: drop the meeting workflow and the event types it introduced.
 
+    The teardown walks the schema by hand and deletes each table with
+    ``_raw_delete`` instead of letting the collector cascade. During a reverse
+    migration Django's project state can hold model classes rendered from more
+    than one registry, and the collector rejects those cross-registry instances
+    (``Cannot query "WorkflowType object (5)": Must be "WorkflowType"").
+    Deleting children first keeps the foreign keys satisfied without a cascade.
+
     The owning group and create role are left in place — they are shared
     organisational data a membership may reference, and migration 0023 treats
     seeded groups/roles the same way.
     """
     WorkflowType = apps.get_model("pwms", "WorkflowType")
+    State = apps.get_model("pwms", "State")
+    Transition = apps.get_model("pwms", "Transition")
     EventType = apps.get_model("pwms", "EventType")
+    TransitionCondition = apps.get_model("pwms", "TransitionCondition")
+    TransitionLog = apps.get_model("pwms", "TransitionLog")
+    WorkflowStatePermission = apps.get_model("pwms", "WorkflowStatePermission")
 
-    WorkflowType.objects.filter(name=MEETING_TYPE_NAME).delete()
-    EventType.objects.filter(
-        slug__in=[slug for _, slug, _ in MEETING_EVENT_TYPES]
-    ).delete()
+    using = schema_editor.connection.alias
+
+    def raw_delete(queryset):
+        queryset._raw_delete(using=using)
+
+    type_ids = list(
+        WorkflowType.objects.filter(name=MEETING_TYPE_NAME).values_list("pk", flat=True)
+    )
+    if type_ids:
+        state_ids = list(
+            State.objects.filter(workflow_type_id__in=type_ids).values_list(
+                "pk", flat=True
+            )
+        )
+        transition_ids = list(
+            Transition.objects.filter(workflow_type_id__in=type_ids).values_list(
+                "pk", flat=True
+            )
+        )
+
+        # Rows that point at these states but survive the workflow on purpose.
+        TransitionLog.objects.filter(from_state_id__in=state_ids).update(
+            from_state=None
+        )
+        TransitionLog.objects.filter(to_state_id__in=state_ids).update(to_state=None)
+
+        raw_delete(TransitionCondition.objects.filter(transition_id__in=transition_ids))
+        raw_delete(WorkflowStatePermission.objects.filter(state_id__in=state_ids))
+
+        required_event_types = Transition._meta.get_field(
+            "required_event_types"
+        ).remote_field.through
+        raw_delete(
+            required_event_types.objects.filter(transition_id__in=transition_ids)
+        )
+
+        raw_delete(Transition.objects.filter(pk__in=transition_ids))
+        raw_delete(State.objects.filter(pk__in=state_ids))
+
+        # Types that nest under this one are kept (the FK is SET_NULL).
+        WorkflowType.objects.filter(parent_type_id__in=type_ids).update(
+            parent_type=None
+        )
+        for field_name in ("create_roles", "viewer_groups"):
+            through = WorkflowType._meta.get_field(field_name).remote_field.through
+            raw_delete(through.objects.filter(workflowtype_id__in=type_ids))
+
+        raw_delete(WorkflowType.objects.filter(pk__in=type_ids))
+
+    raw_delete(
+        EventType.objects.filter(slug__in=[slug for _, slug, _ in MEETING_EVENT_TYPES])
+    )
 
 
 class Migration(migrations.Migration):
