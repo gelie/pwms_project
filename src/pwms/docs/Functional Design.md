@@ -535,8 +535,9 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
 
 - **Synchronisation** from the legacy Oracle system (users, groups, roles,
   memberships) — basis for keeping identity data current.
-- **SharePoint sync** (`populate_sites`) mirrors sites, drives and best-effort
-  site members into the local tables the attachment picker reads.
+- **SharePoint sync** (`populate_sites`) mirrors sites and drives into the local
+  tables the attachment picker reads. Site membership is curated by hand in the
+  admin; `reset_site_members` clears it in bulk.
 - **Committee scraping** (Parliament website) to import committee members.
 - **Notification / deadline jobs** — referral deadline reminders and expiry
   (email delivered) and the scheduled report-share drain; delegate expirations,

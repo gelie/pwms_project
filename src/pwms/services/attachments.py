@@ -185,11 +185,10 @@ def _notify(target, action, attachment, actor):
 def member_sites(user):
     """SharePoint sites ``user`` may browse, in name order.
 
-    Membership is the entitlement (``SharepointSiteMember`` rows written by
-    ``populate_sites``); personal OneDrive sites are never listed, and a site an
-    administrator has disabled is hidden from everyone. Superusers see every
-    *enabled* mirrored site, which also makes the picker usable before the
-    member sync has populated rows.
+    Membership is the entitlement (``SharepointSiteMember`` rows curated in the
+    admin); personal OneDrive sites are never listed, and a site an administrator
+    has disabled is hidden from everyone. Superusers see every *enabled* mirrored
+    site, which also makes the picker usable before any membership rows exist.
     """
     sites = SharepointSite.objects.filter(
         enabled=True, is_personal_site=False

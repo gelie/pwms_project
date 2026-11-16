@@ -70,17 +70,24 @@ All commands live in `pwms/management/commands/` and run as:
 
 | Command | Purpose | Status |
 | --- | --- | --- |
-| `populate_sites` | mirror SharePoint sites, drives (and best-effort site members) into the local `Sharepoint*` tables | ✅ live — see [SharePoint Sync](./SharePoint%20Sync.md) |
+| `populate_sites` | mirror SharePoint sites and drives into the local `Sharepoint*` tables | ✅ live — see [SharePoint Sync](./SharePoint%20Sync.md) |
+| `reset_site_members` | bulk-delete the manually curated `SharepointSiteMember` rows | ✅ live |
 
-Key options: `--failures-file PATH` writes the sites whose member list could not
-be read to a CSV report for the SharePoint admin (default:
-`logs/site_member_failures_<timestamp>.csv`).
+Key options (`populate_sites`): none — it takes no arguments.
 
-> Site-**member** sync is implemented but is currently skipped at runtime: it
-> needs Graph application permissions (`Sites.Manage.All` /
-> `Sites.FullControl.All`) that the configured app token does not yet have.
-> Sites and drives sync fine with the current token. Skipped sites are written
-> to the CSV failure report described above.
+Key options (`reset_site_members`): `--site SELECTOR` (repeatable) narrows the
+reset to sites matched case-insensitively on **site ID, name or URL**;
+`--inactive-only` deletes just the inactive rows, so current memberships keep
+working; `--dry-run` reports exact counts and writes nothing; `--noinput` skips
+the confirmation prompt.
+
+> Site **membership is not synced**. `populate_sites` only mirrors sites and
+> drives; `SharepointSiteMember` rows are curated by hand in the admin (inline on
+> the site page and a standalone **Sharepoint site members** list), because they
+> govern who may browse a site in the attachment picker. `reset_site_members`
+> is the bulk counterpart of that manual editing: it empties the table (all of
+> it, one or more sites, or only inactive rows) so access can be rebuilt
+> deliberately.
 
 ## Reference data (GeoNames)
 

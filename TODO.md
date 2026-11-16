@@ -137,9 +137,10 @@ reports 104 findings (27 auto-fixable), `views.py` 2 643 lines,
 
 ## 6. Data & integration risks
 
-- [ ] **SharePoint site-member sync** is silently skipped — the app token lacks
-      `Sites.Manage.All`, so the designed PWMS-group → SharePoint-site permission
-      mapping is not enforced in production and access can drift between systems.
+- [ ] **SharePoint site membership** is curated by hand (`SharepointSiteMember`)
+      rather than synced: the app token lacks `Sites.Manage.All`, so the designed
+      PWMS-group → SharePoint-site permission mapping is not enforced in
+      production and access can drift between systems.
 - [ ] **Oracle sync coverage** — `sync_users_oracle` resolves Oracle org pairs
       onto the curated tree through `group_aliases.csv` and leaves unresolved
       pairs untouched; `seed_structure` / `audit_group_mapping` keep that table

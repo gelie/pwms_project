@@ -368,6 +368,14 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,  # ← very important!
+    "formatters": {
+        # Python falls back to a bare ``%(message)s`` formatter when a handler
+        # declares none, leaving ``pwms.log`` with no timestamp, level or
+        # logger name. Name the shape explicitly so every record is attributable.
+        "standard": {
+            "format": "%(asctime)s - %(levelname)s - [%(name)s] - %(message)s",
+        },
+    },
     "handlers": {
         "console": {
             "class": "logging.StreamHandler",
@@ -376,6 +384,7 @@ LOGGING = {
             "class": "logging.FileHandler",
             # the log file will be created in the logs directory
             "filename": LOG_DIR / "pwms.log",
+            "formatter": "standard",
         },
     },
     "loggers": {
@@ -387,6 +396,12 @@ LOGGING = {
             "level": "WARNING",
             "handlers": ["file", "console"],
             "propagate": False,
+        },
+        # ``httpx`` logs every Graph HTTP call at INFO, which dominated
+        # pwms.log. It has no handlers of its own, so only the level changes:
+        # warnings and errors still reach the root handlers above.
+        "httpx": {
+            "level": "WARNING",
         },
     },
 }

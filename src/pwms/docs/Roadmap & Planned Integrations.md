@@ -114,9 +114,9 @@ with a parliamentary document library.
 - Offline tenant sync via `manage.py populate_sites`: local `SharepointSite` +
   `SharepointDrive` tables, a DB-cached app token, and pagination-aware Graph
   calls.
-- Best-effort `SharepointSiteMember` sync is implemented but currently skipped
-  — the app token lacks `Sites.Manage.All` / `Sites.FullControl.All`. Full
-  details: [SharePoint Sync](./SharePoint%20Sync.md).
+- `SharepointSiteMember` is **not** synced: site membership is curated by hand
+  in the admin (it governs attachment-picker access), with `manage.py
+  reset_site_members` for bulk resets. Details: [SharePoint Sync](./SharePoint%20Sync.md).
 - **Document attachments (2026-09-15)** — every workflow detail page has an
   **Attachments** section backed by an HTMX SharePoint picker: browse the user's
   sites as an expandable tree, link an existing document, or upload a local file
