@@ -15,7 +15,8 @@ All commands live in `pwms/management/commands/` and run as:
 > the command still loads and only fails when that code path runs.
 >
 > The reworked Oracle sync suite (`sync_roles_oracle`, `sync_users_oracle`),
-> `seed_structure`, `audit_group_mapping`, `scrape_parliament_committees`,
+> `seed_structure`, `seed_executive`, `audit_group_mapping`,
+> `scrape_parliament_committees`,
 > `generate_diagrams`, `populate_sites`, `load_places`, `import_groups`,
 > `import_bill_versions`, `import_meetings`, `check_referral_deadlines`,
 > `send_scheduled_report_shares`, `sync_type_group_access` and
@@ -106,6 +107,7 @@ pointing at them) survive.
 | Command | Purpose | Status |
 | --- | --- | --- |
 | `seed_structure` | create/update the curated Parliament tree (legislative per term + permanent administration) | ✅ live — see below |
+| `seed_executive` | create/update `Government of RSA`, its Presidency, ministries, national departments, executive roles, and current office holders | ✅ live — see below |
 | `audit_group_mapping` | report how Oracle org pairs resolve onto the seeded tree, and write the alias table | ✅ live — see below |
 | `reset_groups` | empty `Group` / `GroupMembership` for a rebuild while keeping every other table (`--dry-run`, transactional) | ✅ live |
 | `import_groups` | import group names from a CSV/text list as `Group` records under a parent group | ✅ live |
@@ -136,6 +138,46 @@ the reported created/updated counts are exact. Identity is `external_id` for
 committees (their parliament.gov.za id), `short_name` for the coded nodes, and
 `(name, parent)` otherwise, so a rename or a re-parent updates the row instead
 of duplicating it.
+
+### The executive branch
+
+`seed_executive` builds the executive tree and populates it from the dated
+snapshot in `management/commands/data/executive.json`:
+
+* the `Government of RSA` root (`executive`) with The Presidency (`presidency`)
+  and one child per Cabinet ministry (`ministry`);
+* one `department` child under its ministry for each national department and
+  agency with department status — the source follows the gov.za national
+  departments list, with the Wikipedia list supplying the split between the
+  Departments of Cooperative Governance and Traditional Affairs and placing
+  Statistics South Africa under The Presidency where the two sources differ.
+  The Presidency itself is represented by the existing `presidency` group rather
+  than a duplicate department row;
+* the `President`, `Deputy President`, `Minister` and `Deputy Minister` roles —
+  office labels with no workflow powers, because what an office holder may *do*
+  is granted by the RBAC layer;
+* one `GroupMembership` per current office holder, matched by the external
+  Parliament/ERP username. The snapshot records its sources (Wikipedia,
+  Parliament's Ministers and Deputy Ministers pages, the government contact
+  directory and the national departments pages) and an `as_at` date, so a
+  reshuffle is a data change. The same snapshot carries the national departments
+  and their ministry mapping.
+
+New accounts are created with `identity_source='local'` by default: an office
+holder may not be on the Oracle ERP, and a locally managed identity is not
+overwritten or deactivated by `sync_users_oracle`. Use
+`--identity-source erp` where the ERP owns those identities. Existing users are
+never renamed or overwritten; only their blank profile fields are filled.
+
+The command is idempotent and `--dry-run` reports exact counts without writing.
+`--prune` ends active appointments this command previously seeded that are no
+longer in the snapshot, leaving manually created appointments untouched.
+
+```bash
+python manage.py seed_executive --dry-run
+python manage.py seed_executive
+python manage.py seed_executive --prune
+```
 
 ### Mapping Oracle onto the seeded tree
 

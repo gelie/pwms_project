@@ -8,19 +8,28 @@ arrive together and are tested here:
 * the ``Government of RSA`` → Cabinet ministries tree and the ``Minister`` /
   ``Deputy Minister`` roles seeded by migration
   ``0023_seed_executive_groups_and_roles``;
+* the ``seed_executive`` snapshot command that adds the President and Deputy
+  President offices and populates the current appointments by external
+  username;
 * the ``User.identity_source`` guard that keeps PWMS-managed identities out of
   ``sync_users_oracle``;
 * the appointment lookups (``User.ministers()`` / ``current_portfolio``) and the
   responsible-minister / sponsor foreign keys that use them.
 """
 
+import json
+from datetime import date
+from io import StringIO
+
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from .forms import BillForm, InternationalAgreementForm
+from .management.commands.seed_executive import DEFAULT_SNAPSHOT
 from .management.commands.sync_base import OracleSyncBase
 from .management.commands.sync_users_oracle import Command
 from .membership.resolver import Alias, GroupResolver
@@ -105,6 +114,213 @@ class ExecutiveBranchSeedTests(TestCase):
     @staticmethod
     def _ministry():
         return Group.objects.get(name="Health", group_type="ministry")
+
+
+class SeedExecutiveCommandTests(TestCase):
+    """The current Cabinet snapshot loads into the executive tree safely."""
+
+    def _run(self, *args):
+        out = StringIO()
+        call_command("seed_executive", *args, stdout=out)
+        return out.getvalue()
+
+    def _snapshot(self):
+        return json.loads(DEFAULT_SNAPSHOT.read_text(encoding="utf-8"))
+
+    def test_seeds_government_presidency_ministries_and_office_holders(self):
+        self._run()
+
+        root = Group.objects.get(name="Government of RSA", parent=None)
+        self.assertEqual(root.group_type, "executive")
+        presidency = root.children.get(name="The Presidency")
+        self.assertEqual(presidency.group_type, "presidency")
+        self.assertEqual(root.children.get(name="Health").group_type, "ministry")
+        self.assertEqual(root.children.count(), 32)
+        self.assertFalse(
+            root.children.exclude(group_type__in=("ministry", "presidency")).exists()
+        )
+
+        for name in ("President", "Deputy President", "Minister", "Deputy Minister"):
+            self.assertTrue(Role.objects.filter(name=name).exists())
+
+        president = User.objects.get(username="cramaphosa")
+        self.assertEqual(president.identity_source, "local")
+        self.assertFalse(president.has_usable_password())
+        self.assertTrue(president.has_role_in_group("President", presidency))
+
+        health = root.children.get(name="Health")
+        minister = User.objects.get(username="pmotsoaledi")
+        self.assertTrue(minister.has_role_in_group("Minister", health))
+        deputy = User.objects.get(username="mphaahla")
+        self.assertTrue(deputy.has_role_in_group("Deputy Minister", health))
+
+        snapshot = self._snapshot()
+        expected = 2 + len(snapshot["ministers"]) + len(snapshot["deputy_ministers"])
+        self.assertEqual(
+            GroupMembership.objects.filter(
+                group__group_type__in=Group.EXECUTIVE_GROUP_TYPES,
+                role__name__in=(
+                    "President",
+                    "Deputy President",
+                    "Minister",
+                    "Deputy Minister",
+                ),
+            ).count(),
+            expected,
+        )
+
+    def test_seeds_national_departments_under_their_ministries(self):
+        self._run()
+        snapshot = self._snapshot()
+        root = Group.objects.get(name="Government of RSA", parent=None)
+
+        departments = Group.objects.filter(group_type="department")
+        self.assertEqual(departments.count(), len(snapshot["departments"]))
+
+        health = root.children.get(name="Health")
+        self.assertEqual(
+            health.children.get(name="Department of Health").group_type,
+            "department",
+        )
+        finance = root.children.get(name="Finance")
+        self.assertTrue(finance.children.filter(name="National Treasury").exists())
+
+        cogta = root.children.get(name="Cooperative Governance and Traditional Affairs")
+        self.assertSetEqual(
+            set(cogta.children.values_list("name", flat=True)),
+            {
+                "Department of Cooperative Governance",
+                "Department of Traditional Affairs",
+            },
+        )
+
+        police = root.children.get(name="Police")
+        self.assertSetEqual(
+            set(
+                police.children.filter(group_type="department").values_list(
+                    "name", flat=True
+                )
+            ),
+            {
+                "Civilian Secretariat for Police Service",
+                "Independent Police Investigative Directorate",
+                "South African Police Service",
+            },
+        )
+
+        presidency = root.children.get(name="The Presidency")
+        for name in (
+            "Government Communication and Information System",
+            "State Security Agency",
+            "Statistics South Africa",
+        ):
+            self.assertTrue(presidency.children.filter(name=name).exists())
+
+        self.assertEqual(
+            departments.get(name="South African Police Service").description,
+            "Agency with department status.",
+        )
+
+    def test_reimport_is_idempotent(self):
+        self._run()
+        counts = (
+            User.objects.count(),
+            Group.objects.count(),
+            Role.objects.count(),
+            GroupMembership.objects.count(),
+        )
+
+        out = self._run()
+
+        self.assertEqual(
+            (
+                User.objects.count(),
+                Group.objects.count(),
+                Role.objects.count(),
+                GroupMembership.objects.count(),
+            ),
+            counts,
+        )
+        self.assertIn("0 user(s) created", out)
+        self.assertIn("0 appointment(s) created", out)
+
+    def test_dry_run_writes_nothing(self):
+        out = self._run("--dry-run")
+
+        self.assertIn("DRY RUN", out)
+        self.assertFalse(User.objects.filter(username="cramaphosa").exists())
+        self.assertFalse(Group.objects.filter(group_type="department").exists())
+        self.assertFalse(
+            GroupMembership.objects.filter(
+                group__group_type="presidency", role__name="President"
+            ).exists()
+        )
+
+    def test_identity_source_option_applies_to_new_users(self):
+        self._run("--identity-source", "erp")
+
+        self.assertEqual(User.objects.get(username="cramaphosa").identity_source, "erp")
+
+    def test_an_existing_identity_keeps_its_erp_owned_fields(self):
+        existing = User.objects.create_user(
+            username="PMotsoaledi",
+            password="secret",
+            first_name="Existing",
+            last_name="Person",
+            identity_source="erp",
+        )
+
+        self._run()
+
+        existing.refresh_from_db()
+        self.assertEqual(existing.username, "PMotsoaledi")
+        self.assertEqual(existing.first_name, "Existing")
+        self.assertEqual(existing.last_name, "Person")
+        self.assertEqual(existing.identity_source, "erp")
+        self.assertTrue(existing.has_usable_password())
+        self.assertTrue(
+            existing.has_role_in_group(
+                "Minister",
+                Group.objects.get(name="Government of RSA", parent=None).children.get(
+                    name="Health"
+                ),
+            )
+        )
+
+    def test_prune_ends_seeded_appointments_but_not_manual_ones(self):
+        self._run()
+        health = Group.objects.get(name="Government of RSA", parent=None).children.get(
+            name="Health"
+        )
+        minister_role = Role.objects.get(name="Minister")
+
+        stale = User.objects.create_user(username="former-minister")
+        stale_membership = GroupMembership.objects.create(
+            user=stale,
+            group=health,
+            role=minister_role,
+            start_date=date(2024, 1, 1),
+            notes="Seeded by seed_executive for the 2024-01-01 snapshot.",
+        )
+        manual = User.objects.create_user(username="caretaker-minister")
+        manual_membership = GroupMembership.objects.create(
+            user=manual,
+            group=health,
+            role=minister_role,
+            start_date=date(2024, 1, 1),
+            notes="Manual caretaker appointment.",
+        )
+
+        out = self._run("--prune")
+
+        stale_membership.refresh_from_db()
+        manual_membership.refresh_from_db()
+        self.assertFalse(stale_membership.is_active)
+        self.assertEqual(
+            stale_membership.end_date, date.fromisoformat(self._snapshot()["as_at"])
+        )
+        self.assertTrue(manual_membership.is_active)
+        self.assertIn("1 pruned", out)
 
 
 class MinisterLookupTests(TestCase):
@@ -1011,9 +1227,7 @@ class SeededStaffMembershipTests(TestCase):
 
     def test_executive_appointments_survive_an_org_move(self):
         role, _ = Role.objects.get_or_create(name="Minister")
-        GroupMembership.objects.create(
-            user=self.user, group=self.ministry, role=role
-        )
+        GroupMembership.objects.create(user=self.user, group=self.ministry, role=role)
         self.service.sync_user_membership(self.user, self._legal_row())
 
         self.service.sync_user_membership(self.user, self._committees_row())

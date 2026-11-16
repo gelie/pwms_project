@@ -122,7 +122,10 @@ Migration `0023_seed_executive_groups_and_roles` seeds the executive branch:
 `ministry`, except *The Presidency*, which is `presidency`), plus the `Minister`
 and `Deputy Minister` roles. A Minister is a `GroupMembership` linking their
 `User` to a ministry group with that role — office is held over time, so no
-separate "executive user" model is needed.
+separate "executive user" model is needed. `seed_executive` populates that tree
+from its dated Cabinet snapshot (President, Deputy President, Minister and
+Deputy Minister appointments, matched by external username) and its national
+departments, and can re-run safely after a reshuffle.
 
 ### `Role(BaseModel)` — `pwms.Role`
 
