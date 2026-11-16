@@ -2,10 +2,14 @@
 
 ``APPS.XXPER_PEOPLE_INTERFACE`` hands the sync two separate things per person: an
 organisation pair — ``CHILD_ORG_NAME`` (the cost centre) and ``PARENT_ORG_NAME``
-(the organisational unit) — and an ``EMPLOYEEID`` / ``SUPERVISORID`` chain.
-``sync_groups_oracle`` built its tree from the organisation pair alone, which
-says nothing about how units nest, so every unit ended up directly under
+(the organisational unit) — and an ``EMPLOYEEID`` / ``SUPERVISORID`` chain. The
+retired ``sync_groups_oracle`` built its tree from the organisation pair alone,
+which says nothing about how units nest, so every unit ended up directly under
 ``Administration``: a flat forest, with the division/section relationship lost.
+
+PWMS's tree is now curated by ``seed_structure``, so this module is retained for
+the read-only analysis in ``compare_org_hierarchy`` and for the shared acronym /
+name helpers, not as an input to group creation.
 
 The unit-to-unit relationship lives in the supervisor chain. This module derives
 it — a unit's parent is the unit its people's manager reports into — and diffs it

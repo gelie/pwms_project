@@ -20,9 +20,12 @@ and the typical flows. It complements the structural documents
 
 ## 2. Identity & organisation management
 
-- **Users** are created from the admin and/or synchronised from the legacy Oracle
-  source (`sync_users_oracle*` commands). Users carry parliamentary profile data
-  (title, party, constituency, membership dates, encrypted ID number).
+- **Users** are created from the admin and/or synchronised from the Oracle ERP
+  (`sync_users_oracle`). Users carry parliamentary profile data (title,
+  constituency, membership dates, encrypted ID number); party is derived from
+  their active party `Group` membership. Oracle organisations are resolved onto
+  the curated tree created by `seed_structure` through
+  `pwms/membership/resolver.py` and `group_aliases.csv`.
 - **Sign-in** uses Active Directory (LDAP) when configured, falling back to the
   local database for identities with no AD account and a break-glass superuser
   during an outage; the login form has a show/hide password toggle. The
@@ -532,8 +535,9 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
 
 - **Synchronisation** from the legacy Oracle system (users, groups, roles,
   memberships) — basis for keeping identity data current.
-- **SharePoint sync** (`populate_sites`) mirrors sites, drives and best-effort
-  site members into the local tables the attachment picker reads.
+- **SharePoint sync** (`populate_sites`) mirrors sites and drives into the local
+  tables the attachment picker reads. Site membership is curated by hand in the
+  admin; `reset_site_members` clears it in bulk.
 - **Committee scraping** (Parliament website) to import committee members.
 - **Notification / deadline jobs** — referral deadline reminders and expiry
   (email delivered) and the scheduled report-share drain; delegate expirations,

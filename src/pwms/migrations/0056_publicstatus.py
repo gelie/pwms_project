@@ -39,6 +39,48 @@ PUBLIC_STATUSES = [
     ("constitutional_review", "Referred Back / Constitutional Review", 170),
 ]
 
+#: Seeded status name -> the ``public_name`` key it was created from. A status
+#: created for a value outside the vocabulary kept that value as its name, so
+#: an unknown name is used verbatim as the key on the way back.
+KEY_BY_STATUS_NAME = {name: key for key, name, _order in PUBLIC_STATUSES}
+
+
+class RestorePublicNameField(migrations.RemoveField):
+    """``RemoveField`` whose reverse can repopulate the dropped column.
+
+    Reversing a plain ``RemoveField`` re-adds ``State.public_name`` as a non-null
+    ``CharField`` with no default, which the database cannot fill for existing
+    rows. Restore it in three steps instead: add it nullable, map each state's
+    ``public_status`` back to its former key, then apply the original definition.
+    """
+
+    def database_backwards(self, app_label, schema_editor, from_state, to_state):
+        to_model = to_state.apps.get_model(app_label, self.model_name)
+        if not self.allow_migrate_model(schema_editor.connection.alias, to_model):
+            return
+
+        from_model = from_state.apps.get_model(app_label, self.model_name)
+        PublicStatus = from_state.apps.get_model("pwms", "PublicStatus")
+        field = to_model._meta.get_field(self.name)
+
+        temporary = field.clone()
+        temporary.null = True
+        temporary.unique = False
+        temporary.set_attributes_from_name(self.name)
+        temporary.model = to_model
+        schema_editor.add_field(to_model, temporary)
+
+        status_names = dict(PublicStatus.objects.values_list("pk", "name"))
+        manager = to_model._base_manager.using(schema_editor.connection.alias)
+        for pk, status_id in from_model.objects.values_list(
+            "pk", "public_status_id"
+        ).iterator():
+            name = status_names.get(status_id, "")
+            key = KEY_BY_STATUS_NAME.get(name, name) or "new"
+            manager.filter(pk=pk).update(**{self.name: key})
+
+        schema_editor.alter_field(to_model, temporary, field)
+
 
 def seed_and_map(apps, schema_editor):
     """Create the registry rows, then point every state at the matching one."""
@@ -152,7 +194,7 @@ class Migration(migrations.Migration):
                 to="pwms.publicstatus",
             ),
         ),
-        migrations.RemoveField(
+        RestorePublicNameField(
             model_name="state",
             name="public_name",
         ),

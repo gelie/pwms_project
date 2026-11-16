@@ -92,3 +92,12 @@ ignore = [
     # framework boilerplate here, burying the findings that matter.
     "RUF012",
 ]
+
+[tool.ty.rules]
+# ty has no Django ORM support: managers (``Model.objects``) and related
+# descriptors (``ForeignKey`` attribute access) are created by Django's
+# metaclass at runtime, so ty reports every ordinary ORM access as
+# ``missing-attribute``. Until ty (or the chosen checker) understands Django,
+# the rule is noise on this codebase; silencing it beats a per-line
+# ``# ty: ignore[missing-attribute]`` on every queryset call.
+missing-attribute = "ignore"

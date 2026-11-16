@@ -207,173 +207,6 @@ async def get_site_drives(token_data: dict, site_id: str):
     return {"value": drives}
 
 
-async def get_site_permissions(token_data: dict, site_id: str):
-    """List the principals granted access to a site.
-
-    Uses ``GET /sites/{site-id}/permissions`` and follows pagination. Requires
-    an application permission of at least ``Sites.Manage.All`` (or
-    ``Sites.FullControl.All``). If the app only holds ``Sites.Read.All`` the
-    call will fail with a 403; callers should catch and report that.
-    """
-    access_token = token_data.get("access_token")
-    if not access_token:
-        raise Exception("No access_token found in token data")
-
-    headers = {"Authorization": f"Bearer {access_token}"}
-    url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/permissions?$top=100"
-    permissions = []
-
-    async with httpx.AsyncClient() as client:
-        while url:
-            response = await client.get(url, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-            permissions.extend(data.get("value") or [])
-            url = data.get("@odata.nextLink")
-
-    return {"value": permissions}
-
-
-def iter_permission_identities(permission: dict):
-    """Yield normalised principal dicts from one Graph permission object.
-
-    Handles both the ``grantedTo``/``grantedToIdentities`` (v1) and
-    ``grantedToV2``/``grantedToIdentitiesV2`` shapes. Each identity describes
-    a ``user``, ``group``, ``siteUser`` or ``siteGroup`` that holds a role on
-    the site.
-
-    Yielded dicts look like::
-
-        {"kind": "user", "graph_id": ..., "display_name": ...,
-         "email": ..., "upn": ...}
-        {"kind": "group", "graph_id": ..., "display_name": ..., "email": ...}
-    """
-    identities = list(permission.get("grantedToIdentitiesV2") or [])
-    identities += list(permission.get("grantedToIdentities") or [])
-    for container in (permission.get("grantedToV2"), permission.get("grantedTo")):
-        if isinstance(container, dict):
-            identities.append(container)
-
-    seen = set()
-    # Site users are individual people; site groups / site-user groups are
-    # collections of people and are treated like groups (not individuals).
-    user_kinds = {"user", "siteUser"}
-    group_kinds = {"group", "siteGroup", "siteUserGroup"}
-    for container in identities:
-        if not isinstance(container, dict):
-            continue
-        # An identity container holds exactly one principal key.
-        for kind, principal in container.items():
-            if kind not in user_kinds | group_kinds:
-                continue
-            if not isinstance(principal, dict):
-                continue
-            graph_id = principal.get("id")
-            if graph_id in seen:
-                continue
-            seen.add(graph_id)
-            if kind in group_kinds:
-                yield {
-                    "kind": "group",
-                    "graph_id": graph_id,
-                    "display_name": principal.get("displayName") or "",
-                    "email": (
-                        principal.get("mail")
-                        or principal.get("email")
-                        or principal.get("userPrincipalName")
-                        or ""
-                    ),
-                }
-            else:
-                yield {
-                    "kind": "user",
-                    "graph_id": graph_id,
-                    "display_name": principal.get("displayName") or "",
-                    "upn": principal.get("userPrincipalName") or "",
-                    "email": (
-                        principal.get("mail")
-                        or principal.get("email")
-                        or principal.get("userPrincipalName")
-                        or ""
-                    ),
-                }
-
-
-async def get_user_list(token_data: dict, site_id: str):
-    """List the ``User Information List`` entries for a site, with pagination.
-
-    Unlike ``GET /sites/{site-id}/permissions`` (which only exposes direct role
-    assignments and requires ``Sites.Manage.All``), the User Information List is
-    readable with ``Sites.Read.All`` and contains every principal that has been
-    resolved on the site. Items are returned with their ``fields`` expanded so
-    callers can inspect the display name, e-mail and login name.
-    """
-    access_token = token_data.get("access_token")
-    if not access_token:
-        raise Exception("No access_token found in token data")
-
-    headers = {"Authorization": f"Bearer {access_token}"}
-    url = (
-        f"https://graph.microsoft.com/v1.0/sites/{site_id}"
-        "/lists/User%20Information%20List/items?expand=fields&$top=100"
-    )
-    items = []
-
-    async with httpx.AsyncClient() as client:
-        while url:
-            response = await client.get(url, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-            items.extend(data.get("value") or [])
-            url = data.get("@odata.nextLink")
-
-    return {"value": items}
-
-
-def _user_list_content_type(item: dict) -> str:
-    """Return the content-type name for a User Information List item."""
-    return (
-        (item.get("contentType") or {}).get("name")
-        or (item.get("fields") or {}).get("ContentType")
-        or ""
-    )
-
-
-def is_human_member(item: dict) -> bool:
-    """Return ``True`` when a User Information List item is a real person.
-
-    Excludes the System Account, service accounts and app principals, which are
-    also typed as ``Person`` but have no mailbox or a non-membership login name.
-    """
-    fields = item.get("fields") or {}
-    return (
-        _user_list_content_type(item) == "Person"
-        and fields.get("Title") != "System Account"
-        and bool(fields.get("EMail"))
-        and str(fields.get("Name", "")).startswith("i:0#.f|membership|")
-    )
-
-
-def iter_user_list_members(response: dict):
-    """Yield the human members from a User Information List response.
-
-    Each yielded dict contains the fields needed to match a member against a
-    local :class:`~pwms.models.User` (``email``/``username`` normalised to lower
-    case) plus ``display_name`` and ``is_site_admin`` for reporting.
-    """
-    for item in response.get("value") or []:
-        if not is_human_member(item):
-            continue
-        fields = item.get("fields") or {}
-        yield {
-            "display_name": fields.get("Title") or "",
-            "name": fields.get("Name") or "",
-            "email": (fields.get("EMail") or "").strip().lower(),
-            "username": (fields.get("UserName") or "").strip().lower(),
-            "is_site_admin": bool(fields.get("IsSiteAdmin")),
-        }
-
-
 async def get_drive_items(token_data: dict, drive_id: str):
     """Get all items for a specific drive."""
     url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/root/children"
@@ -525,6 +358,7 @@ async def upload_file(
         headers["Content-Type"] = "application/octet-stream"
 
         async with httpx.AsyncClient() as client:
+            response = None
             try:
                 response = await client.put(url, headers=headers, content=file_content)
                 response.raise_for_status()
@@ -542,11 +376,14 @@ async def upload_file(
             upload_url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{folder_id}:/{filename}:/createUploadSession"
 
         async with httpx.AsyncClient() as client:
+            # Bound before the requests so the error handler can report the body
+            # even when the failure is a connection error (no response object).
+            response = None
             try:
                 # Create upload session
-                session_response = await client.post(upload_url, headers=headers)
-                session_response.raise_for_status()
-                session_data = session_response.json()
+                response = await client.post(upload_url, headers=headers)
+                response.raise_for_status()
+                session_data = response.json()
                 upload_url = session_data["uploadUrl"]
 
                 # Upload file in chunks (recommended chunk size: 320KB * 3 = 960KB)
@@ -563,18 +400,18 @@ async def upload_file(
                         "Content-Range": content_range,
                     }
 
-                    chunk_response = await client.put(
+                    response = await client.put(
                         upload_url, headers=chunk_headers, content=chunk
                     )
 
                     if i + len(chunk) >= total_size:
                         # Last chunk - return the final response
-                        chunk_response.raise_for_status()
-                        return chunk_response.json()
+                        response.raise_for_status()
+                        return response.json()
                     else:
                         # Intermediate chunk - should return 202 Accepted
-                        if chunk_response.status_code != 202:
-                            chunk_response.raise_for_status()
+                        if response.status_code != 202:
+                            response.raise_for_status()
 
             except httpx.HTTPError as e:
                 raise Exception(

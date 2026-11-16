@@ -1,10 +1,8 @@
 # SharePoint Sync
 
 > **Status (2026-09-10):** Sites and Drives sync is **live** and idempotent.
-> Site-**member** sync is implemented but is **skipped at runtime** because the
-> app token currently lacks the Graph permission needed to read site
-> permissions (`Sites.Manage.All` / `Sites.FullControl.All`). See
-> [Site members](#site-members-sharepointsitemember) below.
+> Site membership (`SharepointSiteMember`) is **not** synced — it is curated by
+> hand in the admin. See [Site membership](#site-membership-manual) below.
 
 This page documents the offline SharePoint synchronisation: the `populate_sites`
 management command, the `pwms/utils/sharepoint.py` Graph client, the
@@ -24,7 +22,10 @@ rest of the app can work offline (no live Graph calls per page view):
 | --- | --- | --- |
 | `pwms.SharepointSite` | `GET /sites/getAllSites` | `site_id` |
 | `pwms.SharepointDrive` | `GET /sites/{id}/drives` | `(site, drive_id)` |
-| `pwms.SharepointSiteMember` | `GET /sites/{id}/permissions` (best effort) | `(site, user)` — natural key |
+
+`SharepointSiteMember` is **not** part of the sync: membership is an access
+control decision and is maintained by hand in the admin (see
+[Site membership](#site-membership-manual)).
 
 These tables store **Graph identifiers and URLs** — values this app neither
 generates nor bounds — so their columns are sized to hold what Graph returns
@@ -50,13 +51,6 @@ Run it from the repo root:
 
 ```bash
 .venv/bin/python manage.py populate_sites
-```
-
-Sites whose member list cannot be read are written to a CSV hand-off report; the
-path can be chosen explicitly:
-
-```bash
-.venv/bin/python manage.py populate_sites --failures-file reports/member_access_gaps.csv
 ```
 
 The command is **safe to re-run**: it upserts, never deletes rows, and skips a
@@ -108,9 +102,7 @@ flowchart TD
     A[get_token<br/>DB-cached client-credentials token] --> B
     B[asyncio.run get_all_sites<br/>/sites/getAllSites + nextLink] --> C
     C[upsert SharepointSite<br/>skip personal sites<br/>update only if remote newer] --> D
-    D[per stored site: get_site_drives<br/>upsert SharepointDrive] --> E
-    E[per stored site: get_site_permissions<br/>best effort, skip on 403] --> F[SharepointSiteMember<br/>create + deactivate removed]
-    E --> G[skipped sites → CSV failure report<br/>for the SharePoint admin]
+    D[per stored site: get_site_drives<br/>upsert SharepointDrive]
 ```
 
 ### 1. Sites (`_process_sites`)
@@ -132,87 +124,38 @@ flowchart TD
 - A failure on one site is logged and the loop continues; it never aborts the
   whole run.
 
-### 3. Site members (`_process_site_members`)
+### Site membership (manual)
 
-- For every stored site, calls `GET /sites/{site_id}/permissions` and flattens
-  each permission with `pwms.utils.sharepoint.iter_permission_identities`
-  (handles `grantedTo`/`grantedToIdentities` v1 and `grantedToV2`/…V2 shapes).
-- Only identities that are **people** (`user` / `siteUser`) are considered;
-  groups / site-user groups are not mapped to individuals.
-- Each principal is matched to a local `pwms.User` by lower-cased **email**
-  (then username) — via `email`, `mail` or `userPrincipalName` from Graph.
-- Matches are stored as `SharepointSiteMember(site, user)` (unique on the pair);
-  rows whose principal no longer holds access are **deactivated**
-  (`is_active=False`), never deleted.
-- Principals that matched no local user are counted and reported as `unmatched`.
+`populate_sites` does not read or write `SharepointSiteMember`. Membership
+grants access to a site in the attachment picker, and reading site permissions
+from Graph would need `Sites.Manage.All` / `Sites.FullControl.All`. Rather than
+mirror an incomplete picture, rows are curated deliberately in the admin — an
+inline on the site page and a standalone **Sharepoint site members** list.
 
-> **Current limitation — insufficient app permissions.** Reading
-> `/sites/{id}/permissions` requires an application permission of at least
-> **`Sites.Manage.All`** (or `Sites.FullControl.All`). The configured Azure AD
-> app currently only has enough to read sites/drives, so Graph returns `403`
-> and the command reports each site as skipped —
-> *“Site members unavailable for …”* — while the site/drive sync completes
-> normally.
+Rows are unique on `(site, user)` and carry `is_active`; the picker lists only
+active rows. To empty the table in bulk — for example before rebuilding access
+after a reorganisation — use `reset_site_members`:
 
-#### Failure report for the SharePoint admin
+```bash
+.venv/bin/python manage.py reset_site_members --dry-run
+.venv/bin/python manage.py reset_site_members --site "Committee Library"
+.venv/bin/python manage.py reset_site_members --inactive-only
+```
 
-Every site whose `/sites/{id}/permissions` call fails is recorded in a CSV
-report, written by default to
-`logs/site_member_failures_<YYYYmmdd_HHMMSS>.csv` and overridable with
-`--failures-file PATH`. The timestamped default means a fresh report is
-produced per run, so an already-sent report is never silently overwritten.
-
-The report has one row per failing site, with the columns **Site Name, Site
-URL, Site ID, HTTP Status, Graph Endpoint, Error, Recommended Action** — the
-*Recommended Action* is derived from the HTTP status (e.g. `403` → grant the
-app `Sites.Manage.All`, `404` → site not visible to the app). It is written as
-UTF-8 with a BOM so Excel opens it cleanly, and no file is produced when every
-site succeeds.
-
----
-
-## Granting member access (to enable the member sync)
-
-To lift the limitation above, grant the Azure AD app the **Microsoft Graph →
-Application permission** and admin-consent it:
-
-| Permission | Effect |
-| --- | --- |
-| `Sites.Read.All` | list/read sites & drives (what you have today) |
-| `Sites.Manage.All` **or** `Sites.FullControl.All` | also read/write site **permissions** — enables `_process_site_members` |
-
-Steps (Azure portal):
-
-1. **App registrations → your app → API permissions → Add a permission.**
-2. Choose **Microsoft Graph → Application permissions**, add
-   `Sites.Manage.All` (least-privilege option that exposes `/permissions`).
-3. Click **Grant admin consent** for the tenant.
-4. Re-run `manage.py populate_sites` — member rows should now populate.
-
-Notes on scope:
-
-- With an **app-only** token, `GET /sites/{id}/permissions` returns the
-  *principals* (users and groups) granted access, not the individual members of
-  an M365 **group**. A site backed by an M365 group that grants “Everyone in
-  <group>” will surface as a **group** principal, which this sync deliberately
-  does not expand into people.
-- Expanding group membership would additionally require `Group.Read.All` plus
-  group expansion logic, and is out of scope for the current member sync.
+See [Management Commands](./Management%20Commands.md#sharepoint-graph-sync).
 
 ---
 
 ## Idempotency & safety
 
 - Re-runnable any number of times.
-- Rows are never hard-deleted by this command: sites/drives are upserted,
-  members are deactivated instead of removed.
+- Rows are never hard-deleted by this command: sites and drives are upserted,
+  and membership is left untouched.
 - Locally curated columns are excluded from the sync's update list, so a re-run
   never undoes an administrator's change — in particular
   `SharepointSite.enabled`, the flag that gates the attachment picker above.
 - Updates are conditional on the remote timestamp (sites).
 - Writes happen inside `transaction.atomic()` per batch.
-- Sites that the permissions API rejects are skipped and counted, without
-  affecting the site/drive data already stored.
 
 ---
 
@@ -223,7 +166,6 @@ Notes on scope:
 | Token (app-only) | `POST …/oauth2/v2.0/token` | `get_application_token` |
 | All sites | `GET /sites/getAllSites` | `get_all_sites` |
 | Site drives | `GET /sites/{id}/drives` | `get_site_drives` |
-| Site permissions | `GET /sites/{id}/permissions` | `get_site_permissions` |
 | Drive root children | `GET /sites/{id}/drive/root/children` | `get_site_details` |
 | Drive items / folders | `GET /drives/{id}/root/children`, `/items/{fid}/children` | `get_drive_items`, `get_folder_items` |
 | Item metadata | `GET /drives/{id}/items/{iid}` | `get_item` |
@@ -354,10 +296,10 @@ and `origin="system"` with no actor: migration `0039` restored the
 restored event records that the system wrote it long after the fact rather than
 inventing an actor. Its timestamp is the attachment's own, not the migration's.
 
-> **Dependency:** browsing is membership-based, so it needs the
-> `SharepointSiteMember` rows written by `populate_sites`. Until the app token
-> can read site permissions (see [Site members](#site-members-sharepointsitemember)),
-> only superusers see a populated tree.
+> **Dependency:** browsing is membership-based, so a user needs an **active**
+> `SharepointSiteMember` row for the site. These rows are curated in the admin
+> (see [Site membership](#site-membership-manual)); until one exists, only
+> superusers see a populated tree.
 
 ---
 
@@ -367,9 +309,8 @@ inventing an actor. Its timestamp is the attachment's own, not the migration's.
 | --- | --- |
 | `SHAREPOINT_TOKEN_URL not configured` / empty `CLIENT_ID`/`CLIENT_SECRET` | `.env` missing `CLIENT_ID`, `CLIENT_SECRET` or `TENANT_ID` at the repo root |
 | Token request `HTTP 401/400` | wrong client id/secret or tenant; check Azure AD app registration |
-| `…Site members unavailable for <site>: …403…` | app lacks `Sites.Manage.All`/`Sites.FullControl.All` — see [Granting member access](#granting-member-access-to-enable-the-member-sync); the affected sites are listed in the CSV failure report |
-| Need the list of sites whose member sync failed | read `logs/site_member_failures_<timestamp>.csv` from the last run (or pass `--failures-file PATH`) and send it to the SharePoint admin |
 | Sites fetched but a large tenant looks incomplete | should no longer happen — `get_all_sites`/`get_site_drives` follow `@odata.nextLink` |
+| A user cannot see a site in the picker | they have no **active** `SharepointSiteMember` row, or the site is disabled — add the member on the site's admin page |
 | Drives empty for a site | that site may genuinely have no document library |
 | Command fails early | token expired **and** no cached active row → re-run after granting/refreshing consent |
 

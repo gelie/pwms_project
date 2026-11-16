@@ -8,6 +8,7 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import OuterRef, Subquery
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
@@ -104,7 +105,6 @@ class User(AbstractUser, BaseModel):
         default=False, help_text=_("Is this user a staff member?")
     )
     constituency = models.CharField(max_length=200, blank=True)
-    party_affiliation = models.CharField(max_length=100, blank=True)
     date_joined_parliament = models.DateField(null=True, blank=True)
     termination_date = models.DateField(null=True, blank=True)
     is_active = models.BooleanField(default=True)  # type: ignore
@@ -250,6 +250,62 @@ class User(AbstractUser, BaseModel):
             .first()
         )
         return membership.group if membership else None
+
+    @property
+    def current_party(self):
+        """The party ``Group`` this user currently belongs to, or ``None``.
+
+        Party is derived from an *active* membership of a ``party`` group — the
+        tree keeps those under the House's ``NA Parties`` / ``NCOP Parties``
+        container. There is no stored column, so a rename or a party change in
+        the group model cannot leave the profile showing a stale name.
+
+        One query; use :meth:`with_party_affiliation` to annotate many users at
+        once instead.
+        """
+        from .groups import Group
+
+        membership = (
+            self.memberships.filter(is_active=True, group__group_type=Group.Type.PARTY)
+            .select_related("group")
+            .order_by("-start_date", "-pk")
+            .first()
+        )
+        return membership.group if membership else None
+
+    @property
+    def party_affiliation(self):
+        """Current party name, or ``""`` — derived, never stored.
+
+        Kept as the profile/API attribute name so callers do not change; prefer
+        :meth:`with_party_affiliation` when rendering many users, which supplies
+        the value as an annotation instead of one query per user.
+        """
+        if "party_affiliation_name" in self.__dict__:
+            return self.__dict__["party_affiliation_name"] or ""
+        party = self.current_party
+        return party.name if party else ""
+
+    @classmethod
+    def with_party_affiliation(cls):
+        """Annotate the queryset with each user's current party name.
+
+        ``party_affiliation`` is derived from the party membership; annotating
+        keeps list, search and serialisation queries free of per-user lookups.
+        """
+        from .groups import Group
+        from .permissions import GroupMembership
+
+        current_party = (
+            GroupMembership.objects.filter(
+                user=OuterRef("pk"),
+                is_active=True,
+                group__group_type=Group.Type.PARTY,
+            )
+            .order_by("-start_date", "-pk")
+            .values("group__name")[:1]
+        )
+        return cls.objects.annotate(party_affiliation_name=Subquery(current_party))
 
     def get_groups_with_roles(self):
         from .permissions import GroupMembership

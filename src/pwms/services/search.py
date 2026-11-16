@@ -243,8 +243,10 @@ SOURCES: tuple[SearchSource, ...] = (
         # Active accounts only: a former office holder's profile still opens from
         # a record that names them, but the typeahead should not offer departed
         # staff. Consistent with the assignment pickers (``user_search``).
-        queryset=lambda: User.objects.filter(is_active=True).select_related(
-            "department"
+        queryset=lambda: (
+            User.with_party_affiliation()
+            .filter(is_active=True)
+            .select_related("department")
         ),
         identifier=lambda person: person.username,
         title=lambda person: person.display_name,

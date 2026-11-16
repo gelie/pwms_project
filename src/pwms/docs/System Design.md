@@ -102,7 +102,10 @@ pwms_project/                     # repo root (git) — run manage.py from here
     ├── notifications/            # audience rules, dispatch, bell context
     ├── reporting/                # builder, exports, instruments, sharing
     ├── membership/
-    │   └── sync_service.py       # MembershipSyncService (Oracle/legacy sync)
+    │   ├── resolver.py          # GroupResolver: Oracle pair -> seeded Group (+ group_aliases.csv)
+    │   ├── group_aliases.csv    # curated Oracle org -> seeded path table
+    │   ├── sync_service.py      # MembershipSyncService (resolver-backed)
+    │   └── org_hierarchy.py     # reporting-tree analysis + shared name helpers
     ├── services/
     │   ├── permissions.py        # unified permission resolver (UI + API)
     │   ├── attachments.py        # SharePoint attachment service

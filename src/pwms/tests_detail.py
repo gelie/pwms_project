@@ -587,8 +587,8 @@ class WorkflowDetailOverviewTests(DetailPageTestCase):
                 page = live_markup(self._get(report))
 
                 self.assertIn(
-                    f'<span class="badge badge-priority badge-priority--{priority}">'
-                    f"{label}</span>",
+                    f'<span class="rounded-pill badge badge-priority '
+                    f'badge-priority--{priority}">{label}</span>',
                     page,
                 )
 
@@ -646,6 +646,17 @@ class WorkflowDetailOverviewTests(DetailPageTestCase):
         # side by side in the hero rather than the flow sitting under the title.
         self.assertEqual(between.count("</div>"), 1)
         self.assertIn('id="workflow-status-flow"', hero)
+
+    def test_a_terminal_state_reads_as_the_final_status(self):
+        """A record at the end of its machine gets no empty "Next" column."""
+        report = self.make_report(
+            current_state=self.types["Delegation Report"].states.get(is_terminal=True)
+        )
+
+        page = live_markup(self._get(report))
+
+        self.assertIn('<span class="workflow-status-heading">Final status</span>', page)
+        self.assertNotIn("No transitions available.", page)
 
     def test_record_dates_are_one_muted_line(self):
         report = self.make_report()

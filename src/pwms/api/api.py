@@ -143,7 +143,7 @@ def _clamp_limit(limit: int, *, default: int = 10) -> int:
 
 
 def _user_queryset():
-    return User.objects.select_related("department", "supervisor")
+    return User.with_party_affiliation().select_related("department", "supervisor")
 
 
 def _membership_queryset():

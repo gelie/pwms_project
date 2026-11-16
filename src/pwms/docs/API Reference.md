@@ -280,7 +280,7 @@ expanded, so the reference cannot recurse.
 | --- | --- |
 | `search` | Case-insensitive across the group fields below. |
 | `search_fields` | Comma-separated subset of `name`, `short_name`, `slug`, `description`, `parent`, `contact_email`, `contact_phone`, `location`. |
-| `group_type` | Any group type, e.g. `house`, `committee`, `portfolio_committee`, `administration`, `division`, `section`, `party`, `ministry`, `department`. |
+| `group_type` | Any group type, e.g. `parliament`, `house`, `committee`, `delegation`, `members`, `parties`, `party`, `administration`, `branch`, `division`, `office`, `section`, `unit`, `ministry`, `department`, `province`. |
 | `parent` | A group `public_id`, name, short name or slug; returns that group's direct children. |
 | `is_active` | Boolean filter. |
 | `ordering` | `name` (default), `group_type`, `start_date`, `end_date`, `created_at`; prefix with `-` to reverse. |

@@ -1,0 +1,981 @@
+{
+  "as_at": "2026-11-16",
+  "sources": [
+    {
+      "label": "Cabinet of South Africa (Wikipedia)",
+      "url": "https://en.wikipedia.org/wiki/Cabinet_of_South_Africa"
+    },
+    {
+      "label": "Parliament of South Africa — Ministers",
+      "url": "https://www.parliament.gov.za/ministers"
+    },
+    {
+      "label": "Parliament of South Africa — Deputy Ministers",
+      "url": "https://www.parliament.gov.za/deputy-ministers"
+    },
+    {
+      "label": "South African Government — National Government contact directory",
+      "url": "https://www.gov.za/about-government/contact-directory/national-government/"
+    },
+    {
+      "label": "Departments of the Government of South Africa (Wikipedia)",
+      "url": "https://en.wikipedia.org/wiki/Departments_of_the_Government_of_South_Africa"
+    },
+    {
+      "label": "South African Government — National departments",
+      "url": "https://www.gov.za/about-government/government-system/national-departments"
+    }
+  ],
+  "president": {
+    "group": "The Presidency",
+    "role": "President",
+    "username": "cramaphosa",
+    "title": "mr",
+    "first_name": "Cyril",
+    "middle_name": "",
+    "last_name": "Ramaphosa",
+    "start_date": "2018-02-15"
+  },
+  "deputy_president": {
+    "group": "The Presidency",
+    "role": "Deputy President",
+    "username": "pmashatile",
+    "title": "mr",
+    "first_name": "Paul",
+    "middle_name": "",
+    "last_name": "Mashatile",
+    "start_date": "2023-03-07"
+  },
+  "ministers": [
+    {
+      "group": "Agriculture",
+      "role": "Minister",
+      "username": "waucamp",
+      "title": "mr",
+      "first_name": "Willem",
+      "middle_name": "Abraham Stephanus",
+      "last_name": "Aucamp",
+      "start_date": "2026-06-30"
+    },
+    {
+      "group": "Basic Education",
+      "role": "Minister",
+      "username": "sgwarube",
+      "title": "ms",
+      "first_name": "Siviwe",
+      "middle_name": "",
+      "last_name": "Gwarube",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Communications and Digital Technologies",
+      "role": "Minister",
+      "username": "mmalatsi",
+      "title": "mr",
+      "first_name": "Mmoba",
+      "middle_name": "Solomon",
+      "last_name": "Malatsi",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Cooperative Governance and Traditional Affairs",
+      "role": "Minister",
+      "username": "vhlabisa",
+      "title": "mr",
+      "first_name": "Velenkosini",
+      "middle_name": "Fiki",
+      "last_name": "Hlabisa",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Correctional Services",
+      "role": "Minister",
+      "username": "pgroenewald",
+      "title": "dr",
+      "first_name": "Petrus",
+      "middle_name": "Johannes",
+      "last_name": "Groenewald",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Defence and Military Veterans",
+      "role": "Minister",
+      "username": "mamotshekga",
+      "title": "mrs",
+      "first_name": "Matsie",
+      "middle_name": "Angelina",
+      "last_name": "Motshekga",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Electricity and Energy",
+      "role": "Minister",
+      "username": "kramokgopa",
+      "title": "dr",
+      "first_name": "Kgosientso",
+      "middle_name": "David",
+      "last_name": "Ramokgopa",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Employment and Labour",
+      "role": "Minister",
+      "username": "nmeth",
+      "title": "ms",
+      "first_name": "Nomakhosazana",
+      "middle_name": "",
+      "last_name": "Meth",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Finance",
+      "role": "Minister",
+      "username": "egodongwana",
+      "title": "mr",
+      "first_name": "Enoch",
+      "middle_name": "",
+      "last_name": "Godongwana",
+      "start_date": "2021-08-05"
+    },
+    {
+      "group": "Forestry, Fisheries and the Environment",
+      "role": "Minister",
+      "username": "dmaynier",
+      "title": "mr",
+      "first_name": "David",
+      "middle_name": "",
+      "last_name": "Maynier",
+      "start_date": "2026-07-01"
+    },
+    {
+      "group": "Health",
+      "role": "Minister",
+      "username": "pmotsoaledi",
+      "title": "dr",
+      "first_name": "Pakishe",
+      "middle_name": "Aaron",
+      "last_name": "Motsoaledi",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Higher Education",
+      "role": "Minister",
+      "username": "kmanamela",
+      "title": "mr",
+      "first_name": "Kgwaridi",
+      "middle_name": "Buti",
+      "last_name": "Manamela",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Home Affairs",
+      "role": "Minister",
+      "username": "lschreiber",
+      "title": "dr",
+      "first_name": "Leon",
+      "middle_name": "Amos",
+      "last_name": "Schreiber",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Human Settlements",
+      "role": "Minister",
+      "username": "tnkadimeng",
+      "title": "ms",
+      "first_name": "Thembisile",
+      "middle_name": "Phumelele",
+      "last_name": "Simelane",
+      "start_date": "2024-12-03"
+    },
+    {
+      "group": "International Relations and Cooperation",
+      "role": "Minister",
+      "username": "rlamola",
+      "title": "mr",
+      "first_name": "Ronald",
+      "middle_name": "Ozzy",
+      "last_name": "Lamola",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Justice and Constitutional Development",
+      "role": "Minister",
+      "username": "mkubayi-ngubane",
+      "title": "ms",
+      "first_name": "Mmamoloko",
+      "middle_name": "Tryphosa",
+      "last_name": "Kubayi",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Land Reform and Rural Development",
+      "role": "Minister",
+      "username": "mnyhontso",
+      "title": "mr",
+      "first_name": "Mzwanele",
+      "middle_name": "",
+      "last_name": "Nyhontso",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Mineral and Petroleum Resources",
+      "role": "Minister",
+      "username": "smantashe",
+      "title": "mr",
+      "first_name": "Gwede",
+      "middle_name": "Samson",
+      "last_name": "Mantashe",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Planning, Monitoring and Evaluation",
+      "role": "Minister",
+      "username": "mramokgopa",
+      "title": "ms",
+      "first_name": "Maropene",
+      "middle_name": "Lydia",
+      "last_name": "Ramokgopa",
+      "start_date": "2023-03-07"
+    },
+    {
+      "group": "Police",
+      "role": "Minister",
+      "username": "fcachalia",
+      "title": "prof",
+      "first_name": "Firoz",
+      "middle_name": "",
+      "last_name": "Cachalia",
+      "note": "Acting Minister of Police"
+    },
+    {
+      "group": "Public Service and Administration",
+      "role": "Minister",
+      "username": "ebuthelezi",
+      "title": "",
+      "first_name": "Inkosi Elphas",
+      "middle_name": "Mfakazeleni",
+      "last_name": "Buthelezi",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Public Works and Infrastructure",
+      "role": "Minister",
+      "username": "dmacpherson",
+      "title": "mr",
+      "first_name": "Dean",
+      "middle_name": "William",
+      "last_name": "Macpherson",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Science, Technology and Innovation",
+      "role": "Minister",
+      "username": "bnzimande",
+      "title": "dr",
+      "first_name": "Bonginkosi",
+      "middle_name": "Emmanuel",
+      "last_name": "Nzimande",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Small Business Development",
+      "role": "Minister",
+      "username": "sndabeni-abrahams",
+      "title": "ms",
+      "first_name": "Stella",
+      "middle_name": "Tembisa",
+      "last_name": "Ndabeni-Abrahams",
+      "start_date": "2021-08-05"
+    },
+    {
+      "group": "Social Development",
+      "role": "Minister",
+      "username": "dpule",
+      "title": "ms",
+      "first_name": "Dina",
+      "middle_name": "Deliwe",
+      "last_name": "Pule",
+      "start_date": "2026-07-01"
+    },
+    {
+      "group": "Sport, Arts and Culture",
+      "role": "Minister",
+      "username": "gmckenzie",
+      "title": "mr",
+      "first_name": "Gayton",
+      "middle_name": "",
+      "last_name": "McKenzie",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "The Presidency",
+      "role": "Minister",
+      "username": "kntshavheni",
+      "title": "ms",
+      "first_name": "Khumbudzo",
+      "middle_name": "Phophi Silence",
+      "last_name": "Ntshavheni",
+      "start_date": "2023-03-06"
+    },
+    {
+      "group": "Tourism",
+      "role": "Minister",
+      "username": "pdelille",
+      "title": "ms",
+      "first_name": "Patricia",
+      "middle_name": "",
+      "last_name": "De Lille",
+      "start_date": "2023-03-06"
+    },
+    {
+      "group": "Trade, Industry and Competition",
+      "role": "Minister",
+      "username": "mtau",
+      "title": "mr",
+      "first_name": "Mpho",
+      "middle_name": "Parks Franklyn",
+      "last_name": "Tau",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Transport",
+      "role": "Minister",
+      "username": "bcreecy",
+      "title": "ms",
+      "first_name": "Barbara",
+      "middle_name": "Dallas",
+      "last_name": "Creecy",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Water and Sanitation",
+      "role": "Minister",
+      "username": "pmajodina",
+      "title": "ms",
+      "first_name": "Pemmy",
+      "middle_name": "Castelina Pamela",
+      "last_name": "Majodina",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Women, Youth and Persons with Disabilities",
+      "role": "Minister",
+      "username": "lchikunga",
+      "title": "ms",
+      "first_name": "Lydia",
+      "middle_name": "Sindisiwe",
+      "last_name": "Chikunga",
+      "start_date": "2024-07-03"
+    }
+  ],
+  "deputy_ministers": [
+    {
+      "group": "Agriculture",
+      "role": "Deputy Minister",
+      "username": "rcapa",
+      "title": "mrs",
+      "first_name": "Rosemary",
+      "middle_name": "Nokuzola",
+      "last_name": "Capa",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Basic Education",
+      "role": "Deputy Minister",
+      "username": "mmhaule",
+      "title": "dr",
+      "first_name": "Makgabo",
+      "middle_name": "Reginah",
+      "last_name": "Mhaule",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Communications and Digital Technologies",
+      "role": "Deputy Minister",
+      "username": "mgungubele",
+      "title": "mr",
+      "first_name": "Mondli",
+      "middle_name": "",
+      "last_name": "Gungubele",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Cooperative Governance and Traditional Affairs",
+      "role": "Deputy Minister",
+      "username": "nmasemola",
+      "title": "dr",
+      "first_name": "Namane",
+      "middle_name": "Dickson",
+      "last_name": "Masemola",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Cooperative Governance and Traditional Affairs",
+      "role": "Deputy Minister",
+      "username": "zburns-ncamashe",
+      "title": "",
+      "first_name": "Prince Zolile",
+      "middle_name": "",
+      "last_name": "Burns-Ncamashe",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Correctional Services",
+      "role": "Deputy Minister",
+      "username": "lntshalintshali",
+      "title": "ms",
+      "first_name": "Leonah",
+      "middle_name": "Lindiwe",
+      "last_name": "Ntshalintshali",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Defence and Military Veterans",
+      "role": "Deputy Minister",
+      "username": "bholomisa",
+      "title": "mr",
+      "first_name": "Bantubonke",
+      "middle_name": "Harrington",
+      "last_name": "Holomisa",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Defence and Military Veterans",
+      "role": "Deputy Minister",
+      "username": "rhlophe",
+      "title": "mr",
+      "first_name": "Richard",
+      "middle_name": "",
+      "last_name": "Hlophe",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Electricity and Energy",
+      "role": "Deputy Minister",
+      "username": "alabrahams",
+      "title": "ms",
+      "first_name": "Alexandra",
+      "middle_name": "Lilian Amelia",
+      "last_name": "Abrahams",
+      "start_date": "2026-06-30"
+    },
+    {
+      "group": "Employment and Labour",
+      "role": "Deputy Minister",
+      "username": "nsibiya",
+      "title": "mr",
+      "first_name": "Ntuthuko",
+      "middle_name": "Mbongiseni",
+      "last_name": "Sibiya",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Employment and Labour",
+      "role": "Deputy Minister",
+      "username": "jtshabalala",
+      "title": "ms",
+      "first_name": "Judith",
+      "middle_name": "",
+      "last_name": "Nemadzinga-Tshabalala",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Finance",
+      "role": "Deputy Minister",
+      "username": "dmasondo",
+      "title": "dr",
+      "first_name": "David",
+      "middle_name": "",
+      "last_name": "Masondo",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Finance",
+      "role": "Deputy Minister",
+      "username": "asarupen",
+      "title": "mr",
+      "first_name": "Ashor",
+      "middle_name": "Nick",
+      "last_name": "Sarupen",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Forestry, Fisheries and the Environment",
+      "role": "Deputy Minister",
+      "username": "nsingh",
+      "title": "mr",
+      "first_name": "Narend",
+      "middle_name": "",
+      "last_name": "Singh",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Forestry, Fisheries and the Environment",
+      "role": "Deputy Minister",
+      "username": "bswarts",
+      "title": "ms",
+      "first_name": "Bernice",
+      "middle_name": "",
+      "last_name": "Swarts",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Health",
+      "role": "Deputy Minister",
+      "username": "mphaahla",
+      "title": "dr",
+      "first_name": "Mathume",
+      "middle_name": "Joseph",
+      "last_name": "Phaahla",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Higher Education",
+      "role": "Deputy Minister",
+      "username": "ndube-ncube",
+      "title": "dr",
+      "first_name": "Nomusa",
+      "middle_name": "",
+      "last_name": "Dube-Ncube"
+    },
+    {
+      "group": "Higher Education",
+      "role": "Deputy Minister",
+      "username": "ycassim",
+      "title": "mr",
+      "first_name": "Yusuf",
+      "middle_name": "",
+      "last_name": "Cassim",
+      "start_date": "2026-07-01"
+    },
+    {
+      "group": "Home Affairs",
+      "role": "Deputy Minister",
+      "username": "nnzuza",
+      "title": "mr",
+      "first_name": "Njabulo",
+      "middle_name": "Bheka",
+      "last_name": "Nzuza",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Human Settlements",
+      "role": "Deputy Minister",
+      "username": "tmahambehlala",
+      "title": "ms",
+      "first_name": "Thandi",
+      "middle_name": "",
+      "last_name": "Mahambehlala",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "International Relations and Cooperation",
+      "role": "Deputy Minister",
+      "username": "abotes",
+      "title": "mr",
+      "first_name": "Alvin",
+      "middle_name": "",
+      "last_name": "Botes",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "International Relations and Cooperation",
+      "role": "Deputy Minister",
+      "username": "amoraka",
+      "title": "ms",
+      "first_name": "Anna",
+      "middle_name": "Tandi",
+      "last_name": "Moraka",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Justice and Constitutional Development",
+      "role": "Deputy Minister",
+      "username": "anel",
+      "title": "mr",
+      "first_name": "Andries",
+      "middle_name": "Carl",
+      "last_name": "Nel",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Land Reform and Rural Development",
+      "role": "Deputy Minister",
+      "username": "cmathabatha",
+      "title": "mr",
+      "first_name": "Chupu",
+      "middle_name": "Stanley",
+      "last_name": "Mathabatha",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Mineral and Petroleum Resources",
+      "role": "Deputy Minister",
+      "username": "pmgcina",
+      "title": "ms",
+      "first_name": "Phumzile",
+      "middle_name": "Sinclatia",
+      "last_name": "Mgcina",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Planning, Monitoring and Evaluation",
+      "role": "Deputy Minister",
+      "username": "smohai",
+      "title": "mr",
+      "first_name": "Seiso",
+      "middle_name": "Joel",
+      "last_name": "Mohai",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Police",
+      "role": "Deputy Minister",
+      "username": "sboshielo",
+      "title": "ms",
+      "first_name": "Shela",
+      "middle_name": "Polly",
+      "last_name": "Boshielo",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Police",
+      "role": "Deputy Minister",
+      "username": "cmathale",
+      "title": "mr",
+      "first_name": "Cassel",
+      "middle_name": "Charlie",
+      "last_name": "Mathale",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "The Presidency",
+      "role": "Deputy Minister",
+      "username": "nmhlauli",
+      "title": "ms",
+      "first_name": "Nonceba",
+      "middle_name": "Bianca",
+      "last_name": "Mhlauli",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "The Presidency",
+      "role": "Deputy Minister",
+      "username": "imorolong",
+      "title": "mr",
+      "first_name": "Itiseng",
+      "middle_name": "Kenneth",
+      "last_name": "Morolong",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Public Service and Administration",
+      "role": "Deputy Minister",
+      "username": "pkekana",
+      "title": "ms",
+      "first_name": "Pinky",
+      "middle_name": "Sharon",
+      "last_name": "Kekana",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Public Works and Infrastructure",
+      "role": "Deputy Minister",
+      "username": "szikalala",
+      "title": "mr",
+      "first_name": "Sihle",
+      "middle_name": "",
+      "last_name": "Zikalala",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Science, Technology and Innovation",
+      "role": "Deputy Minister",
+      "username": "ngina",
+      "title": "ms",
+      "first_name": "Nomalungelo",
+      "middle_name": "",
+      "last_name": "Gina",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Small Business Development",
+      "role": "Deputy Minister",
+      "username": "rsithole",
+      "title": "ms",
+      "first_name": "Raesetja",
+      "middle_name": "Jane",
+      "last_name": "Sithole",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Social Development",
+      "role": "Deputy Minister",
+      "username": "mhendricks",
+      "title": "mr",
+      "first_name": "Mogamad",
+      "middle_name": "Ganief Ebrahim",
+      "last_name": "Hendricks",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Sport, Arts and Culture",
+      "role": "Deputy Minister",
+      "username": "bmabe",
+      "title": "ms",
+      "first_name": "Bertha",
+      "middle_name": "Peace",
+      "last_name": "Mabe"
+    },
+    {
+      "group": "Tourism",
+      "role": "Deputy Minister",
+      "username": "msotyu",
+      "title": "ms",
+      "first_name": "Makhotso",
+      "middle_name": "Magdeline",
+      "last_name": "Sotyu",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Trade, Industry and Competition",
+      "role": "Deputy Minister",
+      "username": "jsteenhuisen",
+      "title": "mr",
+      "first_name": "John",
+      "middle_name": "Henry",
+      "last_name": "Steenhuisen",
+      "start_date": "2026-07-01"
+    },
+    {
+      "group": "Trade, Industry and Competition",
+      "role": "Deputy Minister",
+      "username": "zgodlimpi",
+      "title": "mr",
+      "first_name": "Zuko",
+      "middle_name": "",
+      "last_name": "Godlimpi",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Transport",
+      "role": "Deputy Minister",
+      "username": "mhlengwa",
+      "title": "mr",
+      "first_name": "Mkhuleko",
+      "middle_name": "",
+      "last_name": "Hlengwa",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Water and Sanitation",
+      "role": "Deputy Minister",
+      "username": "mbmahlobo",
+      "title": "mr",
+      "first_name": "Mbangiseni",
+      "middle_name": "David",
+      "last_name": "Mahlobo",
+      "start_date": "2024-07-03"
+    },
+    {
+      "group": "Water and Sanitation",
+      "role": "Deputy Minister",
+      "username": "jbloom",
+      "title": "mr",
+      "first_name": "Jack",
+      "middle_name": "",
+      "last_name": "Bloom",
+      "start_date": "2026-07-01"
+    },
+    {
+      "group": "Women, Youth and Persons with Disabilities",
+      "role": "Deputy Minister",
+      "username": "mletsike",
+      "title": "ms",
+      "first_name": "Mmapaseka",
+      "middle_name": "Steve Emily",
+      "last_name": "Letsike",
+      "start_date": "2024-07-03"
+    }
+  ],
+  "departments": [
+    {
+      "name": "Department of Agriculture",
+      "ministry": "Agriculture"
+    },
+    {
+      "name": "Department of Basic Education",
+      "ministry": "Basic Education"
+    },
+    {
+      "name": "Civilian Secretariat for Police Service",
+      "ministry": "Police",
+      "note": "Agency with department status."
+    },
+    {
+      "name": "Department of Communications and Digital Technologies",
+      "ministry": "Communications and Digital Technologies"
+    },
+    {
+      "name": "Department of Cooperative Governance",
+      "ministry": "Cooperative Governance and Traditional Affairs"
+    },
+    {
+      "name": "Department of Traditional Affairs",
+      "ministry": "Cooperative Governance and Traditional Affairs"
+    },
+    {
+      "name": "Department of Correctional Services",
+      "ministry": "Correctional Services"
+    },
+    {
+      "name": "Department of Defence",
+      "ministry": "Defence and Military Veterans"
+    },
+    {
+      "name": "Department of Military Veterans",
+      "ministry": "Defence and Military Veterans"
+    },
+    {
+      "name": "Department of Electricity and Energy",
+      "ministry": "Electricity and Energy"
+    },
+    {
+      "name": "Department of Employment and Labour",
+      "ministry": "Employment and Labour"
+    },
+    {
+      "name": "Department of Forestry, Fisheries and the Environment",
+      "ministry": "Forestry, Fisheries and the Environment"
+    },
+    {
+      "name": "Government Communication and Information System",
+      "ministry": "The Presidency",
+      "note": "Agency with department status."
+    },
+    {
+      "name": "Department of Health",
+      "ministry": "Health"
+    },
+    {
+      "name": "Department of Higher Education and Training",
+      "ministry": "Higher Education"
+    },
+    {
+      "name": "Department of Home Affairs",
+      "ministry": "Home Affairs"
+    },
+    {
+      "name": "Department of Human Settlements",
+      "ministry": "Human Settlements"
+    },
+    {
+      "name": "Independent Police Investigative Directorate",
+      "ministry": "Police",
+      "note": "Agency with department status."
+    },
+    {
+      "name": "Department of International Relations and Cooperation",
+      "ministry": "International Relations and Cooperation"
+    },
+    {
+      "name": "Department of Justice and Constitutional Development",
+      "ministry": "Justice and Constitutional Development"
+    },
+    {
+      "name": "Department of Land Reform and Rural Development",
+      "ministry": "Land Reform and Rural Development"
+    },
+    {
+      "name": "Department of Mineral and Petroleum Resources",
+      "ministry": "Mineral and Petroleum Resources"
+    },
+    {
+      "name": "National School of Government",
+      "ministry": "Public Service and Administration",
+      "note": "Agency with department status."
+    },
+    {
+      "name": "National Treasury",
+      "ministry": "Finance"
+    },
+    {
+      "name": "Office of the Chief Justice",
+      "ministry": "Justice and Constitutional Development",
+      "note": "Agency with department status."
+    },
+    {
+      "name": "Department of Planning, Monitoring and Evaluation",
+      "ministry": "Planning, Monitoring and Evaluation"
+    },
+    {
+      "name": "Department of Public Service and Administration",
+      "ministry": "Public Service and Administration"
+    },
+    {
+      "name": "Public Service Commission",
+      "ministry": "Public Service and Administration",
+      "note": "Agency with department status."
+    },
+    {
+      "name": "Department of Public Works and Infrastructure",
+      "ministry": "Public Works and Infrastructure"
+    },
+    {
+      "name": "Department of Science, Technology and Innovation",
+      "ministry": "Science, Technology and Innovation"
+    },
+    {
+      "name": "Department of Small Business Development",
+      "ministry": "Small Business Development"
+    },
+    {
+      "name": "Department of Social Development",
+      "ministry": "Social Development"
+    },
+    {
+      "name": "South African Police Service",
+      "ministry": "Police",
+      "note": "Agency with department status."
+    },
+    {
+      "name": "South African Revenue Service",
+      "ministry": "Finance",
+      "note": "Agency with department status."
+    },
+    {
+      "name": "State Security Agency",
+      "ministry": "The Presidency",
+      "note": "Agency with department status."
+    },
+    {
+      "name": "Department of Sport, Arts and Culture",
+      "ministry": "Sport, Arts and Culture"
+    },
+    {
+      "name": "Statistics South Africa",
+      "ministry": "The Presidency",
+      "note": "Agency with department status."
+    },
+    {
+      "name": "Department of Tourism",
+      "ministry": "Tourism"
+    },
+    {
+      "name": "Department of Trade, Industry and Competition",
+      "ministry": "Trade, Industry and Competition"
+    },
+    {
+      "name": "Department of Transport",
+      "ministry": "Transport"
+    },
+    {
+      "name": "Department of Water and Sanitation",
+      "ministry": "Water and Sanitation"
+    },
+    {
+      "name": "Department of Women, Youth and Persons with Disabilities",
+      "ministry": "Women, Youth and Persons with Disabilities"
+    }
+  ]
+}

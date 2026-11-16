@@ -5,15 +5,18 @@ helpers are replaced with ``AsyncMock``s, and ``get_application_token`` with a
 stub — so the suite runs offline against the cached-token design.
 """
 
+import asyncio
 from importlib import import_module
 from io import StringIO
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlencode
 
+import httpx
 from django.apps import apps
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.core.management.base import OutputWrapper
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from .management.commands.populate_sites import Command
@@ -32,6 +35,7 @@ from .models import (
     WorkflowType,
 )
 from .services import attachments
+from .utils import sharepoint
 
 User = get_user_model()
 
@@ -388,7 +392,9 @@ class AttachmentServiceTests(AttachmentTestCase):
                 filename="minutes.pdf",
                 content=b"x",
             )
-        self.assertEqual(upload.await_args.args[2], "root")
+        await_args = upload.await_args
+        assert await_args is not None, "upload_file was not awaited"
+        self.assertEqual(await_args.args[2], "root")
 
     def test_member_sites_excludes_a_disabled_site(self):
         self._add_disabled_site()
@@ -1229,8 +1235,8 @@ class SharepointSiteSyncTests(TestCase):
     def _process_sites(self, sites):
         """Run the command's site pass against a stub Graph response."""
         command = Command()
-        command.stdout = StringIO()
-        command.stderr = StringIO()
+        command.stdout = OutputWrapper(StringIO())
+        command.stderr = OutputWrapper(StringIO())
         with patch.object(command, "_process_drives"):
             command._process_sites({"value": sites}, {"access_token": "test-token"})
 
@@ -1481,3 +1487,43 @@ class AttachmentActivityRenderingTests(TestCase):
             response = self.client.get(self._detail_url())
 
         self.assertNotContains(response, "open</a>")
+
+
+class SharepointUploadFileTests(SimpleTestCase):
+    """``upload_file`` reports the failure instead of raising ``NameError``.
+
+    The error path reads ``response.text``, but a connection-level ``httpx``
+    error arrives before any response exists. The variable is therefore bound to
+    ``None`` ahead of the requests, and the message falls back to "no response".
+    """
+
+    def _client(self, method, error):
+        """An ``AsyncClient`` stub whose ``method`` fails with ``error``."""
+        client = MagicMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        getattr(client, method).side_effect = error
+        return client
+
+    def _assert_upload_error(self, client, content, prefix):
+        with (
+            patch.object(sharepoint.httpx, "AsyncClient", return_value=client),
+            self.assertRaises(Exception) as raised,
+        ):
+            asyncio.run(
+                sharepoint.upload_file(TOKEN, "drive-1", "root", "a.pdf", content)
+            )
+        message = str(raised.exception)
+        self.assertIn(prefix, message)
+        self.assertIn("no response", message)
+
+    def test_small_upload_connection_error(self):
+        client = self._client("put", httpx.ConnectError("offline"))
+
+        self._assert_upload_error(client, b"data", "File upload failed")
+
+    def test_large_upload_connection_error(self):
+        client = self._client("post", httpx.ConnectError("offline"))
+        content = b"x" * (4 * 1024 * 1024 + 1)
+
+        self._assert_upload_error(client, content, "Large file upload failed")

@@ -6,7 +6,15 @@ needs:
 
 * Members of Parliament get a membership in their House's members group
   ("NA Members" / "NCOP Members") and in their Party group.
-* Staff members get memberships in their child and parent organisational units.
+* Staff members get memberships in their organisational unit and in the level
+  above it (division / office). The Oracle ``(child, parent)`` pair is resolved
+  against the tree ``seed_structure`` creates, through
+  :class:`~pwms.membership.resolver.GroupResolver`. An unresolved pair creates
+  nothing and leaves the existing memberships alone.
+* Both sides are reconciled, never deleted: a party change, or an organisational
+  unit move, ends the stale membership (``is_active=False`` + ``end_date``) so
+  the history survives. Only employment-hierarchy groups are reconciled, so
+  executive appointments and other group kinds cannot be ended here.
 
 Party, house-members and parties-umbrella groups, as well as the
 "Member of Parliament" / "Staff Member" roles, are created on demand when they
@@ -18,17 +26,14 @@ import logging
 
 from django.db import IntegrityError
 from django.utils import timezone
+
+from pwms.membership.resolver import GroupResolver
 from pwms.models import Group, GroupMembership, Role
 
 logger = logging.getLogger(__name__)
 
 MP_ROLE_NAME = "Member of Parliament"
 STAFF_ROLE_NAME = "Staff Member"
-
-HOUSE_BY_CODE = {
-    "NA": "National Assembly",
-    "NCOP": "National Council of Provinces",
-}
 
 HOUSE_MEMBERS_GROUPS = {
     "NA": "NA Members",
@@ -40,20 +45,46 @@ HOUSE_PARTIES_GROUPS = {
     "NCOP": "NCOP Parties",
 }
 
+#: Group types that form the employment hierarchy. Staff reconciliation only
+#: looks at these, so ending a moved assignment can never touch a house,
+#: committee, party or executive appointment.
+ORG_GROUP_TYPES = (
+    Group.Type.ADMINISTRATION,
+    Group.Type.BRANCH,
+    Group.Type.DIVISION,
+    Group.Type.OFFICE,
+    Group.Type.SECTION,
+    Group.Type.UNIT,
+)
+
+#: Types that make a sensible second ("division") membership for a unit. The
+#: Oracle pair names the unit and its section; the seeded tree already encodes
+#: that parent, so it is read from the tree rather than resolved again.
+ORG_PARENT_TYPES = (
+    Group.Type.BRANCH,
+    Group.Type.DIVISION,
+    Group.Type.OFFICE,
+    Group.Type.SECTION,
+)
+
 
 class MembershipSyncService:
     """Create / reactivate the memberships a single user should hold."""
 
     def __init__(
         self,
-        group_cache: dict,
         role_cache: dict,
         strip_group_code_prefix,
         normalize_role_name,
+        resolver: GroupResolver,
     ):
-        self._group_cache = group_cache
         self._role_cache = role_cache
+        self._resolver = resolver
         self._house_cache: dict[str, Group] = {}
+        #: Containers are keyed by ``(parent_id, name)``: the seeded tree repeats
+        #: names (``House Plenaries & Procedure`` sits under both Houses), so a
+        #: name-only cache would hand back another branch's group.
+        self._container_cache: dict[tuple[int | None, str], Group] = {}
         self.strip_group_code_prefix = strip_group_code_prefix
         self.normalize_role_name = normalize_role_name
 
@@ -79,6 +110,10 @@ class MembershipSyncService:
             else self._staff_targets(row, dry_run)
         )
 
+        ended = self._end_stale_party_memberships(user, row.get("partycode"), dry_run)
+        if not is_mp:
+            ended += self._end_stale_org_memberships(user, targets, dry_run)
+
         created = updated = skipped = 0
         for group, role in targets:
             if group is None or role is None:
@@ -91,7 +126,12 @@ class MembershipSyncService:
             elif action == "reactivated":
                 updated += 1
 
-        return {"created": created, "updated": updated, "skipped": skipped}
+        return {
+            "created": created,
+            "updated": updated,
+            "skipped": skipped,
+            "ended": ended,
+        }
 
     # ------------------------------------------------------------------ #
     #  Target selection                                                 #
@@ -142,16 +182,37 @@ class MembershipSyncService:
         role = self._resolve_staff_role(
             row.get("positiondesc"), row.get("employeetype"), dry_run
         )
+        return self._seeded_staff_targets(row, role)
 
-        targets = []
-        for org_name in (row.get("parent_org"), row.get("child_org")):
-            name = self.strip_group_code_prefix(org_name or "")
-            if not name:
-                continue
-            group = self._get_group(name)
-            targets.append((group, role))
+    def _seeded_staff_targets(self, row: dict, role: Role | None) -> list:
+        """Resolve the Oracle org pair against the seeded tree.
 
+        The pair resolves to the most specific unit (through the alias table),
+        and the level above it supplies the broader membership RBAC expects.
+        An unresolved pair yields no targets, which leaves the user's existing
+        memberships untouched — the same rule the department link follows.
+        """
+        resolution = self._resolver.resolve_org(
+            row.get("child_org"), row.get("parent_org")
+        )
+        if not resolution.resolved:
+            return []
+
+        targets = [(resolution.group, role)]
+        parent = self._organisation_parent(resolution.group)
+        if parent is not None:
+            targets.append((parent, role))
         return targets
+
+    @staticmethod
+    def _organisation_parent(group: Group) -> Group | None:
+        """The division / office a unit reports to, for the broader membership."""
+        if group.group_type not in (Group.Type.UNIT, Group.Type.SECTION):
+            return None
+        parent = group.parent
+        if parent is None or parent.group_type not in ORG_PARENT_TYPES:
+            return None
+        return parent
 
     # ------------------------------------------------------------------ #
     #  Group / role resolution (create on demand when appropriate)       #
@@ -171,10 +232,7 @@ class MembershipSyncService:
         house = self._house_cache.get(house_code)
         if house is not None:
             return house
-        name = HOUSE_BY_CODE[house_code]
-        # Match by name AND type so an org unit that happens to share the house
-        # name (e.g. a "National Assembly" *section*) cannot shadow the house.
-        house = Group.objects.filter(name=name, group_type="house").first()
+        house = self._resolver.resolve_house(house_code)
         if house is not None:
             self._house_cache[house_code] = house
         return house
@@ -185,7 +243,7 @@ class MembershipSyncService:
         house = self._get_house(house_code)
         name = HOUSE_MEMBERS_GROUPS[house_code]
         return self._get_or_create_group(
-            name, parent=house, group_type="administration", dry_run=dry_run
+            name, parent=house, group_type="members", dry_run=dry_run
         )
 
     def _get_or_create_party_group(
@@ -198,23 +256,81 @@ class MembershipSyncService:
         parties = self._get_or_create_group(
             HOUSE_PARTIES_GROUPS[house_code],
             parent=house,
-            group_type="party",
+            group_type="parties",
             dry_run=dry_run,
         )
         return self._get_or_create_group(
             partycode, parent=parties, group_type="party", dry_run=dry_run
         )
 
-    def _get_group(self, name: str) -> Group | None:
-        if not name:
-            return None
-        group = self._group_cache.get(name)
-        if group is not None:
-            return group
-        group = Group.objects.filter(name=name).first()
-        if group is not None:
-            self._group_cache[name] = group
-        return group
+    def _end_stale_party_memberships(self, user, partycode, dry_run: bool) -> int:
+        """End active party memberships the Oracle row no longer names.
+
+        Party is Oracle-owned for ERP users: when a member changes party, or
+        stops being an MP, the previous membership has to stop being current —
+        otherwise the user sits in two parties at once and ``current_party``
+        picks whichever happens to be older. The row is ended, not deleted, so
+        the history of the previous party survives.
+
+        Only party groups are touched; memberships of houses, committees and
+        organisational units are reconciled by their own passes.
+        """
+        if user.pk is None:
+            return 0
+
+        partycode = (partycode or "").strip()
+        stale = GroupMembership.objects.filter(
+            user=user,
+            is_active=True,
+            group__group_type=Group.Type.PARTY,
+        )
+        if partycode:
+            stale = stale.exclude(group__name=partycode)
+
+        if dry_run:
+            for membership in stale.select_related("group"):
+                logger.info(
+                    "[DRY RUN] Would end party membership: %s -> %s",
+                    user.username,
+                    membership.group.name,
+                )
+            return stale.count()
+
+        return stale.update(is_active=False, end_date=timezone.now().date())
+
+    def _end_stale_org_memberships(self, user, targets, dry_run: bool) -> int:
+        """End organisational memberships the current row no longer implies.
+
+        A staff member whose Oracle unit changes keeps a history: the previous
+        membership is ended, never deleted. Only employment-hierarchy groups
+        (``ORG_GROUP_TYPES``) are considered, so an executive appointment is out
+        of reach even when the user also holds a payroll post. When the pair did
+        not resolve there is no new assignment to compare against, and the
+        existing memberships are left untouched.
+        """
+        if user.pk is None:
+            return 0
+
+        target_ids = {group.pk for group, _role in targets if group is not None}
+        if not target_ids:
+            return 0
+
+        stale = GroupMembership.objects.filter(
+            user=user,
+            is_active=True,
+            group__group_type__in=ORG_GROUP_TYPES,
+        ).exclude(group_id__in=target_ids)
+
+        if dry_run:
+            for membership in stale.select_related("group"):
+                logger.info(
+                    "[DRY RUN] Would end org membership: %s -> %s",
+                    user.username,
+                    membership.group.name,
+                )
+            return stale.count()
+
+        return stale.update(is_active=False, end_date=timezone.now().date())
 
     def _get_or_create_group(
         self,
@@ -226,7 +342,8 @@ class MembershipSyncService:
         if not name:
             return None
 
-        cached = self._group_cache.get(name)
+        key = (parent.pk if parent is not None else None, name)
+        cached = self._container_cache.get(key)
         if cached is not None:
             return cached
 
@@ -257,7 +374,7 @@ class MembershipSyncService:
                 if group is None:
                     raise
 
-        self._group_cache[name] = group
+        self._container_cache[key] = group
         return group
 
     def _get_or_create_role(

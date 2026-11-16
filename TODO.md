@@ -137,13 +137,16 @@ reports 104 findings (27 auto-fixable), `views.py` 2 643 lines,
 
 ## 6. Data & integration risks
 
-- [ ] **SharePoint site-member sync** is silently skipped — the app token lacks
-      `Sites.Manage.All`, so the designed PWMS-group → SharePoint-site permission
-      mapping is not enforced in production and access can drift between systems.
-- [ ] **Oracle/legacy sync** — `sync_users_oracle` / `sync_groups_oracle` /
-      `sync_roles_oracle` create placeholder users, and membership collision
-      handling is "not implemented yet" (`validate_memberships.py`). Identity
-      reconciliation is a known soft spot.
+- [ ] **SharePoint site membership** is curated by hand (`SharepointSiteMember`)
+      rather than synced: the app token lacks `Sites.Manage.All`, so the designed
+      PWMS-group → SharePoint-site permission mapping is not enforced in
+      production and access can drift between systems.
+- [ ] **Oracle sync coverage** — `sync_users_oracle` resolves Oracle org pairs
+      onto the curated tree through `group_aliases.csv` and leaves unresolved
+      pairs untouched; `seed_structure` / `audit_group_mapping` keep that table
+      current. Membership collision handling is still "not implemented yet"
+      (`validate_memberships.py`), and identity reconciliation is a known soft
+      spot.
 
 ---
 

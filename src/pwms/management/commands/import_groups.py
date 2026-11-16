@@ -73,7 +73,7 @@ class Command(BaseCommand):
         if not names_path.exists():
             raise CommandError(f"File not found: {names_path}")
 
-        valid_types = {choice for choice, _ in Group.GROUP_TYPE_CHOICES}
+        valid_types = {choice for choice, _ in Group.Type.choices}
         if group_type not in valid_types:
             raise CommandError(
                 f"Invalid group type '{group_type}'. "

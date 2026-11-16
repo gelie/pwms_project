@@ -213,6 +213,8 @@ jobs:
             pwms.tests_referral_access \
             pwms.tests_referrals \
             pwms.tests_reports \
+            pwms.tests_reset_groups \
+            pwms.tests_reset_site_members \
             pwms.tests_state_colors \
             pwms.tests_transitions
 

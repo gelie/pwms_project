@@ -65,12 +65,17 @@
       next-status button gets an arrow drawn from the current-status button by
       simpleline.js (see the module script below); the wrapper is position-relative
       so the SVG overlay is positioned against it.
+
+      A terminal state with nowhere to go is the end of the line, so its button
+      is labelled "Final status" and the empty Next column is dropped rather
+      than left saying there are no transitions.
     {% endcomment %}
     <div class="workflow-status-flow position-relative d-flex flex-row align-items-center" id="workflow-status-flow">
-            <div class="workflow-status-col workflow-status-col--current d-flex flex-column align-items-stretch gap-2">
-              <span class="workflow-status-heading">Current</span>
+            <div class="workflow-status-col workflow-status-col--current d-flex flex-column align-items-stretch gap-2 text-center">
+              <span class="workflow-status-heading">{% if object.current_state.is_terminal and not transitions %}Final status{% else %}Current{% endif %}</span>
               <button type="button" class="rounded-pill btn btn-sm workflow-status-btn workflow-status-current" id="workflow-status-current" style="--state-color: {{ object.current_state.color }}" disabled>{{ object.current_state.name }}</button>
             </div>
+            {% if transitions or not object.current_state.is_terminal %}
             <div class="workflow-status-col d-flex flex-column align-items-stretch gap-2">
               <span class="workflow-status-heading">Next</span>
               {% for transition in transitions %}
@@ -106,6 +111,7 @@
                 <span class="small text-muted workflow-status-note">{% lucide "lock" size=12 %} You cannot move this record.</span>
               {% endif %}
             </div>
+            {% endif %}
     </div>
   </div>
 

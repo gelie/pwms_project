@@ -1764,7 +1764,7 @@ html.password-toggle-ready .password-toggle {
 }
 
 .badge-priority--urgent {
-    --priority-bg: #b3261e;
+    --priority-bg: #8c2f2f; /*#b3261e; */
     --priority-fg: #fff;
     font-weight: 700;
 }

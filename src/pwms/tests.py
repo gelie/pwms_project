@@ -31,9 +31,6 @@ from .management.commands.compare_org_hierarchy import (
 from .management.commands.generate_group_tree import (
     Command as GenerateGroupTreeCommand,
 )
-from .management.commands.sync_groups_oracle import (
-    Command as SyncGroupsOracleCommand,
-)
 from .membership.org_hierarchy import (
     compare_with_stored,
     infer_unit_parents,
@@ -3472,67 +3469,6 @@ class CompareOrgHierarchyCommandTests(TestCase):
             self._run("--strict")
 
 
-class SyncGroupsInferParentsTests(TestCase):
-    """``--infer-org-parents`` nests org units under their manager's unit."""
-
-    def _edges(self):
-        return {
-            (
-                "18101-IRP: International Relations and Protocol: Man and Gen",
-                IRP_DIVISION,
-            ),
-            ("18301-IRP: MR: Man and Gen", IRP_MR_SECTION),
-            ("18201-IRP: PA: Man and Gen", IRP_PA_SECTION),
-            ("18401-IRP: OM: Man and Gen", IRP_OM_SECTION),
-            ("16051-IRP: P and CS: Man and Gen", IRP_PCS_SECTION),
-        }
-
-    def _run(self, infer):
-        command = SyncGroupsOracleCommand()
-        with (
-            mock.patch.object(
-                SyncGroupsOracleCommand,
-                "fetch_oracle_groups",
-                return_value=self._edges(),
-            ),
-            mock.patch.object(
-                SyncGroupsOracleCommand,
-                "fetch_oracle_people",
-                return_value=_irp_people(),
-            ),
-        ):
-            command.sync_groups(dry_run=False, infer_org_parents=infer)
-
-    def _parent_of(self, name):
-        return Group.objects.get(name=name).parent.name
-
-    def test_default_leaves_units_flat_under_administration(self):
-        self._run(infer=False)
-        self.assertEqual(self._parent_of(IRP_MR_SECTION), "Administration")
-
-    def test_flag_nests_a_corroborated_section_under_its_division(self):
-        self._run(infer=True)
-        self.assertEqual(self._parent_of(IRP_MR_SECTION), IRP_DIVISION)
-        self.assertEqual(self._parent_of(IRP_PA_SECTION), IRP_DIVISION)
-
-    def test_flag_leaves_a_single_report_edge_alone(self):
-        # OM's only outward line goes to the section manager: too weak to act on,
-        # so it stays where the default run would put it.
-        self._run(infer=True)
-        self.assertEqual(self._parent_of(IRP_OM_SECTION), "Administration")
-        self.assertEqual(self._parent_of(IRP_PCS_SECTION), "Administration")
-
-    def test_flag_reparents_a_unit_an_earlier_run_left_flat(self):
-        self._run(infer=False)
-        self.assertEqual(self._parent_of(IRP_MR_SECTION), "Administration")
-        self._run(infer=True)
-        self.assertEqual(self._parent_of(IRP_MR_SECTION), IRP_DIVISION)
-
-    def test_cost_centres_stay_under_their_own_unit(self):
-        self._run(infer=True)
-        self.assertEqual(self._parent_of("IRP: MR: Man And Gen"), IRP_MR_SECTION)
-
-
 class OwnerGroupEditGrantMigrationTests(TestCase):
     """Migration 0037 backfills the edit right onto already-materialised grants."""
 
@@ -4537,7 +4473,7 @@ class GroupListFilterTests(TestCase):
             username="group-filter", password="pw"
         )
         cls.committee = Group.objects.create(
-            name="Zzz Filter Portfolio Committee", group_type="portfolio_committee"
+            name="Zzz Filter Portfolio Committee", group_type="committee"
         )
         cls.ministry = Group.objects.create(
             name="Zzz Filter Ministry", short_name="ZFM", group_type="ministry"
@@ -4559,9 +4495,7 @@ class GroupListFilterTests(TestCase):
         self.assertNotContains(response, self.committee.name)
 
     def test_type_filter_narrows_the_table(self):
-        response = self.client.get(
-            reverse("pwms:all_groups"), {"type": "portfolio_committee"}
-        )
+        response = self.client.get(reverse("pwms:all_groups"), {"type": "committee"})
         self.assertContains(response, self.committee.name)
         self.assertNotContains(response, self.ministry.name)
 
@@ -4867,7 +4801,6 @@ class UserProfileTests(TestCase):
             first_name="Thandeka",
             last_name="Mokoena",
             positiondesc="Committee Secretary",
-            party_affiliation="ANC",
             constituency="Gauteng",
             bio="Long-serving committee secretary.",
             email="tmokoena@parliament.gov.za",
@@ -4884,6 +4817,14 @@ class UserProfileTests(TestCase):
         )
         cls.role = Role.objects.create(name="Committee Secretary")
         GroupMembership.objects.create(user=cls.person, group=cls.group, role=cls.role)
+        # Party is derived from an active membership of a ``party`` group; the
+        # profile page shows it without any stored column.
+        cls.party = Group.objects.create(name="ANC", group_type="party")
+        mp_role, _ = Role.objects.get_or_create(
+            name="Member of Parliament",
+            defaults={"description": "Elected Member of Parliament"},
+        )
+        GroupMembership.objects.create(user=cls.person, group=cls.party, role=mp_role)
 
     def setUp(self):
         self.client.force_login(self.person)
