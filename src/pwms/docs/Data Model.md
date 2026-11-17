@@ -55,10 +55,12 @@ erDiagram
     DelegationParticipant ||--o{ auditlog.LogEntry : registered
     WorkflowNote ||--o{ auditlog.LogEntry : registered
 
-    ReportShare }o--|| User : "created_by (SET_NULL)"
+    ReportShare }o--o| User : "created_by (SET_NULL)"
 
-    Notification }o--|| User : recipient
-    Notification }o--|| AbstractLegislativeWorkflow : "GFK content"
+    Notification }o--o| User : "recipient (SET_NULL)"
+    Notification }o--o| User : "actor (SET_NULL)"
+    Notification }o--o| AbstractLegislativeWorkflow : "GFK content"
+    Notification }o--o| ReportShare : "GFK content (shares)"
     Attachment }o--|| AbstractLegislativeWorkflow : "GFK content"
     Attachment ||--o{ AttachmentVersion : versions
 ```
@@ -767,40 +769,49 @@ typed rows. Reached via `auditlog.models.LogEntry`
 
 One row per (recipient, channel, event), written by `pwms.notifications`. The
 table serves two purposes at once: it backs the navbar bell (`in_app` rows) and
-it is the **delivery log** (`email` rows), so "why did this person get that
-mail?" is answerable from the database. Migration `0026_notification`.
+it is the **outbound-email log** (`email` rows), so "who was told what, when,
+and did it send?" is answerable from the database. Migration `0026_notification`.
 
 | Field | Notes |
 | --- | --- |
-| `recipient` (FK `User`, related `notifications`) | who is being told |
+| `recipient` (FK `User`, `SET_NULL`, nullable) | who is being told, when they have an account; external share addresses have none |
 | `channel` | `in_app` or `email` — one row per channel |
-| `kind` | `workflow-created`, `workflow-transition`, `referral-created`, `referral-responded`, `referral-recalled`, `referral-expired`, `referral-deadline` |
-| `subject`, `body` | body is rendered exactly as sent (or as it would have been) |
+| `kind` | alert kinds (`workflow-created`, `workflow-transition`, `referral-*`, `meeting-*`) and explicit shares (`report-share`, `instrument-share`) |
+| `subject`, `body` | body is rendered exactly as sent (or as it would have been); the plain-text part |
+| `html_body` | HTML alternative part sent with `body`; blank on in-app rows and on rows written before HTML alerts shipped |
+| `to_email`, `from_email` | envelope snapshotted at send time, so a later profile or settings change cannot rewrite history |
 | `url` | site-relative link the alert opens |
 | `actor` (FK `User`, `SET_NULL`, nullable) | triggering user; null for system alerts (e.g. deadline reminders) |
-| `content_type` + `object_id` → `content_object` | **GFK** to the workflow instance |
-| `context` (JSON) | the variables the message was composed from |
+| `content_type` + `object_id` → `content_object` | **GFK** to the workflow instance or the `ReportShare` the mail is about |
+| `context` (JSON) | the variables the message was composed from (share id, schedule, attachment format, …) |
 | `status` | `pending` / `sent` / `failed` |
 | `sent_at`, `read_at`, `error` | delivery outcome and read state |
 | `attempts` | delivery attempts made so far (the queue retries a failure) |
 
-Every dispatch writes **two rows per recipient**: an `in_app` row (written
-`sent` immediately) and, when the recipient has an email address, an `email` row
-(`pending` → `sent`/`failed`). `is_unread` is true only for an `in_app` row with
-no `read_at` — an email row is a delivery record, never unread. Helpers:
+Every alert dispatch writes **two rows per recipient**: an `in_app` row (written
+`sent` immediately) and, when the recipient is staff of an affected group and
+has an email address, an `email` row (`pending` → `sent`/`failed`). Explicit
+sharing writes `email` rows only — one per addressed recipient, including
+external addresses with no `User` account — because a shared report is not a
+bell notification. `is_unread` is true only for an `in_app` row with no
+`read_at` — an email row is a delivery record, never unread. Helpers:
 `mark_sent()`, `mark_failed(error)`, `mark_read()` (idempotent).
 
-An `email` row is delivered by a queued background task, written **in the same
-transaction as the row itself** (`pwms.tasks`; see
+An alert `email` row is delivered by a queued background task, written **in the
+same transaction as the row itself** (`pwms.tasks`; see
 [Roadmap § Email & notifications](./Roadmap%20&%20Planned%20Integrations.md)).
-`attempts` counts the attempts and `error` carries the reason: while the row is
-still `pending` it is the last failed attempt (the queue will try again), and
-once the attempts are spent the row is `failed` and `error` is why it was given
-up on. Migration `0034_notification_attempts`.
+Explicit shares send inline and record one attempt. `attempts` counts the
+attempts and `error` carries the reason: while the row is still `pending` it is
+the last failed attempt (the queue will try again), and once the attempts are
+spent the row is `failed` and `error` is why it was given up on. Migration
+`0034_notification_attempts`; the envelope columns and share kinds are
+`0066_notification_outbound_log`.
 
 Indexed on `(recipient, read_at)` (the bell's unread count) and
-`(recipient, -created_at)`. Registered in the admin **read-only**
-(`NotificationAdmin`): the rows are evidence, not data entry.
+`(recipient, -created_at)`. Registered in the admin **read-only and
+undeletable** (`NotificationAdmin`): the rows are evidence, not data entry.
+`ReportShare` is likewise read-only and undeletable, with revoke as the one
+write.
 
 ---
 
@@ -914,7 +925,10 @@ trail](./SharePoint%20Sync.md#the-document-audit-trail).
 A report is normally built on the fly from the filters in the query string, so
 sharing one needs a way to hold that filter set still. `ReportShare` pins it to a
 row under an unguessable token; the row is also the link's audit trail.
-Migration `0032_reportshare`. Built by `pwms.reporting.sharing`.
+Migration `0032_reportshare`. Built by `pwms.reporting.sharing`. Each email send
+writes one `Notification` row per recipient (kind `report-share`) with the
+envelope snapshot and delivery outcome, so the send history survives independently
+of the share row.
 
 | Field | Notes |
 | --- | --- |

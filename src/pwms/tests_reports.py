@@ -19,9 +19,11 @@ are about the resulting ``ReportData`` rather than a queryset.
 
 import datetime as dt
 from io import BytesIO, StringIO
+from unittest import mock
 
 from background_task.models import Task
 from background_task.tasks import tasks as bg_tasks
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
 from django.core import mail
@@ -42,6 +44,7 @@ from .models import (
     Group,
     InternationalAgreement,
     InternationalResolution,
+    Notification,
     PublicStatus,
     ReportShare,
     State,
@@ -559,6 +562,57 @@ class ReportShareTests(ReportFixtureMixin, TestCase):
         self.assertIn("recipients", response.json()["errors"])
         self.assertFalse(ReportShare.objects.exists())
 
+    def test_an_email_share_is_logged_per_recipient(self):
+        self.client.post(
+            reverse("pwms:reports_share"),
+            {
+                "send_email": "on",
+                "recipients": "one@example.com, two@example.com",
+                "message": "Have a look.",
+                "attach_format": "csv",
+            },
+        )
+
+        share = ReportShare.objects.get()
+        rows = list(
+            Notification.objects.filter(kind="report-share", channel="email").order_by(
+                "to_email"
+            )
+        )
+
+        self.assertEqual(
+            [row.to_email for row in rows], ["one@example.com", "two@example.com"]
+        )
+        self.assertEqual({row.status for row in rows}, {"sent"})
+        self.assertEqual({row.attempts for row in rows}, {1})
+        self.assertEqual(
+            {row.from_email for row in rows}, {settings.DEFAULT_FROM_EMAIL}
+        )
+        self.assertTrue(all(row.actor == self.owner for row in rows))
+        self.assertTrue(all(row.content_object == share for row in rows))
+        self.assertIn(share.token, rows[0].body)
+        self.assertIn(share.token, rows[0].html_body)
+        self.assertFalse(rows[0].context["scheduled"])
+
+    def test_a_failed_share_send_is_logged_as_failed(self):
+        with mock.patch(
+            "pwms.reporting.sharing.EmailMultiAlternatives.send",
+            side_effect=OSError("smtp is down"),
+        ):
+            response = self.client.post(
+                reverse("pwms:reports_share"),
+                {
+                    "send_email": "on",
+                    "recipients": "one@example.com, two@example.com",
+                },
+            )
+
+        self.assertEqual(response.status_code, 502)
+        rows = Notification.objects.filter(kind="report-share", channel="email")
+        self.assertEqual(rows.count(), 2)
+        self.assertEqual(set(rows.values_list("status", flat=True)), {"failed"})
+        self.assertIn("smtp is down", rows.first().error)
+
     def test_a_malformed_recipient_is_rejected(self):
         response = self.client.post(
             reverse("pwms:reports_share"),
@@ -850,6 +904,11 @@ class ScheduledShareTests(ScheduledShareFixtureMixin, TestCase):
         self.assertIn(share.token, message.body)
         self.assertEqual(len(message.attachments), 1)
 
+        rows = Notification.objects.filter(kind="report-share", channel="email")
+        self.assertEqual(rows.count(), 2)
+        self.assertEqual(set(rows.values_list("status", flat=True)), {"sent"})
+        self.assertTrue(all(row.context["scheduled"] for row in rows))
+
         share.refresh_from_db()
         self.assertEqual(share.send_count, 1)
         self.assertIsNotNone(share.last_sent_at)
@@ -866,6 +925,7 @@ class ScheduledShareTests(ScheduledShareFixtureMixin, TestCase):
         self.assertFalse(result.sent)
         self.assertEqual(result.recipients, 0)
         self.assertEqual(mail.outbox, [])
+        self.assertFalse(Notification.objects.filter(kind="report-share").exists())
 
         share.refresh_from_db()
         self.assertIn("no recipients", share.last_error)

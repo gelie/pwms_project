@@ -5,13 +5,15 @@ The dispatch layer has three jobs, and each gets a group of tests here:
 
 * **audience** — the officers who run the workflow type, anyone a transition
   names, and the people the record names, minus the actor and minus anyone who
-  may not open the record (``stakeholders``);
-* **record** — every dispatch writes an ``in_app`` row (the bell) and an
-  ``email`` row (the delivery log), and the email row ends up ``sent`` or
-  ``failed`` with the reason kept;
+  may not open the record (``stakeholders``); **email is narrower**, keeping only
+  active staff of the affected groups (``email_audience``);
+* **record** — every dispatch writes an ``in_app`` row (the bell) and, for staff
+  of the affected groups, an ``email`` row (the delivery log) that ends up
+  ``sent`` or ``failed`` with the reason kept;
 * **delivery** — sending is *queued*, not done inline: the task is written in
-  the same transaction as the alert row, one message goes out per recipient, and
-  a transient failure is retried before the row is finally marked ``failed``.
+  the same transaction as the alert row, one multipart (text + HTML) message
+  goes out per recipient, and a transient failure is retried before the row is
+  finally marked ``failed``.
 
 A ``TestCase`` never commits, and a queued task needs a worker, so the tests that
 assert on ``mail.outbox`` call ``run_queued_emails()`` — the real background task
@@ -40,6 +42,7 @@ from .models import (
     GroupMembership,
     Notification,
     PublicStatus,
+    ReportShare,
     Role,
     State,
     Transition,
@@ -50,6 +53,7 @@ from .models import (
     WorkflowType,
 )
 from .notifications import (
+    email_audience,
     max_attempts,
     notify_referral_created,
     notify_workflow_created,
@@ -92,16 +96,26 @@ class AlertFixture(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.officer = User.objects.create_user(
-            username="officer", email="officer@example.com", password="pw"
+            username="officer",
+            email="officer@example.com",
+            password="pw",
+            is_staff_member=True,
         )
         cls.second_officer = User.objects.create_user(
-            username="second", email="second@example.com", password="pw"
+            username="second",
+            email="second@example.com",
+            password="pw",
+            is_staff_member=True,
         )
         cls.denied = User.objects.create_user(
             username="denied", email="denied@example.com", password="pw"
         )
         cls.author = User.objects.create_user(
-            username="author", email="author@example.com", password="pw"
+            username="author",
+            email="author@example.com",
+            password="pw",
+            # Staff, but named on the record rather than a member of its group.
+            is_staff_member=True,
         )
 
         cls.officer_role = Role.objects.create(name="Alert Officer")
@@ -151,8 +165,62 @@ class AlertFixture(TestCase):
         Notification.objects.all().delete()
 
 
+class EmailAudienceTests(AlertFixture):
+    """Email is narrower than the bell: staff who belong to an affected group."""
+
+    def test_staff_members_of_the_group_are_emailed(self):
+        audience = email_audience(self.report, stakeholders(self.report))
+
+        self.assertCountEqual(audience, [self.officer, self.second_officer])
+
+    def test_a_non_staff_member_of_the_group_is_not_emailed(self):
+        """An MP on the group holds a create role but is not staff."""
+        member = User.objects.create_user(
+            username="mp-member",
+            email="mp@example.com",
+            password="pw",
+            is_mp=True,
+            employee_type="member",
+        )
+        GroupMembership.objects.create(
+            user=member, group=self.office, role=self.officer_role
+        )
+
+        notify_workflow_created(self.report, actor=self.author)
+
+        self.assertTrue(
+            Notification.objects.filter(recipient=member, channel="in_app").exists()
+        )
+        self.assertFalse(
+            Notification.objects.filter(recipient=member, channel="email").exists()
+        )
+
+    def test_a_named_owner_outside_the_affected_groups_is_not_emailed(self):
+        """The owner hears in-app; email needs a staff membership of the groups."""
+        notify_workflow_created(self.report, actor=None)
+
+        self.assertTrue(
+            Notification.objects.filter(
+                recipient=self.author, channel="in_app"
+            ).exists()
+        )
+        self.assertFalse(
+            Notification.objects.filter(recipient=self.author, channel="email").exists()
+        )
+
+    def test_the_employee_type_also_identifies_staff(self):
+        """The ERP sync writes ``employee_type`` and not ``is_staff_member``."""
+        User.objects.filter(pk=self.second_officer.pk).update(
+            is_staff_member=False, employee_type="staff"
+        )
+
+        audience = email_audience(self.report, stakeholders(self.report))
+
+        self.assertIn(self.second_officer, audience)
+
+
 class StakeholderTests(AlertFixture):
-    """``stakeholders()`` — the audience rules."""
+    """``stakeholders()`` — the in-app audience rules."""
 
     def test_officers_of_the_type_are_the_audience(self):
         audience = stakeholders(self.report)
@@ -320,6 +388,51 @@ class EmailDeliveryTests(AlertFixture):
         self.assertIn(self.report.get_absolute_url(), message.body)
         self.assertIn("Workflow created", message.body)
 
+    def test_each_message_carries_an_html_alternative(self):
+        notify_workflow_created(self.report, actor=self.author)
+        run_queued_emails()
+
+        message = next(m for m in mail.outbox if m.to == ["officer@example.com"])
+        html_parts = [
+            content
+            for content, mimetype in message.alternatives
+            if mimetype == "text/html"
+        ]
+        self.assertEqual(len(html_parts), 1)
+        self.assertIn("<!DOCTYPE html>", html_parts[0])
+        self.assertIn(self.report.get_absolute_url(), html_parts[0])
+        self.assertIn("Workflow created", html_parts[0])
+
+    def test_each_email_row_snapshots_the_envelope(self):
+        notify_workflow_created(self.report, actor=self.author)
+
+        row = Notification.objects.get(recipient=self.officer, channel="email")
+        self.assertEqual(row.to_email, self.officer.email)
+        self.assertEqual(row.from_email, settings.DEFAULT_FROM_EMAIL)
+
+    def test_delivery_uses_the_snapshotted_address(self):
+        """A later profile edit must not rewrite the address the log records."""
+        notify_workflow_created(self.report, actor=self.author)
+        original = self.officer.email
+        User.objects.filter(pk=self.officer.pk).update(email="changed@example.com")
+
+        run_queued_emails()
+
+        self.assertTrue(any(message.to == [original] for message in mail.outbox))
+        self.assertFalse(
+            any(message.to == ["changed@example.com"] for message in mail.outbox)
+        )
+        row = Notification.objects.get(recipient=self.officer, channel="email")
+        self.assertEqual(row.to_email, original)
+
+    def test_the_html_body_is_stored_on_the_email_row(self):
+        notify_workflow_created(self.report, actor=self.author)
+
+        email_row = Notification.objects.get(recipient=self.officer, channel="email")
+        self.assertIn("<!DOCTYPE html>", email_row.html_body)
+        # The plain-text body remains the stored, human-readable message.
+        self.assertIn("Alerted report", email_row.body)
+
     def test_a_failed_send_is_retried_and_the_reason_kept(self):
         with mock.patch(
             "pwms.notifications.dispatch.send_mail",
@@ -380,7 +493,10 @@ class ReferralAlertTests(AlertFixture):
         )
         cls.committee_role = Role.objects.create(name="Alert Committee Member")
         cls.member = User.objects.create_user(
-            username="member", email="member@example.com", password="pw"
+            username="member",
+            email="member@example.com",
+            password="pw",
+            is_staff_member=True,
         )
         GroupMembership.objects.create(
             user=cls.member, group=cls.committee, role=cls.committee_role
@@ -415,7 +531,9 @@ class ReferralAlertTests(AlertFixture):
     def test_assignee_hears_about_referral_activity(self):
         """
         Whoever owes the next action is told about a referral too - the same
-        owner/assignee pair a creation or transition alert reaches.
+        owner/assignee pair a creation or transition alert reaches. They hear
+        in-app; without a staff membership of an affected group they are not
+        emailed.
         """
         assignee = User.objects.create_user(
             username="assignee", email="assignee@example.com", password="pw"
@@ -430,9 +548,7 @@ class ReferralAlertTests(AlertFixture):
         rows = Notification.objects.filter(
             recipient=assignee, kind="referral-responded"
         )
-        self.assertEqual(
-            sorted(rows.values_list("channel", flat=True)), ["email", "in_app"]
-        )
+        self.assertEqual(sorted(rows.values_list("channel", flat=True)), ["in_app"])
 
     def test_answering_tells_the_parties(self):
         referral = self._referred()
@@ -632,7 +748,10 @@ class ReferralDeadlineLogTests(AlertFixture):
             name="Deadline Alert Committee", group_type="portfolio_committee"
         )
         cls.member = User.objects.create_user(
-            username="deadline-alert-member", email="dl@example.com", password="pw"
+            username="deadline-alert-member",
+            email="dl@example.com",
+            password="pw",
+            is_staff_member=True,
         )
         GroupMembership.objects.create(
             user=cls.member,
@@ -640,15 +759,23 @@ class ReferralDeadlineLogTests(AlertFixture):
             role=Role.objects.create(name="Deadline Alert Member"),
         )
 
-    def test_reminder_is_recorded_for_each_recipient(self):
+    def test_reminder_emails_only_the_committee_staff(self):
         self._referral(due_in=timedelta(hours=2))
 
         call_command("check_referral_deadlines", stdout=StringIO())
         run_queued_emails()
 
         rows = Notification.objects.filter(kind="referral-deadline", channel="email")
-        self.assertEqual(rows.count(), 2)
+        # Only the referred committee's staff are emailed; the owner is told
+        # in-app but is not a member of an affected group.
+        self.assertEqual(rows.count(), 1)
         self.assertEqual(set(rows.values_list("status", flat=True)), {"sent"})
+        self.assertEqual(
+            Notification.objects.filter(
+                kind="referral-deadline", channel="in_app"
+            ).count(),
+            2,
+        )
 
     def test_dry_run_records_nothing(self):
         self._referral(due_in=timedelta(hours=2))
@@ -665,8 +792,8 @@ class ReferralDeadlineLogTests(AlertFixture):
         run_queued_emails()
 
         rows = Notification.objects.filter(kind="referral-expired", channel="email")
-        self.assertEqual(rows.count(), 2)
-        self.assertEqual(len(mail.outbox), 2)
+        self.assertEqual(rows.count(), 1)
+        self.assertEqual(len(mail.outbox), 1)
 
     def _referral(self, *, due_in):
         return WorkflowReferral.objects.create(
@@ -676,3 +803,25 @@ class ReferralDeadlineLogTests(AlertFixture):
             referred_by=self.author,
             due_date=timezone.now() + due_in,
         )
+
+
+class DeliveryLogLockTests(TestCase):
+    """The outbound log is evidence: readable in the admin, never deleted there."""
+
+    def test_the_email_log_cannot_be_deleted(self):
+        from django.contrib import admin as django_admin
+
+        from .admin import NotificationAdmin
+
+        model_admin = NotificationAdmin(Notification, django_admin.site)
+
+        self.assertFalse(model_admin.has_delete_permission(request=None))
+
+    def test_a_report_share_cannot_be_deleted(self):
+        from django.contrib import admin as django_admin
+
+        from .admin import ReportShareAdmin
+
+        model_admin = ReportShareAdmin(ReportShare, django_admin.site)
+
+        self.assertFalse(model_admin.has_delete_permission(request=None))

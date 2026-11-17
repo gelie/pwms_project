@@ -1,4 +1,4 @@
-"""Outbound alerts raised by workflow activity.
+"""The outbound notification log.
 
 One row per (recipient, channel, event). The table is deliberately also the
 *log* of what was sent: every dispatch records its subject, body, template
@@ -11,11 +11,18 @@ to a person twice — once into the in-app bell (``in_app``) and once by mail
 email row carries a delivery status worth waiting on; an in-app row is "sent"
 the moment it exists.
 
-The email half is delivered by a queued background task (see
+The same table is the log for explicit sharing (``report-share`` and
+``instrument-share``): those write email rows only, with no bell row, and the
+recipient may be an external address with no ``User`` account. ``to_email`` and
+``from_email`` snapshot the envelope actually used, so the log stays truthful
+after a profile or setting changes.
+
+The email half is delivered by a queued background task for alerts (see
 ``pwms.notifications.dispatch`` and ``pwms.tasks``), which retries a transient
-failure. ``attempts`` and ``error`` are what that looks like from the outside: a
-row stays ``pending`` with the reason of its last failed attempt, and only
-becomes ``failed`` once the attempts are spent.
+failure; explicit shares send inline and record one attempt. ``attempts`` and
+``error`` are what that looks like from the outside: a row stays ``pending``
+with the reason of its last failed attempt, and only becomes ``failed`` once the
+attempts are spent.
 """
 
 from django.contrib.contenttypes.fields import GenericForeignKey
@@ -57,20 +64,41 @@ class Notification(BaseModel):
         ("meeting-document", _("Meeting document changed")),
         ("meeting-attendance", _("Meeting attendance recorded")),
         ("meeting-minutes", _("Meeting minutes filed")),
+        # Explicit sharing (not alerts: no in-app row is written).
+        ("report-share", _("Report shared")),
+        ("instrument-share", _("Record shared")),
     ]
 
     recipient = models.ForeignKey(
         User,
-        on_delete=models.CASCADE,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
         related_name="notifications",
-        help_text="Who is being told.",
+        help_text="Who is being told, when they have an account.",
+    )
+    #: The address the message was actually sent to. Snapshotted because the
+    #: recipient's profile (or an externally typed address) can change later; an
+    #: audit log must show the envelope as it was, not as it is now.
+    to_email = models.EmailField(
+        blank=True, help_text="Envelope address used for this message."
+    )
+    from_email = models.EmailField(
+        blank=True, help_text="Sender address used for this message."
     )
     channel = models.CharField(max_length=10, choices=CHANNEL_CHOICES)
     kind = models.CharField(max_length=40, choices=KIND_CHOICES, db_index=True)
 
-    subject = models.CharField(max_length=255)
+    subject = models.CharField(max_length=1000)
     body = models.TextField(
         blank=True, help_text="Rendered exactly as it was (or would be) sent."
+    )
+    html_body = models.TextField(
+        blank=True,
+        help_text=(
+            "HTML body sent as the alternative part with ``body``; blank on "
+            "in-app rows and on rows written before HTML alerts shipped."
+        ),
     )
     #: Site-relative link to the thing the alert is about, for the bell menu.
     url = models.CharField(max_length=500, blank=True)
@@ -87,8 +115,8 @@ class Notification(BaseModel):
         help_text="Triggering user, when there is one.",
     )
 
-    # The target workflow instance, if any. Generic because one table serves
-    # every concrete workflow subclass (see AbstractLegislativeWorkflow).
+    # The target of the message, if any: a workflow instance or a ReportShare.
+    # Generic because one table serves every concrete workflow subclass.
     content_type = models.ForeignKey(
         ContentType, on_delete=models.CASCADE, null=True, blank=True
     )
@@ -123,7 +151,8 @@ class Notification(BaseModel):
         ]
 
     def __str__(self):
-        return f"{self.get_channel_display()} → {self.recipient}: {self.subject}"
+        audience = self.to_email or self.recipient or "unknown recipient"
+        return f"{self.get_channel_display()} → {audience}: {self.subject}"
 
     # -- state --------------------------------------------------------------
     @property

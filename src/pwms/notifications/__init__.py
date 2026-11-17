@@ -5,6 +5,7 @@ from .dispatch import (
     NotificationDeliveryError,
     alert,
     deliver_email,
+    email_audience,
     max_attempts,
     notify_meeting_attendance,
     notify_meeting_created,
@@ -16,6 +17,7 @@ from .dispatch import (
     notify_transition,
     notify_workflow_created,
     queue_email,
+    record_email,
     referral_audience,
     stakeholders,
 )
@@ -25,6 +27,7 @@ __all__ = [
     "alert",
     "alerts",
     "deliver_email",
+    "email_audience",
     "max_attempts",
     "notify_meeting_attendance",
     "notify_meeting_created",
@@ -36,6 +39,7 @@ __all__ = [
     "notify_transition",
     "notify_workflow_created",
     "queue_email",
+    "record_email",
     "referral_audience",
     "stakeholders",
 ]

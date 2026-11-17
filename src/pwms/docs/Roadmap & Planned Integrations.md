@@ -17,7 +17,8 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
 - Full auditing (`auditlog` CRUD + `TransitionLog`) with API access
 - Append-only domain event log (`EventType` registry + `WorkflowEvent`) with
   declarative transition guards (`Transition.required_event_types`)
-- In-app alerts + logged email dispatch (`Notification`, `pwms/notifications/`),
+- In-app alerts + the append-only outbound-email log (`Notification`,
+  `pwms/notifications/`), covering alerts and explicit report/record shares and
   raised from the workflow domain methods and the create views
 - SharePoint document attachments with on-demand version history and a document
   audit trail (`pwms.Attachment` / `AttachmentVersion`)
@@ -42,7 +43,7 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
 
 - `Notification` (`pwms/models/notifications.py`, migration `0026_notification`)
   — one row per (recipient, channel, event); the table is deliberately also the
-  delivery log (see [Data Model](./Data%20Model.md)).
+  outbound-email log (see [Data Model](./Data%20Model.md)).
 - `pwms/notifications/`: `dispatch.py` (audience rules + delivery), `context.py`
   (the bell's context processor), re-exported from `__init__.py`.
 - Hooked on explicit domain methods, never `save()`:
@@ -52,51 +53,67 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
   views in `pwms/views.py` (`notify_workflow_created`). Fixtures, imports and
   admin writes notify nobody.
 - Each dispatch writes an `in_app` row (sent immediately) and — when the
-  recipient has an email address — an `email` row (`pending` → `sent`/`failed`).
-  Delivery is **queued**: the row's task is written in the *same transaction* as
-  the row itself (`pwms/tasks.py`, django-background-tasks), so a workflow change
-  that rolls back queues nothing, and a crash straight after COMMIT cannot lose
-  the send. Dispatching never talks to a mail server, so it cannot raise.
+  recipient is staff of an affected group and has an email address — an `email`
+  row (`pending` → `sent`/`failed`). Delivery is **queued**: the row's task is
+  written in the *same transaction* as the row itself (`pwms/tasks.py`,
+  django-background-tasks), so a workflow change that rolls back queues nothing,
+  and a crash straight after COMMIT cannot lose the send. Dispatching never
+  talks to a mail server, so it cannot raise.
 - The worker (`manage.py process_tasks`) sends from the queue. A transient
   failure leaves the row `pending` with the reason in `error` and raises, so the
   task is retried (django-background-tasks' own `MAX_ATTEMPTS` and backoff — 3
   attempts by default); the row is marked `failed` once the attempts are spent.
   `attempts` and `error` are therefore the log of a mail that never went out.
   `queue_email()` hands a row to the queue; `deliver_email()` makes one attempt.
-- Audience: the type's officers (active members of `WorkflowType.group` holding
-  one of its `create_roles`), the roles a transition names
-  (`Transition.notify_roles` plus the roles allowed to act next) and the people
-  the record names (`owner`, `assigned_to`) — minus the actor and anyone who
-  cannot VIEW the instance (`pwms.services.permissions.resolve`). Referrals use
-  `referral_audience()`: the referred group's active members plus the people the
-  record names (`owner`, `assigned_to`), deliberately not RBAC-filtered (a
-  referred committee may hold no `WorkflowGroupAccess` row — the referral is the
-  entitlement) and carrying only the referral's own facts.
+- Audience: the in-app bell follows the full RBAC-aware audience — the type's
+  officers (active members of `WorkflowType.group` holding one of its
+  `create_roles`), the roles a transition names (`Transition.notify_roles` plus
+  the roles allowed to act next) and the people the record names (`owner`,
+  `assigned_to`) — minus the actor and anyone who cannot VIEW the instance
+  (`pwms.services.permissions.resolve`). Referrals use `referral_audience()`: the
+  referred group's active members plus the people the record names (`owner`,
+  `assigned_to`), deliberately not RBAC-filtered (a referred committee may hold
+  no `WorkflowGroupAccess` row — the referral is the entitlement) and carrying
+  only the referral's own facts. **Email is narrower**: `email_audience()` keeps
+  only active staff (`is_staff_member`, or `employee_type` of `staff`/`graduate`)
+  who hold a membership of an affected group — the type's group, any group the
+  record grants access to, the groups it names (a bill's responsible committee, a
+  resolution's responsible group, an agreement's referral committees, a meeting's
+  host group), and a referral's `referred_to` group. Named owners/assignees and
+  invited guests outside those groups still hear through the bell, but are not
+  emailed.
+- The same `Notification` table is the **single outbound-email log**. Explicit
+  report and record sharing write one `email` row per addressed recipient
+  (including external addresses with no `User` account) and no bell row; the
+  report-share row's `content_object` is the `ReportShare`. Every row snapshots
+  the `to_email` / `from_email` used, so a later profile or settings change
+  cannot rewrite history.
+- The log is **append-only**: `Notification` and `ReportShare` are read-only and
+  undeletable in the admin (a share is revoked, not erased), so the evidence
+  cannot be tidied away.
 - `check_referral_deadlines` dispatches through `pwms.notifications` (logged as
   `referral-deadline` alerts); `mark_expired()` raises the expiry alert itself
   (see [Management Commands](./Management%20Commands.md)).
-- Dev mail: `MAILERS["default"]` uses the console backend; `DEFAULT_FROM_EMAIL`
-  and `PWMS_BASE_URL` set the sender and the absolute links.
+- Dev mail: `EMAIL_BACKEND` is the console backend under `DEBUG` and SMTP
+  otherwise (configurable with `EMAIL_BACKEND` / `EMAIL_HOST`);
+  `DEFAULT_FROM_EMAIL` and `PWMS_BASE_URL` set the sender and the absolute links.
 - UI: the navbar bell (`templates/navbar.html`, `static/css/style.css`), the
   alerts page (`templates/pwms/notifications.html`) and the views/URLs
   `pwms:notifications`, `pwms:notification_open` and
-  `pwms:notifications_read_all`. Body template:
-  `templates/emails/notification.txt`.
+  `pwms:notifications_read_all`. Body templates:
+  `templates/emails/notification.txt` and `emails/notification.html` (sent as
+  the HTML alternative part alongside the stored plain text).
 - Tests: `pwms/tests_notifications.py` covers the audience rules, RBAC
-  filtering, the two channel rows, queued (not inline) delivery, the
-  same-transaction rollback guarantee, per-recipient delivery, the retry policy
-  and terminal failure, and the bell/page/read views.
+  filtering, the two channel rows, queued (not inline) alert delivery, the
+  same-transaction rollback guarantee, per-recipient delivery, the retry policy,
+  terminal failure, envelope snapshots and the append-only admin;
+  `pwms/tests_reports.py` and `pwms/tests_workflow_share.py` cover per-recipient
+  share logging (success and failure).
 
 > `Transition.notify_roles` exists but the RBAC seeds leave it unpopulated, so
 > the working audience for a transition is the type's `create_roles` officers
 > (plus the other sources above) until an administrator fills it in per
 > transition.
-
-**Remaining (🔜)**
-
-- HTML alert templates — the *alert* email is still plain-text
-  (`emails/notification.txt`); report-share mail already sends HTML + text
-  (`emails/report_share.html` / `.txt`).
 
 **Acceptance:** role members receive email when a transition they are subscribed
 to (`notify_roles`) fires; referral-deadline reminders are sent; all sends are
@@ -170,18 +187,21 @@ a version to a record, so “the version tabled” survives later revisions.
 
 ---
 
-## Notifications channel & email templating (🔜)
+## Notifications channel & email templating (✅ shipped)
 
-- HTML alert templates alongside the plain-text
-  `src/pwms/templates/emails/notification.txt`; rendering is already
-  request-free (`render_to_string`), so this is the outstanding piece.
-  (Report-share mail already sends HTML + text — `emails/report_share.html` /
-  `.txt` — but the alert path itself is text-only.)
+- HTML alert templates ship alongside the plain-text
+  `src/pwms/templates/emails/notification.txt`: every alert carries an
+  `emails/notification.html` alternative, stored on the email row as
+  `Notification.html_body`. Report-share and instrument-share mail send the same
+  HTML + text pair (`emails/report_share.html` / `.txt`,
+  `emails/workflow_share.html` / `.txt`), so all outbound mail is multipart and
+  recorded per recipient in `Notification`.
 
-The rest originally sketched here has shipped: composition is RBAC-aware (a
-recipient who cannot VIEW the instance is dropped before the alert is written),
-and every dispatch is logged in the `Notification` log (see *Email &
-notifications* above).
+Composition is RBAC-aware (a recipient who cannot VIEW the instance is dropped
+before the alert is written), the email audience is narrowed to staff of the
+affected groups, and **all** outbound mail — alerts and explicit shares — is
+logged in the append-only `Notification` table (see *Email & notifications*
+above).
 
 ---
 
@@ -327,10 +347,12 @@ file — without ever widening anyone's access.
 - **Sharing** (`reports_share` / `report_shared`, model `ReportShare`, migration
   `0032_reportshare`): mint a token-addressed read-only link (optionally
   expiring), optionally email it to a recipient list (HTML + text) with the
-  exported file attached. A share always re-renders **the creator's** figures, so
-  a link never widens to the reader's access; opening it is counted
-  (`access_count` / `last_accessed_at`), and a revoked or expired link answers
-  410 Gone.
+  exported file attached. One `report-share` row per recipient goes into the
+  outbound-email log, with the envelope snapshot and the send outcome, so an
+  immediate or scheduled delivery is auditable. A share always re-renders **the
+  creator's** figures, so a link never widens to the reader's access; opening it
+  is counted (`access_count` / `last_accessed_at`), and a revoked or expired link
+  answers 410 Gone.
 - **Per-instrument documents** (`pwms.reporting.instruments`, one route for
   every type: `/pwms/instruments/<public_id>/document/?format=pdf|html`): a
   single delegation report, resolution, agreement or bill as a formal,

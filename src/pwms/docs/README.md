@@ -14,7 +14,7 @@ order, or used as reference while developing.
 7. [Management Commands](./Management%20Commands.md) — the `manage.py` commands (sync, jobs, diagrams).
 8. [Meetings Import & Export](./Meetings%20Import%20%26%20Export.md) — the CSV/XLSX format the Meetings calendar imports and exports.
 9. [SharePoint Sync](./SharePoint%20Sync.md) — the `populate_sites` command, the local `Sharepoint*` tables, and document attachments/versioning.
-10. [Roadmap & Planned Integrations](./Roadmap%20&%20Planned%20Integrations.md) — email, notifications, SharePoint and other plans.
+10. [Roadmap & Planned Integrations](./Roadmap%20&%20Planned%20Integrations.md) — email/notification audit log, SharePoint and other plans.
 
 ## Runbooks
 

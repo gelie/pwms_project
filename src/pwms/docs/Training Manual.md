@@ -132,7 +132,7 @@ will hit.
 | **Attachment** | A link from a record to a document held in SharePoint. The document itself stays in SharePoint. |
 | **Note** | A dated, attributed entry in the record's note log — the running record of decisions, follow-ups and conversations. **Not** the same as the record's own *Notes* field. |
 | **Timeline** | The merged, newest-first history of everything recorded against a record: state changes, events, edits and creations. |
-| **Alert** | An in-app notification, shown on the bell, with an email copy where an address is on file. Alerts always link back to the record they concern. |
+| **Alert** | An in-app notification, shown on the bell. Staff in the affected groups also receive an email copy; owners, assignees and other named readers hear through the bell. Alerts always link back to the record they concern. |
 
 ### The three IRPD instruments at a glance
 
@@ -871,8 +871,8 @@ Taking a transition does four things, all automatically:
 2. It advances the record to the destination stage.
 3. It writes a history entry naming who moved it, from which stage to which, with
    the comment and the network address.
-4. It raises **alerts** for the people who need to know, including an email copy
-   where an address is on file.
+4. It raises **alerts** for the people who need to know. Staff in the affected
+   groups also receive an email copy; other named readers hear through the bell.
 
 ### 7.4 When a transition is blocked
 
@@ -1393,6 +1393,14 @@ action — and **anyone who cannot view the record**, because an alert links to 
 record and quotes its stage. A referral notifies the referred committee's active
 members plus the owner and assignee.
 
+That list is the **in-app** audience. **Email is narrower**: it goes only to
+active staff (`is_staff_member`, or an `employee_type` of staff/graduate) who
+belong to a group affected by the record — the type's owning group, any group the
+record is shared with, and the committee or unit it names (responsible committee,
+host group, referral committee, or the committee a referral was sent to). A named
+owner, assignee or invited guest outside those groups still sees the bell alert,
+but is not emailed.
+
 Two consequences for IRPD:
 
 - **Alerts never leak a record.** If someone cannot open it, they are never told
@@ -1402,10 +1410,17 @@ Two consequences for IRPD:
 
 ### 12.5 How email behaves
 
-Each alert also produces an email where the recipient has an address on file. Email
-is **queued, not sent immediately**, by a background worker, so a mail problem never
+Each alert produces an in-app row, and **staff in the affected groups** also get
+an email where they have an address on file. Mail is multipart — a plain-text
+body plus an HTML version — and every send is recorded in the outbound-email log
+(who, which address, what, when, and whether it sent). Email is **queued, not
+sent immediately** for alerts, by a background worker, so a mail problem never
 blocks a workflow action. PWMS retries a transient failure and marks a message as
 failed once its attempts are spent.
+
+Report and record **shares** are emailed inline to the addresses you enter, and
+are logged per recipient in the same way. A repeating share keeps sending until
+it is revoked or expires.
 
 **⚠ Administrator task.** Alert and report email depends on two things outside the
 user's control: a configured mail service and the background worker running. In a
@@ -1847,7 +1862,7 @@ re-enter?
 
 | Term | Definition |
 | --- | --- |
-| **Alert** | An in-app notification, with an email copy where an address is on file, raised when a record is created, moved on, or a referral changes |
+| **Alert** | An in-app notification; staff in the affected groups also receive an email copy. Raised when a record is created, moved on, or a referral changes |
 | **Assignee** | The person named in *Assigned to*; may view the record |
 | **ATC** | Announcements, Tablings and Committee Reports — publication of a tabled matter, with reference, date and page |
 | **Attachments tab** | The panel holding a record's SharePoint documents, their versions and their activity |
@@ -2099,7 +2114,8 @@ Answer all nineteen questions. The pass mark is 16.
    the name field exists precisely so the historical record stays accurate.
 8. It validates the move and any preconditions; advances the stage; writes the
    history entry naming who moved it, from where to where, with the comment; and
-   raises alerts, including email where an address is on file.
+   raises in-app alerts — staff in the affected groups also receive an email
+   copy.
 9. **Close – House approved** on the Delegation Report: it requires an **ATC update
    published** event. The message is *"Requires a 'ATC update published' event on
    this workflow."*

@@ -1,11 +1,11 @@
 # Engineering backlog
 
 Current-state backlog for PWMS. This reconciles an earlier assessment against the
-repository as it actually stands (2026-10-30) and folds in the PWMS API work.
+repository as it actually stands (2026-11-17) and folds in the PWMS API work.
 
-Verified facts used below: 48 migrations, 13 test modules, 656 tests, `ruff check`
-reports 104 findings (27 auto-fixable), `views.py` 2 643 lines,
-`models/workflows.py` 2 910, `forms.py` 1 068.
+Verified facts used below: 66 migrations, 19 test modules, 1002 tests, `ruff check`
+reports 97 findings (26 auto-fixable), `views.py` 4 819 lines,
+`models/workflows.py` 3 029, `forms.py` 1 566.
 
 ---
 
@@ -65,9 +65,9 @@ reports 104 findings (27 auto-fixable), `views.py` 2 643 lines,
 - [ ] **Dependency audit + lock verification.** `pip-audit` for known CVEs and a
       `uv lock --check` / `uv sync --frozen` gate. `uv.lock` exists but nothing in
       CI verifies it is in sync.
-- [ ] **Clear the lint debt.** 104 findings: 31 blind `except`, 29 bare/vanilla
+- [ ] **Clear the lint debt.** 97 findings: 31 blind `except`, 29 bare/vanilla
       `raise`, 23 unsorted imports. The blind `except Exception` blocks can swallow
-      RBAC failures and are the ones worth fixing first; 27 findings are
+      RBAC failures and are the ones worth fixing first; 26 findings are
       auto-fixable.
 
 ## 2. Production / security hardening
@@ -94,8 +94,14 @@ reports 104 findings (27 auto-fixable), `views.py` 2 643 lines,
       Users can see history but cannot roll back.
 - [ ] **Version pinning** — pin "the version tabled" so it survives later
       revisions. For a legislative record this is accuracy, not polish.
-- [ ] **HTML alert email templates** — alert mail is plain text only; report-share
-      mail already does HTML + text. Low effort, visible.
+- [x] **HTML alert email templates** — alert mail is multipart (HTML + text),
+      matching report-share mail; the email audience is also limited to staff of
+      the affected groups.
+- [x] **Durable outbound-email log** — `Notification` is the single log for
+      alerts and explicit report/record shares, one row per recipient with a
+      `to_email`/`from_email` snapshot, body, status, attempts and error. The
+      admin is read-only and undeletable for both `Notification` and
+      `ReportShare`.
 - [ ] **Markdown → HTML rendering for note fields** — `markdown` is a declared
       dependency but unused.
 - [x] **Calendar view / meetings (Events workflow)** — shipped as a `Meeting`
@@ -119,18 +125,18 @@ reports 104 findings (27 auto-fixable), `views.py` 2 643 lines,
       task worker, no systemd timers. Queued email, scheduled reports and deadline
       alerts therefore do nothing unless the worker is separately supervised.
 - [ ] **Queue health / dead-letter visibility.** Failures surface only in
-      `Notification.error`; nothing alerts on a stalled queue, and there is no
-      retry/dead-letter view.
+      `Notification.error` (alerts and share rows) and `ReportShare.last_error`;
+      nothing alerts on a stalled queue, and there is no retry/dead-letter view.
 
 ## 5. Code health / maintainability
 
-- [ ] **God modules** — `views.py` 2 643 lines, `models/workflows.py` 2 910,
-      `forms.py` 1 068. The workflow base class in particular could split
+- [ ] **God modules** — `views.py` 4 819 lines, `models/workflows.py` 3 029,
+      `forms.py` 1 566. The workflow base class in particular could split
       (transitions / RBAC / events / progress).
-- [ ] **Migration safety** — 48 migrations with data backfills (e.g. `0044`). No
-      migration tests or reversibility checks; the roadmap notes the schema "can be
-      dropped and recreated safely in development", which suggests rollback is
-      never exercised.
+- [ ] **Migration safety** — 66 migrations with data backfills (e.g. `0044` and
+      the `0066` email-envelope backfill). No migration tests or reversibility
+      checks; the roadmap notes the schema "can be dropped and recreated safely
+      in development", which suggests rollback is never exercised.
 - [ ] **Test breadth** — the suite is targeted (heavy on reports/attachments/
       notifications); no performance/load tests, and the API permission matrix
       would benefit from more outright-negative cases.
@@ -160,7 +166,7 @@ reports 104 findings (27 auto-fixable), `views.py` 2 643 lines,
    shipped features are dead in production.
 4. SharePoint version pinning/restore — the one domain feature with real
    legislative-accuracy value.
-5. Split `views.py` / `models/workflows.py` and fix the 104 lint findings.
+5. Split `views.py` / `models/workflows.py` and fix the 97 lint findings.
 
 The standout observation holds: the documentation and domain modelling are well
 ahead of the operational engineering. The API is now broad, which raises the value
