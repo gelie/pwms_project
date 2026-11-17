@@ -61,7 +61,7 @@
         <dt>Agreement document</dt>
         <dd>
           {% if agreement.agreement_document_url %}
-            <a href="{{ agreement.agreement_document_url }}">Download</a>
+            <a href="{{ agreement.agreement_document_url }}">{{ agreement.agreement_document_url|document_name|default:"Download" }}</a>
           {% else %}
             —
           {% endif %}
@@ -71,7 +71,7 @@
         <dt>Explanatory memorandum</dt>
         <dd>
           {% if agreement.explanatory_memorandum_url %}
-            <a href="{{ agreement.explanatory_memorandum_url }}">Download</a>
+            <a href="{{ agreement.explanatory_memorandum_url }}">{{ agreement.explanatory_memorandum_url|document_name|default:"Download" }}</a>
           {% else %}
             —
           {% endif %}

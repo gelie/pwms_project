@@ -79,12 +79,35 @@ from .services.permissions import (
 )
 from .services.progress import machine_for
 from .services.search import DEFAULT_PER_CATEGORY, search_site
+from .utils.documents import document_name
 
 
 def make_state(**kwargs):
     """A ``State`` with a default public status, for these ad-hoc test machines."""
     kwargs.setdefault("public_status", PublicStatus.objects.get(name="New"))
     return State.objects.create(**kwargs)
+
+
+class DocumentNameTests(SimpleTestCase):
+    """The readable file name used as a document link's label."""
+
+    def test_the_last_path_segment_is_decoded(self):
+        self.assertEqual(
+            document_name(
+                "https://contoso.sharepoint.com/sites/pwms/Shared%20Documents/"
+                "Bill%20Report.pdf?download=1"
+            ),
+            "Bill Report.pdf",
+        )
+
+    def test_a_url_without_a_file_name_returns_empty(self):
+        for url in (
+            "",
+            "https://contoso.sharepoint.com/sites/pwms/",
+            "https://contoso.sharepoint.com/download.aspx?UniqueId=1",
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(document_name(url), "")
 
 
 class WorkflowAuditingTests(TestCase):
@@ -2004,6 +2027,37 @@ class WorkflowCrudViewTests(TestCase):
         self.assertRedirects(response, reverse("pwms:bills"))
         self.assertFalse(Bill.objects.filter(pk=bill.pk).exists())
 
+    def test_bill_number_change_requires_clearing_the_document_url(self):
+        url = "https://contoso.sharepoint.com/doc.pdf"
+        with mock.patch("pwms.views._file_bill_folder"):
+            self.client.post(
+                reverse("pwms:bill_create"),
+                self._bill_payload(bill_document_url=url),
+            )
+            bill = Bill.objects.get(bill_number="B 99—2026")
+
+            # The B-number names the folder: the old document URL would point
+            # into the old folder, so the save is refused until it is cleared.
+            response = self.client.post(
+                reverse("pwms:bill_update", args=[bill.public_id]),
+                self._bill_payload(bill_number="B 100—2026", bill_document_url=url),
+            )
+            self.assertContains(response, "Clear the Bill document URL")
+            bill.refresh_from_db()
+            self.assertEqual(bill.bill_number, "B 99—2026")
+
+            response = self.client.post(
+                reverse("pwms:bill_update", args=[bill.public_id]),
+                self._bill_payload(bill_number="B 100—2026", bill_document_url=""),
+            )
+
+        self.assertRedirects(
+            response, reverse("pwms:bill_detail", args=[bill.public_id])
+        )
+        bill.refresh_from_db()
+        self.assertEqual(bill.bill_number, "B 100—2026")
+        self.assertEqual(bill.bill_document_url, "")
+
     def test_bill_edit_renders_the_state_readonly_and_ignores_a_crafted_post(self):
         self.client.post(reverse("pwms:bill_create"), self._bill_payload())
         bill = Bill.objects.get(bill_number="B 99—2026")
@@ -2468,6 +2522,129 @@ class WorkflowCrudViewTests(TestCase):
         self.assertTemplateUsed(response, "pwms/partials/group_search_results.html")
         self.assertContains(response, self.group.name)
         self.assertContains(response, f"selectGroup('{self.group.pk}'")
+
+    def test_ministry_search_returns_matching_ministries_for_htmx(self):
+        """The sponsor-name lookup offers ministries only."""
+        ministry = Group.objects.create(
+            name="Ministry of Testing", short_name="MoT", group_type="ministry"
+        )
+        Group.objects.create(name="Ministry of Other", group_type="ministry")
+        Group.objects.create(
+            name="Portfolio Committee on Testing", group_type="committee"
+        )
+
+        response = self.client.get(
+            reverse("pwms:ministry_search"), {"search": "Testing"}
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "pwms/partials/ministry_search_results.html")
+        self.assertContains(response, ministry.name)
+        self.assertContains(
+            response, f"selectOption('{ministry.name}', '{ministry.name}')"
+        )
+        # Neither a non-matching ministry nor a committee is offered.
+        self.assertNotContains(response, "Ministry of Other")
+        self.assertNotContains(response, "Portfolio Committee on Testing")
+
+    def test_bill_form_uses_a_ministry_lookup_for_sponsor_name(self):
+        """The sponsor-name box searches ministries and stores the chosen name."""
+        response = self.client.get(reverse("pwms:bill_create"))
+
+        self.assertContains(response, 'id="id_sponsor_name_search"')
+        self.assertContains(response, f'hx-get="{reverse("pwms:ministry_search")}"')
+        self.assertContains(response, '<input type="hidden" name="sponsor_name"')
+        self.assertNotContains(response, '<input type="text" name="sponsor_name"')
+        # An empty create form leaves the box blank so its placeholder shows;
+        # Django renders an unset bound value as the literal string "None".
+        self.assertNotContains(response, 'value="None"')
+
+    def test_bill_sponsor_name_round_trips_through_the_lookup(self):
+        """The name the picker writes into the hidden field is what is saved."""
+        self.client.post(
+            reverse("pwms:bill_create"),
+            self._bill_payload(sponsor_name="Ministry of Testing"),
+        )
+        bill = Bill.objects.get(bill_number="B 99—2026")
+        self.assertEqual(bill.sponsor_name, "Ministry of Testing")
+
+        response = self.client.get(reverse("pwms:bill_update", args=[bill.public_id]))
+        self.assertContains(response, 'value="Ministry of Testing"')
+
+    def test_bill_committee_options_are_limited_to_house_committees(self):
+        """Only NA and NCOP committees may be chosen as responsible committee."""
+        na = Group.objects.create(name="National Assembly", group_type="house")
+        na_committees = Group.objects.create(
+            name="NA Committees", group_type="committees", parent=na
+        )
+        na_committee = Group.objects.create(
+            name="Portfolio Committee on Testing",
+            group_type="committee",
+            parent=na_committees,
+        )
+        ncop = Group.objects.create(
+            name="National Council of Provinces", group_type="house"
+        )
+        ncop_committees = Group.objects.create(
+            name="NCOP Committees", group_type="committees", parent=ncop
+        )
+        ncop_committee = Group.objects.create(
+            name="Select Committee on Testing",
+            group_type="committee",
+            parent=ncop_committees,
+        )
+
+        parliament = Group.objects.create(name="Parliament", group_type="parliament")
+        joint_committees = Group.objects.create(
+            name="Joint Committees", group_type="committees", parent=parliament
+        )
+        Group.objects.create(
+            name="Joint Standing Committee on Testing",
+            group_type="committee",
+            parent=joint_committees,
+        )
+        Group.objects.create(name="Ministry of Testing", group_type="ministry")
+
+        # More groups than the picker threshold, but only the two eligible
+        # committees count: the narrowing must run before the picker decision.
+        self._add_extra_groups()
+
+        response = self.client.get(reverse("pwms:bill_create"))
+        form = response.context["form"]
+        self.assertEqual(
+            set(form.fields["responsible_committee"].queryset),
+            {na_committee, ncop_committee},
+        )
+        self.assertNotIn("responsible_committee", form.search_pickers)
+
+        # The lookup behind the picker is scoped the same way.
+        results = self.client.get(
+            reverse("pwms:bill_committee_search"), {"search": "Testing"}
+        )
+        self.assertContains(results, na_committee.name)
+        self.assertContains(results, ncop_committee.name)
+        self.assertNotContains(results, "Joint Standing Committee on Testing")
+        self.assertNotContains(results, "Ministry of Testing")
+
+    def test_bill_committee_picker_uses_the_scoped_lookup(self):
+        """Once the list is long, the picker searches only house committees."""
+        na = Group.objects.create(name="National Assembly", group_type="house")
+        container = Group.objects.create(
+            name="NA Committees", group_type="committees", parent=na
+        )
+        for number in range(11):
+            Group.objects.create(
+                name=f"Portfolio Committee {number}",
+                group_type="committee",
+                parent=container,
+            )
+
+        response = self.client.get(reverse("pwms:bill_create"))
+
+        self.assertIn("responsible_committee", response.context["form"].search_pickers)
+        self.assertContains(
+            response, f'hx-get="{reverse("pwms:bill_committee_search")}"'
+        )
 
     def test_short_option_lists_stay_selects(self):
         """With few options the fields keep their plain <select>."""

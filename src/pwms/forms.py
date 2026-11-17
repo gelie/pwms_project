@@ -51,6 +51,7 @@ from .models import (
 )
 from .models.reports import SCHEDULE_CHOICES
 from .reporting.exports import ATTACHMENT_CHOICES
+from .services.bill_committees import bill_committee_choices
 from .services.permissions import EDIT, resolve
 
 User = get_user_model()
@@ -146,6 +147,11 @@ class WorkflowInstanceFormMixin:
                 "responsible_committee"
             ].queryset.order_by("name")
 
+        # Concrete forms narrow an option list here, before the picker decision
+        # below measures it: a field limited to a handful of rows should stay a
+        # <select> even when the underlying table is large.
+        self.narrow_querysets()
+
         # Long option lists become search pickers: the widget then posts only the
         # chosen pk, and the queryset is left to validate it. Short lists stay a
         # plain <select> so the choice is visible without any JavaScript.
@@ -197,6 +203,9 @@ class WorkflowInstanceFormMixin:
                 state_field.queryset = State.objects.filter(
                     workflow_type=self.instance.workflow_type
                 ).order_by("order", "name")
+
+    def narrow_querysets(self):
+        """Hook for concrete forms to limit a field's options (default: no-op)."""
 
     @staticmethod
     def _initial_state(workflow_type):
@@ -764,6 +773,22 @@ class InternationalAgreementForm(WorkflowInstanceFormMixin, forms.ModelForm):
         }
 
 
+class BillDocumentUrlForm(forms.Form):
+    """The bill document URL field alone.
+
+    The document picker re-renders just this field after an upload; building a
+    full :class:`BillForm` for that would query the picker option lists for
+    fields the response never renders.
+    """
+
+    bill_document_url = forms.URLField(
+        required=False,
+        label="Bill document url",
+        help_text="SharePoint link to the bill document",
+        widget=forms.TextInput(attrs={"class": "form-control", "type": "url"}),
+    )
+
+
 class BillForm(WorkflowInstanceFormMixin, forms.ModelForm):
     """Create/update form for a :class:`Bill` (Online Bill Tracking BRS)."""
 
@@ -782,6 +807,33 @@ class BillForm(WorkflowInstanceFormMixin, forms.ModelForm):
         widget=DateTimePickerInput(attrs={"class": "form-control"}),
         input_formats=DATETIME_INPUT_FORMATS,
     )
+
+    def narrow_querysets(self):
+        # A bill is committed to a committee of one of the two Houses, so the
+        # joint committees and every non-committee group are not offered.
+        self.fields["responsible_committee"].queryset = bill_committee_choices()
+        self.fields["sponsor_name"].help_text = "Ministry or originating authority."
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.instance.pk is None:
+            return cleaned
+        number = cleaned.get("bill_number")
+        # The B-number names the bill's SharePoint folder. Re-pointing the link
+        # while renumbering would leave the document pointing into the old
+        # folder, so make the user clear it, save, and pick again in the new one.
+        if (
+            number
+            and number != self.instance.bill_number
+            and cleaned.get("bill_document_url")
+        ):
+            self.add_error(
+                "bill_number",
+                "The B-number names the bill's SharePoint folder. Clear the "
+                "Bill document URL before changing it, then save and choose "
+                "the document from the new folder.",
+            )
+        return cleaned
 
     class Meta:
         model = Bill
@@ -821,7 +873,9 @@ class BillForm(WorkflowInstanceFormMixin, forms.ModelForm):
             # Swapped to a search picker by the mixin when the user list is
             # long; the name below covers authorities with no account.
             "sponsor": forms.Select(attrs={"class": "form-select"}),
-            "sponsor_name": forms.TextInput(attrs={"class": "form-control"}),
+            # Chosen from the ministry lookup (see bill-form.html), which stores
+            # the ministry's name in this text field.
+            "sponsor_name": forms.HiddenInput(),
             # Swapped to a search picker by the mixin when there are many groups.
             "responsible_committee": forms.Select(attrs={"class": "form-select"}),
             # "atc_reference": forms.TextInput(attrs={"class": "form-control"}),

@@ -1,0 +1,10 @@
+{% for ministry in ministries %}
+  <button type="button"
+          class="list-group-item list-group-item-action"
+          onclick="selectOption('{{ ministry.name|escapejs }}', '{{ ministry.name|escapejs }}')">
+    <span class="fw-medium">{{ ministry.name }}</span>
+    {% if ministry.short_name %}<span class="d-block small text-body-secondary">{{ ministry.short_name }}</span>{% endif %}
+  </button>
+{% empty %}
+  <div class="list-group-item small text-body-secondary">No ministries found matching your search</div>
+{% endfor %}

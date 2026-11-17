@@ -49,24 +49,7 @@
         {% for error in form.non_field_errors %}<p class="mb-0">{{ error }}</p>{% endfor %}
       </div>
     {% endif %}
-    <div class="row g-3 mb-4">
-      {% include "pwms/_form_field.html" with field=form.version_label wrapper_class="col-12 col-md-6" %}
-      {% include "pwms/_form_field.html" with field=form.version_type wrapper_class="col-12 col-md-6" %}
-      {% include "pwms/_form_field.html" with field=form.version_date wrapper_class="col-12 col-md-6" %}
-      <div class="col-12 col-md-6">
-        <div class="form-check mt-4 pt-2">
-          {{ form.is_current }}
-          <label class="form-check-label" for="{{ form.is_current.id_for_label }}">
-            {{ form.is_current.label }}
-          </label>
-          {% if form.is_current.help_text %}
-            <div class="form-text">{{ form.is_current.help_text }}</div>
-          {% endif %}
-        </div>
-      </div>
-      {% include "pwms/_form_field.html" with field=form.document_url wrapper_class="col-12 col-md-6" %}
-      {% include "pwms/_form_field.html" with field=form.notes wrapper_class="col-12" %}
-    </div>
+    {% include "pwms/partials/bill_version_fields.html" with form=form %}
     {% if not is_create and version.recorded_by %}
       <p class="text-muted small">
         Recorded by

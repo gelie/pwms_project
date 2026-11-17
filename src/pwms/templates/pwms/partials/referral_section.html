@@ -92,7 +92,7 @@ referral_form; plus referral_status ({level, message}) when a change was made.
                     <a class="small"
                        href="{{ referral.response_document_url }}"
                        rel="noopener"
-                       target="_blank">Response document</a>
+                       target="_blank">{{ referral.response_document_url|document_name|default:"Response document" }}</a>
                   {% endif %}
                 {% elif referral.status == "recalled" %}
                   <span class="d-block small workflow-muted">

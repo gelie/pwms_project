@@ -32,6 +32,7 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 
 from .forms import (
+    BillDocumentUrlForm,
     BillForm,
     BillVersionForm,
     ChildResolutionForm,
@@ -73,6 +74,7 @@ from .models import (
     Meeting,
     MeetingAttendance,
     Notification,
+    SharepointDrive,
     TransitionLog,
     User,
     WorkflowNote,
@@ -104,6 +106,7 @@ from .reporting import (
 )
 from .services import attachments as attachments_service
 from .services import bill_folders
+from .services.bill_committees import bill_committee_choices
 from .services.history import TIMELINE_PREVIEW_LIMIT, instance_timeline
 from .services.meetings_io import (
     MEETING_COLUMNS,
@@ -1729,13 +1732,20 @@ def bill_detail(request, public_id):
         public_id=public_id,
     )
     require(request.user, bill, VIEW)
+    versions = bill.versions.select_related("recorded_by")
     context = {
         "bill": bill,
-        "versions": bill.versions.select_related("recorded_by"),
+        "versions": versions,
+        # The Related tab's Version history card: the tab badge counts the rows.
+        "related_count": versions.count(),
         "transitions": bill.get_available_transitions(),
     }
     context.update(_workflow_detail_context(request, bill))
     context.update(_attachment_context(request, bill))
+    if context["perms"].get("edit"):
+        # The Related tab's inline "Add Version" form. Recording a version is
+        # gated on edit by bill_version_create, so only build it for an editor.
+        context["version_form"] = BillVersionForm(initial={"is_current": True})
     return render(request, "pwms/bill-detail.html", context)
 
 
@@ -1883,6 +1893,257 @@ def bill_version_create(request, public_id):
         request,
         "pwms/bill-version-form.html",
         {"form": form, "bill": bill, "is_create": True},
+    )
+
+
+def _bill_version_document_folder(bill):
+    """The bill's own SharePoint folder, or raise when it is not filed yet."""
+    folder = bill.sharepoint_folder
+    if folder is None:
+        raise attachments_service.AttachmentError(
+            "The bill's SharePoint folder has not been filed yet. "
+            "File it from the bill page first."
+        )
+    return folder
+
+
+def _folder_document_files(folder):
+    """Files directly inside one folder (no site browsing)."""
+    _, files = attachments_service.folder_children(
+        folder.drive.drive_id, folder.folder_id
+    )
+    return files
+
+
+def _bill_version_document_files(bill):
+    """Files in the bill's own folder; no site browsing is involved."""
+    return _folder_document_files(_bill_version_document_folder(bill))
+
+
+def bill_version_document_options(request, public_id):
+    """HTMX: files in the bill's folder for the version document dropdown."""
+    bill = get_object_or_404(Bill, public_id=public_id)
+    require(request.user, bill, EDIT)
+    files = []
+    error = ""
+    try:
+        files = _bill_version_document_files(bill)
+    except attachments_service.AttachmentError as exc:
+        error = str(exc)
+    return render(
+        request,
+        "pwms/partials/sharepoint_document_options.html",
+        {
+            "document_files": files,
+            "document_options_error": error,
+            "field_id": request.GET.get("field_id") or "id_document_url",
+            "folder_label": "bill folder",
+        },
+    )
+
+
+@require_POST
+def bill_version_document_upload(request, public_id):
+    """Upload a version document into the bill's folder (HTMX field response)."""
+    bill = get_object_or_404(Bill, public_id=public_id)
+    require(request.user, bill, EDIT)
+    upload = request.FILES.get("file")
+    # The upload button includes the enclosing version form, so this is the URL
+    # currently in the field (including unsaved typing), not a stale snapshot.
+    current_url = request.POST.get("document_url", "")
+    status = None
+    if upload is None:
+        status = {"level": "danger", "message": "No file was selected."}
+    else:
+        try:
+            folder = _bill_version_document_folder(bill)
+            stored = attachments_service.upload_to_folder(
+                drive=folder.drive,
+                folder=folder,
+                filename=upload.name,
+                content=upload.read(),
+            )
+        except attachments_service.AttachmentError as exc:
+            status = {"level": "danger", "message": str(exc)}
+        else:
+            current_url = stored["web_url"] or current_url
+            status = {
+                "level": "success",
+                "message": f'"{stored["name"]}" uploaded to the bill folder.',
+            }
+
+    files = []
+    error = ""
+    try:
+        files = _bill_version_document_files(bill)
+    except attachments_service.AttachmentError as exc:
+        # The status alert already explains a failed upload; only add the listing
+        # error when it is the sole thing worth saying (a successful upload still
+        # keeps its own message).
+        if status is None or status["level"] == "success":
+            error = str(exc)
+
+    form = BillVersionForm(initial={"document_url": current_url})
+    return render(
+        request,
+        "pwms/partials/sharepoint_document_field.html",
+        {
+            "field": form["document_url"],
+            "options_url": reverse(
+                "pwms:bill_version_document_options", args=[bill.public_id]
+            ),
+            "upload_url": reverse(
+                "pwms:bill_version_document_upload", args=[bill.public_id]
+            ),
+            "folder_label": "bill folder",
+            "document_files": files,
+            "document_options_error": error,
+            "document_status": status,
+            "wrapper_class": request.POST.get("wrapper_class") or "col-12 col-md-6",
+        },
+    )
+
+
+def _bill_form_document_number(request, bill):
+    """The B-number the bill form's document picker should use, and a guard."""
+    number = (
+        request.POST.get("bill_number") or request.GET.get("bill_number") or ""
+    ).strip()
+    if not number:
+        return "", "Enter the B-number before choosing a document."
+    if bill is not None:
+        if number != bill.bill_number:
+            return (
+                number,
+                (
+                    "Save the new B-number before choosing a document; the bill "
+                    "folder follows the number stored on the bill."
+                ),
+            )
+        return number, ""
+    if Bill.objects.filter(bill_number=number).exists():
+        return number, "A bill with this B-number already exists."
+    return number, ""
+
+
+def _bill_document_scope(request, public_id):
+    """Resolve the bill (editing), its folder, and any guard message."""
+    if public_id:
+        bill = get_object_or_404(Bill, public_id=public_id)
+        require(request.user, bill, EDIT)
+    else:
+        if not _can_create_form_type(request.user, BillForm):
+            raise PermissionDenied(_("You do not have a role that may create bills."))
+        bill = None
+
+    number, error = _bill_form_document_number(request, bill)
+    if error:
+        return bill, None, error
+
+    try:
+        if bill is None:
+            # A new bill has no row and no linked folder yet; create/reuse the
+            # folder the save will later link, based on the typed B-number.
+            folder = bill_folders.ensure_bill_folder_row(number)
+        else:
+            folder = bill.sharepoint_folder
+            wanted = bill_folders.folder_name_for(bill.bill_number)
+            if folder is None or folder.name != wanted:
+                status = bill_folders.file_bill_folder(bill)
+                if status == bill_folders.UNCONFIGURED:
+                    return bill, None, "SharePoint filing is not configured."
+                folder = bill.sharepoint_folder
+            if folder is None:
+                return bill, None, "The bill's SharePoint folder could not be resolved."
+    except bill_folders.BillFolderError as exc:
+        return bill, None, str(exc)
+    return bill, folder, ""
+
+
+def bill_document_options(request, public_id=None):
+    """HTMX: files in the bill's folder for the bill document dropdown."""
+    _, folder, error = _bill_document_scope(request, public_id)
+    files = []
+    if folder is not None and not error:
+        try:
+            files = _folder_document_files(folder)
+        except attachments_service.AttachmentError as exc:
+            error = str(exc)
+    return render(
+        request,
+        "pwms/partials/sharepoint_document_options.html",
+        {
+            "document_files": files,
+            "document_options_error": error,
+            "field_id": request.GET.get("field_id") or "id_bill_document_url",
+            "folder_label": "bill folder",
+        },
+    )
+
+
+@require_POST
+def bill_document_upload(request, public_id=None):
+    """Upload a bill document into the bill's folder (HTMX field response)."""
+    _, folder, error = _bill_document_scope(request, public_id)
+    upload = request.FILES.get("file")
+    # The upload button includes the enclosing bill form, so this is the URL
+    # currently in the field, not a stale snapshot.
+    current_url = request.POST.get("bill_document_url", "")
+    status = None
+    if error:
+        status = {"level": "danger", "message": error}
+        error = ""
+    elif upload is None:
+        status = {"level": "danger", "message": "No file was selected."}
+    else:
+        try:
+            stored = attachments_service.upload_to_folder(
+                drive=folder.drive,
+                folder=folder,
+                filename=upload.name,
+                content=upload.read(),
+            )
+        except attachments_service.AttachmentError as exc:
+            status = {"level": "danger", "message": str(exc)}
+        else:
+            current_url = stored["web_url"] or current_url
+            status = {
+                "level": "success",
+                "message": f'"{stored["name"]}" uploaded to the bill folder.',
+            }
+
+    files = []
+    if folder is not None:
+        try:
+            files = _folder_document_files(folder)
+        except attachments_service.AttachmentError as exc:
+            # Keep a successful upload's own message; add the listing failure
+            # only when there is not already an alert explaining the outcome.
+            if status is None or status["level"] == "success":
+                error = str(exc)
+
+    if public_id:
+        options_url = reverse("pwms:bill_document_options_edit", args=[public_id])
+        upload_url = reverse("pwms:bill_document_upload_edit", args=[public_id])
+    else:
+        options_url = reverse("pwms:bill_document_options")
+        upload_url = reverse("pwms:bill_document_upload")
+
+    form = BillDocumentUrlForm(initial={"bill_document_url": current_url})
+    return render(
+        request,
+        "pwms/partials/sharepoint_document_field.html",
+        {
+            "field": form["bill_document_url"],
+            "options_url": options_url,
+            "upload_url": upload_url,
+            "options_include": "#id_bill_number",
+            "folder_label": "bill folder",
+            "document_files": files,
+            "document_options_error": error,
+            "document_status": status,
+            "wrapper_class": request.POST.get("wrapper_class") or "col-12 col-md-6",
+        },
     )
 
 
@@ -2478,20 +2739,44 @@ def user_search(request):
     )
 
 
-def group_search(request):
-    """Search groups and return HTML results for HTMX."""
+def _group_search_response(request, groups):
+    """Render the shared group-results fragment for ``groups``."""
     search_query = request.GET.get("search", "")
-
-    groups = Group.objects.all()
 
     if search_query:
         groups = groups.filter(Q(name__icontains=search_query))
 
-    groups = groups.order_by("name")[:20]  # Limit to 20 results
     return render(
         request=request,
         template_name="pwms/partials/group_search_results.html",
-        context={"groups": groups},
+        context={"groups": groups.order_by("name")[:20]},
+    )
+
+
+def group_search(request):
+    """Search groups and return HTML results for HTMX."""
+    return _group_search_response(request, Group.objects.all())
+
+
+def bill_committee_search(request):
+    """Search the committees a bill may be committed to, for HTMX."""
+    return _group_search_response(request, bill_committee_choices())
+
+
+def ministry_search(request):
+    """Search ministries for the bill sponsor-name lookup, for HTMX."""
+    search_query = request.GET.get("search", "").strip()
+
+    ministries = Group.objects.filter(group_type=Group.Type.MINISTRY, is_active=True)
+    if search_query:
+        ministries = ministries.filter(
+            Q(name__icontains=search_query) | Q(short_name__icontains=search_query)
+        )
+
+    return render(
+        request=request,
+        template_name="pwms/partials/ministry_search_results.html",
+        context={"ministries": ministries.order_by("name")[:20]},
     )
 
 
@@ -3098,6 +3383,94 @@ def workflow_note_delete(request, public_id):
 # panel only ever adds.
 
 
+#: The Events document input's DOM id. ``document_url`` is also a field on the
+#: inline bill-version form, so the two would collide on a bill's detail page.
+EVENT_DOCUMENT_FIELD_ID = "event-document_url"
+
+
+def _event_form(*args, **kwargs):
+    """``WorkflowEventForm`` with a page-unique id on its document field."""
+    form = WorkflowEventForm(*args, **kwargs)
+    form.fields["document_url"].widget.attrs["id"] = EVENT_DOCUMENT_FIELD_ID
+    # The inline bill-version form also has a ``notes`` field; keep the two
+    # labels from pointing at the same DOM id on a bill page.
+    form.fields["notes"].widget.attrs["id"] = "event-notes"
+    return form
+
+
+def _workflow_type_sharepoint_location(workflow_type):
+    """The configured Events document location for ``workflow_type``."""
+    configured = getattr(settings, "WORKFLOW_TYPE_SHAREPOINT_LOCATIONS", {})
+    return configured.get(workflow_type.name) or {}
+
+
+def _event_document_folder_label(target):
+    """The picker label when the record has a usable SharePoint location.
+
+    Returns an empty string when the Events document field should stay an
+    ordinary URL input: a bill without a folder and without filing configured,
+    or a workflow type with no location in the settings map.
+    """
+    if target._meta.model_name == "bill":
+        if target.sharepoint_folder is not None or bill_folders.filing_configured():
+            return "bill folder"
+        return ""
+    location = _workflow_type_sharepoint_location(target.workflow_type)
+    if (location.get("drive_id") or "").strip():
+        return location.get("name") or "workflow folder"
+    return ""
+
+
+def _event_document_location(target):
+    """Resolve ``(drive, folder, label)`` for an event document.
+
+    A bill files into its own B-number folder (created if missing). Every other
+    record uses the folder configured for its workflow type in
+    ``WORKFLOW_TYPE_SHAREPOINT_LOCATIONS``.
+    """
+    if target._meta.model_name == "bill":
+        folder = target.sharepoint_folder
+        wanted = bill_folders.folder_name_for(target.bill_number)
+        if folder is None or folder.name != wanted:
+            try:
+                status = bill_folders.file_bill_folder(target)
+            except bill_folders.BillFolderError as exc:
+                raise attachments_service.AttachmentError(str(exc)) from exc
+            if status == bill_folders.UNCONFIGURED:
+                raise attachments_service.AttachmentError(
+                    "SharePoint filing is not configured."
+                )
+            folder = target.sharepoint_folder
+        if folder is None:
+            raise attachments_service.AttachmentError(
+                "The bill's SharePoint folder could not be resolved."
+            )
+        return folder.drive, folder, "bill folder"
+
+    location = _workflow_type_sharepoint_location(target.workflow_type)
+    drive_id = (location.get("drive_id") or "").strip()
+    if not drive_id:
+        raise attachments_service.AttachmentError(
+            "No SharePoint location is configured for this workflow type."
+        )
+    drive = (
+        SharepointDrive.objects.filter(drive_id=drive_id).select_related("site").first()
+    )
+    if drive is None:
+        # A configured drive need not have been through populate_sites yet.
+        drive = bill_folders.mirror_drive(drive_id)
+    if drive is None:
+        raise attachments_service.AttachmentError(
+            "The configured SharePoint drive could not be resolved; check the "
+            "drive id and the site mirror."
+        )
+    label = location.get("name") or "workflow folder"
+    folder = attachments_service.resolve_folder(
+        drive, (location.get("folder_id") or "").strip(), label
+    )
+    return drive, folder, label
+
+
 def _events_context(request, instance):
     """
     Template context for a record's domain-event panel and its recorder.
@@ -3114,7 +3487,20 @@ def _events_context(request, instance):
         "can_record_event": can_record,
     }
     if can_record:
-        context["event_form"] = WorkflowEventForm()
+        context["event_form"] = _event_form()
+        context["event_document_field_id"] = EVENT_DOCUMENT_FIELD_ID
+        # The document field is a SharePoint picker when the record has a
+        # location: the bill's own folder, or the type's configured folder.
+        folder_label = _event_document_folder_label(instance)
+        if folder_label:
+            context["event_document_picker"] = True
+            context["event_document_folder_label"] = folder_label
+            context["event_document_options_url"] = reverse(
+                "pwms:workflow_event_document_options"
+            )
+            context["event_document_upload_url"] = reverse(
+                "pwms:workflow_event_document_upload"
+            )
     return context
 
 
@@ -3137,7 +3523,7 @@ def _events_response(request, target, *, success="", error="", form=None):
 def workflow_event_add(request):
     """Record a domain event against a record (HTMX fragment)."""
     target = _workflow_target(request, EDIT)
-    form = WorkflowEventForm(request.POST)
+    form = _event_form(request.POST)
     if not form.is_valid():
         return _events_response(request, target, form=form)
     event_type = form.cleaned_data["event_type"]
@@ -3150,6 +3536,99 @@ def workflow_event_add(request):
         document_url=form.cleaned_data["document_url"],
     )
     return _events_response(request, target, success=f"Recorded “{event_type.name}”.")
+
+
+def workflow_event_document_options(request):
+    """HTMX: files in an event document's SharePoint folder."""
+    target = _workflow_target(request, EDIT)
+    folder_label = _event_document_folder_label(target) or "workflow folder"
+    files = []
+    error = ""
+    try:
+        drive, folder, folder_label = _event_document_location(target)
+        _, files = attachments_service.folder_children(
+            drive.drive_id,
+            folder.folder_id if folder else attachments_service.ROOT,
+        )
+    except attachments_service.AttachmentError as exc:
+        error = str(exc)
+    return render(
+        request,
+        "pwms/partials/sharepoint_document_options.html",
+        {
+            "document_files": files,
+            "document_options_error": error,
+            "field_id": request.GET.get("field_id") or "id_document_url",
+            "folder_label": folder_label,
+        },
+    )
+
+
+@require_POST
+def workflow_event_document_upload(request):
+    """Upload an event document into the record's SharePoint location."""
+    target = _workflow_target(request, EDIT)
+    upload = request.FILES.get("file")
+    current_url = request.POST.get("document_url", "")
+    folder_label = _event_document_folder_label(target) or "workflow folder"
+    drive = folder = None
+    status = None
+    try:
+        drive, folder, folder_label = _event_document_location(target)
+    except attachments_service.AttachmentError as exc:
+        status = {"level": "danger", "message": str(exc)}
+
+    if status is None:
+        if upload is None:
+            status = {"level": "danger", "message": "No file was selected."}
+        else:
+            try:
+                stored = attachments_service.upload_to_folder(
+                    drive=drive,
+                    folder=folder,
+                    filename=upload.name,
+                    content=upload.read(),
+                )
+            except attachments_service.AttachmentError as exc:
+                status = {"level": "danger", "message": str(exc)}
+            else:
+                current_url = stored["web_url"] or current_url
+                status = {
+                    "level": "success",
+                    "message": f'"{stored["name"]}" uploaded to the {folder_label}.',
+                }
+
+    files = []
+    error = ""
+    if drive is not None:
+        try:
+            _, files = attachments_service.folder_children(
+                drive.drive_id,
+                folder.folder_id if folder else attachments_service.ROOT,
+            )
+        except attachments_service.AttachmentError as exc:
+            # Keep a successful upload's own message; add the listing failure
+            # only when there is not already an alert explaining the outcome.
+            if status is None or status["level"] == "success":
+                error = str(exc)
+
+    form = _event_form(initial={"document_url": current_url})
+    return render(
+        request,
+        "pwms/partials/sharepoint_document_field.html",
+        {
+            "field": form["document_url"],
+            "document_field_id": EVENT_DOCUMENT_FIELD_ID,
+            "options_url": reverse("pwms:workflow_event_document_options"),
+            "upload_url": reverse("pwms:workflow_event_document_upload"),
+            "options_include": "#event-content-type, #event-object-id",
+            "folder_label": folder_label,
+            "document_files": files,
+            "document_options_error": error,
+            "document_status": status,
+            "wrapper_class": request.POST.get("wrapper_class") or "col-12",
+        },
+    )
 
 
 # --- Delegation participants (BR02.3.7/8) ------------------------------------

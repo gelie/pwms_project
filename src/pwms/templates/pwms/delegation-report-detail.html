@@ -51,7 +51,7 @@
               {% if report.report_document_url %}
                 <a href="{{ report.report_document_url }}"
                    rel="noopener"
-                   target="_blank">Open in SharePoint {% lucide "external-link" size=14 %}</a>
+                   target="_blank">{{ report.report_document_url|document_name|default:"Open in SharePoint" }} {% lucide "external-link" size=14 %}</a>
               {% else %}
                 —
               {% endif %}

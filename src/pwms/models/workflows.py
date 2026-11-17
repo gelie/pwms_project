@@ -1270,7 +1270,7 @@ class State(BaseModel):
         on_delete=models.PROTECT,
         related_name="states",
         help_text=(
-            "Simplified citizen-facing status this state publishes as (BRS §12)."
+            "Simplified citizen-facing status this state publishes."
         ),
     )
     slug = AutoSlugField(
@@ -2973,7 +2973,7 @@ class BillVersion(BaseModel):
         max_length=20,
         choices=VERSION_TYPE_CHOICES,
         default=INTRODUCED,
-        help_text=("Introduced bill, amended bill or amendment schedule (BRS §15A)."),
+        help_text=("Introduced bill, amended bill or amendment schedule."),
     )
     version_date = models.DateField(
         default=timezone.localdate,
@@ -2982,7 +2982,7 @@ class BillVersion(BaseModel):
     document_url = models.URLField(
         max_length=2048,
         blank=True,
-        help_text="SharePoint link to this version's document (BRS §7B).",
+        help_text="SharePoint link to this version's document.",
     )
     notes = models.TextField(
         blank=True,
@@ -2994,7 +2994,7 @@ class BillVersion(BaseModel):
         null=True,
         blank=True,
         related_name="bill_versions",
-        help_text="Who recorded this version (BRS §7A contributor accountability).",
+        help_text="Who recorded this version.",
     )
     is_current = models.BooleanField(
         default=False,

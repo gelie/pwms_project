@@ -1,6 +1,12 @@
 {% extends "pwms/workflow-detail.html" %}
 {% block title %}{{ bill.bill_number }}{% endblock title %}
 
+{% block extra_head %}
+  {{ block.super }}
+  {# The referral form's media already brings flatpickr when it is present. #}
+  {% if not referral_form %}{{ version_form.media }}{% endif %}
+{% endblock extra_head %}
+
 {% block breadcrumb %}
   <li class="breadcrumb-item">
     <a href="{% url "pwms:bills" %}">Bills</a>
@@ -74,16 +80,6 @@
             <dd>{{ bill.introduced_date|date:"d M Y"|default:"—" }}</dd>
           </div>
           <div class="workflow-fact">
-            <dt>Responsible committee</dt>
-            <dd>
-              {% if bill.responsible_committee %}
-                <a href="{% url "pwms:group_detail" bill.responsible_committee.pk %}">{{ bill.responsible_committee.name }}</a>
-              {% else %}
-                —
-              {% endif %}
-            </dd>
-          </div>
-          <div class="workflow-fact">
             <dt>Current version</dt>
             <dd>{{ bill.current_version|default:"—" }}</dd>
           </div>
@@ -95,15 +91,25 @@
             <dt>Order paper reference</dt>
             <dd>{{ bill.order_paper_reference|default:"—" }}</dd>
           </div>
+          <div class="workflow-fact">
+            <dt>Responsible committee</dt>
+            <dd>
+              {% if bill.responsible_committee %}
+                <a href="{% url "pwms:group_detail" bill.responsible_committee.pk %}">{{ bill.responsible_committee.name }}</a>
+              {% else %}
+                —
+              {% endif %}
+            </dd>
+          </div>
         </dl>
       </div>
     </div>
     <dl class="workflow-facts">
-      <div class="workflow-fact">
+      <div class="workflow-fact w-50">
         <dt>Bill document</dt>
         <dd>
           {% if bill.bill_document_url %}
-            <a href="{{ bill.bill_document_url }}">Download</a>
+            <a target="_blank" href="{{ bill.bill_document_url }}">{{ bill.bill_document_url|document_name|default:"Download" }}</a>
           {% else %}
             —
           {% endif %}
@@ -116,9 +122,36 @@
 {% block related %}
   <section class="workflow-card">
     <div class="workflow-card-head">
-      <span class="d-flex align-items-center gap-2">{% lucide "file-plus" size=16 %} Version history</span>
-      <span class="badge badge-muted">{{ versions|length }}</span>
+      <span class="d-flex align-items-center gap-2">{% lucide "file-plus" size=16 %} Version history <span class="badge badge-muted">{{ versions|length }}</span></span>
+      <!--<span class="badge badge-muted">{{ versions|length }}</span>-->
+      {# Recording a version is gated on edit (see bill_version_create). #}
+      {% if perms.edit %}
+        <button class="btn btn-sm btn-outline-primary"
+            type="button"
+            data-bs-toggle="collapse"
+            data-bs-target="#version-form"
+            aria-expanded="false"
+            aria-controls="version-form">Add Version</button>
+      {% endif %}
     </div>
+    {% if perms.edit %}
+      <div id="version-form" class="collapse border-bottom">
+        <form method="post"
+              action="{% url "pwms:bill_version_create" bill.public_id %}"
+              class="p-3"
+              novalidate>
+          {% csrf_token %}
+          {% include "pwms/partials/bill_version_fields.html" with form=version_form %}
+          <div class="d-flex gap-2">
+            <button class="btn btn-primary btn-sm" type="submit">Record version</button>
+            <button class="btn btn-link btn-sm"
+                    type="button"
+                    data-bs-toggle="collapse"
+                    data-bs-target="#version-form">Cancel</button>
+          </div>
+        </form>
+      </div>
+    {% endif %}
     <div class="table-responsive">
       <table class="table table-striped table-hover align-middle mb-0">
         <caption class="visually-hidden">Preserved bill versions, newest first</caption>
@@ -144,7 +177,7 @@
               <td>{{ version.version_date|date:"d M Y" }}</td>
               <td>
                 {% if version.document_url %}
-                  <a href="{{ version.document_url }}">Download</a>
+                  <a target="_blank" href="{{ version.document_url }}">{{ version.document_url|document_name|default:"Download" }}</a>
                 {% else %}
                   —
                 {% endif %}

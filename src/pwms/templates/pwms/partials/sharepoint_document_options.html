@@ -1,0 +1,32 @@
+{% comment %}
+Files in one SharePoint folder, as dropdown items for a document URL field.
+Selecting one writes its SharePoint URL into the form field.
+
+Context: document_files (normalised Graph file nodes), document_options_error,
+field_id (the id of the URL input), folder_label.
+{% endcomment %}
+{% for file in document_files %}
+  <li>
+    {% if file.web_url %}
+      <button type="button"
+              class="dropdown-item d-flex justify-content-between align-items-center gap-2"
+              onclick="document.getElementById('{{ field_id|escapejs }}').value='{{ file.web_url|escapejs }}'">
+        <span class="text-truncate">{{ file.name }}</span>
+        <span class="small text-body-secondary text-nowrap">{{ file.size|filesizeformat }}</span>
+      </button>
+    {% else %}
+      <span class="dropdown-item-text small text-body-secondary">{{ file.name }} has no web link.</span>
+    {% endif %}
+  </li>
+{% empty %}
+  {% if not document_options_error %}
+    <li>
+      <span class="dropdown-item-text small text-body-secondary">No documents in the {{ folder_label }} yet.</span>
+    </li>
+  {% endif %}
+{% endfor %}
+{% if document_options_error %}
+  <li>
+    <span class="dropdown-item-text small text-danger">{{ document_options_error }}</span>
+  </li>
+{% endif %}

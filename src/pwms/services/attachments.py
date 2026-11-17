@@ -318,6 +318,33 @@ def link_document(
     )
 
 
+def _upload_file(*, drive, folder, filename, content):
+    """Upload ``content`` into ``folder`` and return its Graph metadata."""
+    metadata = _run(
+        lambda: graph.upload_file(
+            _token(),
+            drive.drive_id,
+            folder.folder_id if folder else ROOT,
+            filename,
+            content,
+        )
+    )
+    if not metadata:
+        raise AttachmentError("SharePoint returned no metadata for the uploaded file.")
+    return metadata
+
+
+def upload_to_folder(*, drive, folder, filename, content):
+    """Upload a file into ``folder`` and return its normalised file node.
+
+    Unlike :func:`upload_document` this does not create an ``Attachment`` row:
+    it backs a URL field, such as a bill version's document link.
+    """
+    return _file_node(
+        _upload_file(drive=drive, folder=folder, filename=filename, content=content)
+    )
+
+
 def upload_document(
     *,
     obj,
@@ -335,17 +362,9 @@ def upload_document(
     item is already attached, the existing row is refreshed in place and the
     upload is recorded as a new version, so ``created`` is ``False``.
     """
-    metadata = _run(
-        lambda: graph.upload_file(
-            _token(),
-            drive.drive_id,
-            folder.folder_id if folder else ROOT,
-            filename,
-            content,
-        )
+    metadata = _upload_file(
+        drive=drive, folder=folder, filename=filename, content=content
     )
-    if not metadata:
-        raise AttachmentError("SharePoint returned no metadata for the uploaded file.")
 
     existing = Attachment.objects.filter(
         content_type=ContentType.objects.get_for_model(obj),

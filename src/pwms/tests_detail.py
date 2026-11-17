@@ -711,6 +711,34 @@ class WorkflowDetailOverviewTests(DetailPageTestCase):
         self.assertNotIn(url, actions_menu)
         self.assertNotIn("Record version", actions_menu)
 
+    def test_bill_document_links_show_the_file_name(self):
+        bill = self._make_bill()
+        bill.bill_document_url = (
+            "https://contoso.sharepoint.com/sites/pwms/Bill%20Text.pdf"
+        )
+        bill.save(update_fields=["bill_document_url"])
+        bill.versions.create(
+            version_label="B OVERVIEW-1",
+            document_url="https://contoso.sharepoint.com/sites/pwms/Amended%20Bill.pdf",
+        )
+
+        page = live_markup(self._get(bill, "bill_detail"))
+
+        self.assertIn("Bill Text.pdf", page)
+        self.assertIn("Amended Bill.pdf", page)
+
+    def test_the_related_tab_counts_bill_versions(self):
+        bill = self._make_bill()
+        bill.versions.create(version_label="B OVERVIEW-1")
+        bill.versions.create(version_label="B OVERVIEW-1 (1st amendment)")
+
+        response = self._get(bill, "bill_detail")
+
+        self.assertContains(
+            response,
+            '<span class="workflow-tab-count" id="tab-related-count">2</span>',
+        )
+
     def test_other_instruments_have_no_record_version_item(self):
         report = self.make_report()
 
