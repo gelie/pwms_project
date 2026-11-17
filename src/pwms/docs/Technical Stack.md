@@ -80,7 +80,7 @@
   back to `LocMemCache` for bare checkouts/tests. Token throttling also uses this
   cache. See [API Reference §5](./API%20Reference.md#5-throttling-and-usage-logs).
 - PWMS API (`pwms/api/`): `EXTERNAL_API_PREFIX` (`/api/v1/`),
-  `EXTERNAL_API_ACCESS_TOKEN_TTL_MINUTES` (default 15) and
+  `EXTERNAL_API_ACCESS_TOKEN_TTL_MINUTES` (default 60) and
   `EXTERNAL_API_REFRESH_TOKEN_TTL_MINUTES` (default 1440, i.e. 24 hours) set
   token lifetimes;
   `EXTERNAL_API_SIGNING_KEY` defaults to `SECRET_KEY`;

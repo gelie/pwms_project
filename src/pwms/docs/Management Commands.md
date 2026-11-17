@@ -437,7 +437,7 @@ python manage.py rotate_api_secret parking-system
 
 The new secret is printed once. Distribute it through the partner's own secure
 channel; it cannot be recovered from the database afterwards. Rotating a secret
-does not invalidate existing 15-minute access tokens, but the old secret can no
+does not invalidate existing 60-minute access tokens, but the old secret can no
 longer mint new ones.
 
 ### Type-level group access

@@ -141,12 +141,12 @@ curl -s -X POST "$BASE/api/v1/auth/token/" \
   -d '{"client_id":"YOUR_ID","client_secret":"YOUR_SECRET"}'</pre>
         <p>
           The response contains <code>access_token</code>,
-          <code>refresh_token</code>, <code>expires_in</code> (900 seconds) and
+          <code>refresh_token</code>, <code>expires_in</code> (3600 seconds) and
           <code>refresh_expires_in</code> (86400 seconds).
         </p>
         <ul>
           <li>
-            <strong>Access token:</strong> 15 minutes. Send it as
+            <strong>Access token:</strong> 60 minutes. Send it as
             <code>Authorization: Bearer &lt;token&gt;</code> on every call.
           </li>
           <li>
@@ -278,10 +278,11 @@ curl -s "$BASE/api/v1/bills/PUBLIC_ID/" \
           <code>bill_stage</code>, <code>bill_stage_date</code>,
           <code>current_version</code>, <code>current_version_date</code>,
           <code>introduced_version</code>,
-          <code>introduced_version_date</code>,
-          <code>identifier</code>, <code>is_overdue</code>,
-          <code>deadline</code>, <code>priority</code>, <code>created_at</code>
-          and <code>updated_at</code>.
+          <code>introduced_version_date</code>, <code>versions</code>,
+          <code>attachments</code>, <code>notes</code>,
+          <code>referrals</code>, <code>identifier</code>,
+          <code>is_overdue</code>, <code>deadline</code>, <code>priority</code>,
+          <code>created_at</code> and <code>updated_at</code>.
         </p>
         <p>
           <code>bill_stage</code> is the citizen-facing status (queried with
@@ -295,6 +296,34 @@ curl -s "$BASE/api/v1/bills/PUBLIC_ID/" \
           <code>introduced_version_date</code> identify the original version
           of the bill. Dates are
           ISO 8601; empty values are <code>null</code> or an empty string.
+        </p>
+        <p>
+          <code>versions</code> is the bill's preserved version history, newest
+          first: <code>version_label</code>, <code>version_type</code>,
+          <code>version_date</code>, <code>document_url</code>,
+          <code>notes</code>, <code>recorded_by</code>,
+          <code>is_current</code>, <code>created_at</code> and
+          <code>updated_at</code>. <code>attachments</code> lists the bill's
+          SharePoint documents with <code>name</code>, <code>type</code>,
+          <code>mimetype</code>, <code>size</code>,
+          <code>sharepoint_web_url</code>, <code>download_url</code>,
+          <code>sharepoint_folder_path</code>, <code>uploaded_by</code> and their
+          own <code>versions</code> (<code>version_id</code>, <code>size</code>,
+          <code>modified_at</code>, <code>modified_by</code>,
+          <code>is_current</code>). Use those SharePoint URLs to open a
+          document; file bytes are never streamed by the API.
+        </p>
+        <p>
+          <code>notes</code> is the bill's note log, newest first
+          (<code>author</code>, <code>body</code>, <code>created_at</code>).
+          <code>referrals</code> lists the groups the bill was referred to
+          (<code>referred_to</code>, <code>referred_by</code>,
+          <code>due_date</code>, <code>status</code>, <code>is_open</code>,
+          <code>is_overdue</code>, response and recall fields, and its own
+          <code>notes</code>). All four collections — <code>versions</code>,
+          <code>attachments</code>, <code>notes</code> and
+          <code>referrals</code> — are always present, and empty when the bill
+          has nothing recorded.
         </p>
       </section>
 
@@ -314,7 +343,7 @@ curl -s "$BASE/api/v1/bills/PUBLIC_ID/" \
       <section>
         <h2>7. Practical tips</h2>
         <ul>
-          <li>Refresh before the 15-minute access token expires; handle <code>401</code> once.</li>
+          <li>Refresh before the 60-minute access token expires; handle <code>401</code> once.</li>
           <li>Use the <code>public_id</code> from the response, not an internal ID.</li>
           <li>Request only the page size you need; 20–50 keeps responses fast.</li>
           <li>Each key has a requests-per-minute limit (60 by default; your registration may differ).</li>

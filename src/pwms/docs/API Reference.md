@@ -90,7 +90,7 @@ Content-Type: application/json
   "access_token": "…",
   "refresh_token": "…",
   "token_type": "Bearer",
-  "expires_in": 900,
+  "expires_in": 3600,
   "refresh_expires_in": 86400,
   "scope": "users:read memberships:read"
 }
@@ -105,7 +105,7 @@ Authorization: Bearer <access_token>
 
 | Credential | Lifetime | Notes |
 | --- | --- | --- |
-| Access token | **15 minutes** | Stateless signed payload; embeds the client id and granted scopes. |
+| Access token | **60 minutes** | Stateless signed payload; embeds the client id and granted scopes. |
 | Refresh token | **24 hours** | Opaque random token, stored as a SHA-256 hash. Single use. |
 
 Access tokens are re-checked against the client's **current** `is_active` flag
@@ -328,11 +328,40 @@ Exposed fields: `public_id`, `bill_number`, `title`, `short_title`,
 `description`, `bill_type`, `house_of_origin`, `sponsor` (nested user
 reference), `sponsor_name`, `introduced_date`, `responsible_committee` (nested
 group reference), `atc_reference`, `order_paper_reference`,
-`bill_document_url`, `public_status`, `current_version`, `identifier`,
-`is_overdue`, `deadline`, `priority`, `created_at`, `updated_at`.
+`bill_document_url`, `public_status`, `current_version`, `versions`,
+`attachments`, `notes`, `referrals`, `identifier`, `is_overdue`, `deadline`,
+`priority`, `created_at`, `updated_at`.
 
 `public_status` is the citizen-facing status derived from the bill's internal
 workflow state, not the internal state name.
+
+`versions` is the bill's preserved version history, newest first. Each entry
+carries `public_id`, `version_label`, `version_type` (`introduced`, `amended` or
+`amendment_schedule`), `version_date`, `document_url`, `notes`, `recorded_by`
+(nested user reference), `is_current`, `created_at` and `updated_at`.
+
+`attachments` lists the SharePoint documents filed against the bill. Each entry
+carries `public_id`, `name`, `type`, `mimetype`, `size`,
+`sharepoint_web_url`, `download_url`, `sharepoint_folder_path`, `uploaded_by`
+(nested user reference), `created_at`, `updated_at` and its own `versions`.
+An attachment version carries `public_id`, `version_id` (SharePoint's label,
+e.g. `2.0`), `size`, `modified_at`, `modified_by`, `is_current` and
+`created_at`. Document content is fetched through the SharePoint URLs; the API
+never streams file bytes.
+
+`notes` is the bill's note log, newest first. Each entry carries `public_id`,
+`author` (nested user reference), `body`, `created_at` and `updated_at`.
+
+`referrals` lists the groups the bill was referred to, newest first. Each entry
+carries `public_id`, `referred_to` (nested group reference), `referred_by`
+(nested user reference), `referred_at`, `due_date`, `status` (`open`,
+`responded`, `recalled`, `expired` or `cancelled`), `is_open`, `is_overdue`,
+`responded_at` / `responded_by`, `response_document_url`, `response_notes`,
+`recalled_at` / `recalled_by`, `recall_reason`, `notes`, `created_at` and
+`updated_at`.
+
+`versions`, `attachments`, `notes` and `referrals` are always present as arrays —
+empty when the bill has none recorded.
 
 ---
 

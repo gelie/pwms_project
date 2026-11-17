@@ -19,7 +19,17 @@ from django.utils import timezone
 from ninja import NinjaAPI, Router
 from ninja.errors import HttpError
 
-from ..models import Bill, Group, GroupMembership, TransitionLog, User
+from ..models import (
+    Attachment,
+    Bill,
+    BillVersion,
+    Group,
+    GroupMembership,
+    TransitionLog,
+    User,
+    WorkflowNote,
+    WorkflowReferral,
+)
 from .auth import api_auth, require_scope
 from .models import ApiClient
 from .schemas import (
@@ -182,8 +192,58 @@ def _bill_queryset():
         )
         # current_version / introduced_version / *_date are derived from the
         # version history on the model; one query per page instead of per bill.
-        .prefetch_related("versions")
+        # The history and each attachment's version mirror are also serialised.
+        .prefetch_related(
+            Prefetch(
+                "versions",
+                queryset=BillVersion.objects.select_related("recorded_by"),
+            ),
+            Prefetch(
+                "attachments",
+                queryset=Attachment.objects.select_related(
+                    "uploaded_by"
+                ).prefetch_related("versions"),
+            ),
+        )
     )
+
+
+def _attach_bill_relations(bills):
+    """Bulk-load each bill's note log and referrals (one query per kind).
+
+    Both are generic-FK rows with no reverse relation, so they cannot be
+    prefetched through ``prefetch_related``. Fetching them for the whole page in
+    two queries and attaching the lists keeps list responses free of N+1
+    queries; the schema reads ``api_notes`` / ``api_referrals``.
+    """
+    bills = list(bills)
+    if not bills:
+        return bills
+    content_type = ContentType.objects.get_for_model(Bill)
+    object_ids = [bill.pk for bill in bills]
+
+    notes_by_bill = {}
+    for note in (
+        WorkflowNote.objects.filter(content_type=content_type, object_id__in=object_ids)
+        .select_related("author")
+        .order_by("-created_at", "-id")
+    ):
+        notes_by_bill.setdefault(note.object_id, []).append(note)
+
+    referrals_by_bill = {}
+    for referral in (
+        WorkflowReferral.objects.filter(
+            content_type=content_type, object_id__in=object_ids
+        )
+        .select_related("referred_to", "referred_by", "responded_by", "recalled_by")
+        .order_by("-referred_at", "-id")
+    ):
+        referrals_by_bill.setdefault(referral.object_id, []).append(referral)
+
+    for bill in bills:
+        bill.api_notes = notes_by_bill.get(bill.pk, [])
+        bill.api_referrals = referrals_by_bill.get(bill.pk, [])
+    return bills
 
 
 def _group_queryset():
@@ -512,6 +572,13 @@ def _bill_ordering(value: str) -> str:
     return value
 
 
+def _bills_page(request, queryset, limit: int, offset: int) -> dict:
+    """Paginate bills, then bulk-load each page's notes and referrals."""
+    page = _paginate(request, queryset, limit, offset)
+    _attach_bill_relations(page["results"])
+    return page
+
+
 @bills_router.get(
     "/",
     response={200: BillPage, 400: ErrorOut, 403: ErrorOut},
@@ -546,7 +613,7 @@ def list_bills(
             group_filter_q("responsible_committee", responsible_committee)
         )
 
-    return _paginate(
+    return _bills_page(
         request, queryset.order_by(_bill_ordering(ordering)), limit, offset
     )
 
@@ -558,7 +625,9 @@ def list_bills(
 )
 def get_bill(request, public_id: UUID):
     require_scope(request, Scope.BILLS_READ)
-    return get_object_or_404(_bill_queryset(), public_id=public_id)
+    bill = get_object_or_404(_bill_queryset(), public_id=public_id)
+    _attach_bill_relations([bill])
+    return bill
 
 
 # ---------------------------------------------------------------------------
@@ -655,7 +724,7 @@ def search(request, q: str, resources: str = "", limit: int = 10, offset: int = 
 
     if "bills" in selected:
         queryset = apply_search(_bill_queryset(), term, BILL_SEARCH_FIELDS)
-        payload["bills"] = _paginate(
+        payload["bills"] = _bills_page(
             request, queryset.order_by("-created_at"), limit, offset
         )
 

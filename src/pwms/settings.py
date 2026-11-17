@@ -87,7 +87,7 @@ MIDDLEWARE = [
 # client id/secret for a short-lived access token.
 EXTERNAL_API_PREFIX = "/api/v1/"
 EXTERNAL_API_ACCESS_TOKEN_TTL_MINUTES = config(
-    "EXTERNAL_API_ACCESS_TOKEN_TTL_MINUTES", default=15, cast=int
+    "EXTERNAL_API_ACCESS_TOKEN_TTL_MINUTES", default=60, cast=int
 )
 EXTERNAL_API_REFRESH_TOKEN_TTL_MINUTES = config(
     "EXTERNAL_API_REFRESH_TOKEN_TTL_MINUTES", default=1440, cast=int

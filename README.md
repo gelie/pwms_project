@@ -52,7 +52,7 @@ ContentType-linked RBAC layer, and everything that happens to an instrument is
 - **Authentication** — Active Directory (LDAP) sign-in that falls back to the
   local database, so the app boots and signs in without a directory.
 - **PWMS API** (Django-Ninja) for registered partner applications, with
-  client-id/secret authentication, 15-minute access tokens and rotating
+  client-id/secret authentication, 60-minute access tokens and rotating
   24-hour refresh tokens, per-resource scopes, usage logs and per-key throttling.
   It exposes read-only **users**, **groups**, **memberships** and **bills**, plus a
   **cross-resource search** endpoint and **OpenAPI / Swagger** docs. The previous
@@ -149,9 +149,9 @@ IDNO_HMAC_KEY=change-me-too
 # keys are required. IDNO_ENC_KEY must be a Fernet key — generate one with:
 #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 IDNO_ENC_KEY=change-me-too
-# PWMS API: access tokens live 15 minutes, refresh tokens 24 hours; the
+# PWMS API: access tokens live 60 minutes, refresh tokens 24 hours; the
 # token endpoint is rate-limited per client IP.
-EXTERNAL_API_ACCESS_TOKEN_TTL_MINUTES=15
+EXTERNAL_API_ACCESS_TOKEN_TTL_MINUTES=60
 EXTERNAL_API_REFRESH_TOKEN_TTL_MINUTES=1440
 EXTERNAL_API_TOKEN_THROTTLE_RATE=20/min
 # Default requests/minute for a newly registered API client (per-client override

@@ -141,12 +141,12 @@ curl -s -X POST "$BASE/api/v1/auth/token/" \
   -d '{"client_id":"YOUR_ID","client_secret":"YOUR_SECRET"}'</pre>
         <p>
           The response contains <code>access_token</code>,
-          <code>refresh_token</code>, <code>expires_in</code> (900 seconds) and
+          <code>refresh_token</code>, <code>expires_in</code> (3600 seconds) and
           <code>refresh_expires_in</code> (86400 seconds).
         </p>
         <ul>
           <li>
-            <strong>Access token:</strong> 15 minutes. Send it as
+            <strong>Access token:</strong> 60 minutes. Send it as
             <code>Authorization: Bearer &lt;token&gt;</code> on every call.
           </li>
           <li>
@@ -307,7 +307,7 @@ curl -s "$BASE/api/v1/users/PUBLIC_ID/" \
       <section>
         <h2>7. Practical tips</h2>
         <ul>
-          <li>Refresh before the 15-minute access token expires; handle <code>401</code> once.</li>
+          <li>Refresh before the 60-minute access token expires; handle <code>401</code> once.</li>
           <li>Send booleans as <code>true</code> / <code>false</code>, e.g. <code>is_mp=true</code>.</li>
           <li>Use the <code>public_id</code>, not an internal ID or a username, as the stable identifier.</li>
           <li>Request only the page size you need; 20–50 keeps responses fast.</li>
