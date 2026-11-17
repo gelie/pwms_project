@@ -417,9 +417,31 @@ class MeetingNotificationTests(MeetingFixture):
         # The attendee hears about it; the actor does not hear about their own act.
         self.assertIn(self.attendee.pk, recipients)
         self.assertNotIn(self.organiser.pk, recipients)
-        self.assertTrue(
+        # ...but the attendee is an invitee outside the affected groups, so the
+        # alert is in-app only.
+        self.assertFalse(
             Notification.objects.filter(
                 kind="meeting-created", channel="email", recipient=self.attendee
+            ).exists()
+        )
+
+    def test_staff_of_an_affected_group_are_emailed(self):
+        secretary = User.objects.create_user(
+            username="meeting-secretary",
+            email="secretary@example.com",
+            password="pw",
+            is_staff_member=True,
+        )
+        GroupMembership.objects.create(
+            user=secretary, group=self.ict_group, role=self.ecm_role
+        )
+        meeting = self._meeting(host_group=self.ict_group)
+
+        notify_meeting_created(meeting, actor=self.organiser)
+
+        self.assertTrue(
+            Notification.objects.filter(
+                kind="meeting-created", channel="email", recipient=secretary
             ).exists()
         )
 

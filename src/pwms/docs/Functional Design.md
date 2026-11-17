@@ -378,8 +378,17 @@ Consumers:
 People are told when something happens or is due, without watching a page:
 
 - A **`Notification`** row is written per (recipient, channel, event): an
-  `in_app` row that backs the navbar bell, and — when the recipient has an email
-  address — an `email` row that is both the message and the delivery log.
+  `in_app` row that backs the navbar bell, and — when the recipient is staff of
+  an affected group and has an email address — an `email` row that is both the
+  message and the outbound-email log.
+- **Every outbound email is in that log.** Explicit report and record sharing
+  writes one `email` row per addressed recipient (including external addresses
+  with no `User` account); it never writes a bell row. Each row snapshots the
+  `to_email` / `from_email` actually used, so a later profile or settings change
+  cannot rewrite what was sent.
+- **The log is append-only**: both `Notification` and `ReportShare` are read-only
+  and undeletable in the admin; a share can be revoked but not erased. A failed
+  send keeps its reason (`error`) and attempt count.
 - Dispatch happens on explicit **domain methods**, never on `save()`:
   `perform_transition()`, `refer()`,
   `WorkflowReferral.respond()` / `recall()` / `mark_expired()` and the create
@@ -388,7 +397,14 @@ People are told when something happens or is due, without watching a page:
   names (`notify_roles` plus the roles allowed to act next), and the people the
   record names (`owner`, `assigned_to`) — minus the actor and anyone who cannot
   VIEW the instance. A referral notifies the referred group's active members plus
-  the named people.
+  the named people. **Email is narrower than the bell**: it goes only to active
+  staff (`is_staff_member`, or `employee_type` of `staff`/`graduate`) who belong
+  to an affected group — the type's group, the groups the record grants access
+  to, the groups it names (responsible committee/group, host group, referral
+  committees), and a referral's `referred_to` group.
+- **Mail is multipart**: the stored plain-text body (`emails/notification.txt`)
+  travels with an HTML alternative (`emails/notification.html`), exactly as the
+  report-share and instrument-share messages already do.
 - **Email is queued, not sent inline**: the row's background task is written in
   the *same transaction* as the row, so a rolled-back workflow change queues
   nothing and a crash after COMMIT cannot lose the send. `manage.py
@@ -441,9 +457,11 @@ file — without ever widening anyone's access.
   single record as a formal, filed-style document (`/pwms/instruments/<id>/document/`).
 - **Sharing** mints a token-addressed read-only link (optionally expiring) and
   can email it — with the exported file attached — on a daily / weekly / monthly
-  schedule. A share always re-renders the **creator's** figures, so a link never
-  widens to the reader's access; opens are counted and a revoked or expired link
-  answers 410 Gone.
+  schedule. Every addressed recipient is recorded in the outbound-email log
+  (`report-share` rows, one per recipient, with the envelope snapshot and the
+  send outcome). A share always re-renders the **creator's** figures, so a link
+  never widens to the reader's access; opens are counted and a revoked or expired
+  link answers 410 Gone.
 
 Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations.md).
 
@@ -520,7 +538,8 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
   week start, a *Next up* strip, a JSON feed, and **CSV/XLSX import and export**
   ([Meetings Import & Export](./Meetings%20Import%20%26%20Export.md)).
 - **Django Admin** for administration (users, groups, roles, memberships,
-  workflow definitions, the SharePoint mirror, and notifications — read-only).
+  workflow definitions, the SharePoint mirror, and the notification/email log —
+  read-only and undeletable).
 - **PWMS API (Django-Ninja)** for registered partner applications: scoped
   read-only users, groups, memberships and bills, with app-key authentication,
   short-lived access/refresh tokens, usage logs, per-key throttling and

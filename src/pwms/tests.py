@@ -4457,7 +4457,10 @@ class CheckReferralDeadlinesCommandTests(TestCase):
             username="deadline-owner", email="owner@example.com", password="pw"
         )
         cls.member = User.objects.create_user(
-            username="deadline-member", email="member@example.com", password="pw"
+            username="deadline-member",
+            email="member@example.com",
+            password="pw",
+            is_staff_member=True,
         )
         cls.committee = Group.objects.create(
             name="Deadline Committee XZ", group_type="portfolio_committee"
@@ -4490,16 +4493,11 @@ class CheckReferralDeadlinesCommandTests(TestCase):
 
         self.run_command()
 
-        # One message per recipient: each delivery is logged on its own
-        # notification row, and the committee is not shown the owner's address.
-        self.assertEqual(len(mail.outbox), 2)
-        self.assertEqual(
-            sorted(message.to[0] for message in mail.outbox),
-            ["member@example.com", "owner@example.com"],
-        )
-        self.assertTrue(
-            all("Referred report" in message.subject for message in mail.outbox)
-        )
+        # Only the referred committee's staff are emailed; the owner is told
+        # in-app but is not a member of an affected group.
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertEqual(mail.outbox[0].to, ["member@example.com"])
+        self.assertIn("Referred report", mail.outbox[0].subject)
         referral.refresh_from_db()
         self.assertIsNotNone(referral.deadline_notified_at)
 
@@ -4510,7 +4508,7 @@ class CheckReferralDeadlinesCommandTests(TestCase):
         self.run_command()
 
         # One reminder run, one message per recipient; the second run is silent.
-        self.assertEqual(len(mail.outbox), 2)
+        self.assertEqual(len(mail.outbox), 1)
 
     def test_second_reminder_fires_inside_the_last_hour(self):
         self._referral(
@@ -4520,10 +4518,9 @@ class CheckReferralDeadlinesCommandTests(TestCase):
 
         self.run_command()
 
-        self.assertEqual(len(mail.outbox), 2)
-        self.assertTrue(
-            all("Referred report" in message.subject for message in mail.outbox)
-        )
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertTrue(mail.outbox[0].to == ["member@example.com"])
+        self.assertIn("Referred report", mail.outbox[0].subject)
 
     def test_passed_deadline_is_marked_expired(self):
         referral = self._referral(due_in=timedelta(hours=-2))
@@ -4533,8 +4530,8 @@ class CheckReferralDeadlinesCommandTests(TestCase):
         referral.refresh_from_db()
         self.assertEqual(referral.status, "expired")
         # mark_expired() raises the notice itself, so exactly one per recipient.
-        self.assertEqual(len(mail.outbox), 2)
-        self.assertTrue(all("Expired" in message.subject for message in mail.outbox))
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("Expired", mail.outbox[0].subject)
 
     def test_answered_referrals_are_left_alone(self):
         referral = self._referral(due_in=timedelta(hours=-2), status="responded")

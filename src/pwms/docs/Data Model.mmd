@@ -40,4 +40,9 @@ erDiagram
     InternationalResolution ||--o{ TransitionLog : "GFK content"
     InternationalResolution ||--o{ auditlog.LogEntry : "GFK content (registered)"
 
-    ReportShare }o--|| User : "created_by (SET_NULL)"
+    ReportShare }o--o| User : "created_by (SET_NULL)"
+
+    Notification }o--o| User : "recipient (SET_NULL)"
+    Notification }o--o| User : "actor (SET_NULL)"
+    Notification }o--o| AbstractLegislativeWorkflow : "GFK content"
+    Notification }o--o| ReportShare : "GFK content (shares)"

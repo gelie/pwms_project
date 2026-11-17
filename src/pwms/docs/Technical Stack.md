@@ -18,7 +18,7 @@
 | `django.contrib.*` | admin, auth, sessions, messages, contenttypes, staticfiles |
 | `django-auth-ldap` (+ `python-ldap`) | Active Directory sign-in; `pwms.backends.GracefulLDAPBackend` maps an authenticated AD account onto its existing ERP user |
 | `django-auditlog` | automatic CRUD audit trail (`LogEntry`); middleware captures the acting user |
-| `django-background-tasks` | async background task queue; `pwms/tasks.py` registers alert-email delivery and the scheduled-report drain, served by `manage.py process_tasks` |
+| `django-background-tasks` | async background task queue; `pwms/tasks.py` registers alert-email delivery and the scheduled-report drain, served by `manage.py process_tasks`. Explicit report/record shares send inline, not through the queue |
 | `django-mptt` | hierarchical `Group` trees (Houses → Committees → …) |
 | `lucide` | server-rendered UI icons; Bootstrap 5 itself is **vendored** under `static/` (`bootstrap.min.css` + `bootstrap.bundle.min.js`), not loaded via the `django-bootstrap5` template tags |
 | `django-chartjs` | (declared/installed, but not used) charting; the detail page's progress ring is inline SVG + CSS, so no chart library is shipped to the browser yet |
@@ -94,12 +94,16 @@
   `/api/v1/openapi.json`.
 - `auditlog.middleware.AuditlogMiddleware` runs after auth so changes are attributed to the logged-in user.
 - Logging: console/file handler writing to the configured `LOG_DIR` (`pwms.log`).
-- Alerting email (`src/pwms/notifications/`): `MAILERS["default"]` uses the
-  console backend, so outbound alerts print to the console in development (swap
-  in SMTP to deliver them); `DEFAULT_FROM_EMAIL` sets the sender and
-  `PWMS_BASE_URL` makes the links in alert mail absolute. The
-  `pwms.notifications.alerts` context processor feeds the navbar bell
-  (`unread_alert_count` + the five newest `in_app` alerts).
+- Outbound email (`src/pwms/notifications/`): `EMAIL_BACKEND` is the console
+  backend when `DEBUG`, otherwise SMTP (configurable with `EMAIL_BACKEND` /
+  `EMAIL_HOST`), so outbound mail prints to the console in development and is
+  delivered in production; `DEFAULT_FROM_EMAIL` sets the sender and
+  `PWMS_BASE_URL` makes the links absolute. Every message is multipart (stored
+  text + an HTML alternative) and logged in `Notification` with a
+  `to_email`/`from_email` snapshot and delivery outcome — alert mail and explicit
+  report/record shares alike. The `pwms.notifications.alerts` context processor
+  feeds the navbar bell (`unread_alert_count` + the five newest `in_app`
+  alerts).
 - `MEETING_CALENDAR_WEEK_START`: the day the Meetings calendar's weeks begin on
   — a weekday name (`"monday"` … `"sunday"`) or an index (`0` = Monday … `6` =
   Sunday); anything unrecognised falls back to Monday. Readers can override it
@@ -135,20 +139,24 @@
 
 - Test modules: `pwms/tests.py` (auditing, workflow CRUD, lookups),
   `pwms/tests_api.py` (app keys, tokens, scopes, throttling, usage logs),
-  `pwms/tests_notifications.py` (alerts + email dispatch),
-  `pwms/tests_attachments.py` (SharePoint attachments & versioning),
-  `pwms/tests_reports.py` (report builder, exports, sharing, scheduling),
-  `pwms/tests_detail.py` (the tabbed detail page, the merged timeline, progress,
-  diagrams),
-  `pwms/tests_authentication.py` (AD/LDAP sign-in + fallback) and
-  `pwms/tests_executive.py` (executive-branch identity rules).
+  `pwms/tests_notifications.py` (alert audience, delivery, envelope snapshots and
+  the append-only log), `pwms/tests_attachments.py` (SharePoint attachments &
+  versioning), `pwms/tests_reports.py` (report builder, exports, sharing,
+  scheduling and per-recipient share logging), `pwms/tests_workflow_share.py`
+  (record sharing), `pwms/tests_detail.py` (the tabbed detail page, the merged
+  timeline, progress, diagrams), `pwms/tests_authentication.py` (AD/LDAP sign-in +
+  fallback) and `pwms/tests_executive.py` (executive-branch identity rules).
 - Run from the repo root; `pwms.*` test modules resolve through the editable
   install (single import identity):
 
 ```bash
 .venv/bin/python manage.py test pwms.tests pwms.tests_api pwms.tests_attachments \
-  pwms.tests_authentication pwms.tests_detail pwms.tests_executive \
-  pwms.tests_notifications pwms.tests_reports
+  pwms.tests_authentication pwms.tests_bill_folders pwms.tests_detail \
+  pwms.tests_detail_actions pwms.tests_executive pwms.tests_meetings \
+  pwms.tests_messages pwms.tests_notifications pwms.tests_referral_access \
+  pwms.tests_referrals pwms.tests_reports pwms.tests_reset_groups \
+  pwms.tests_reset_site_members pwms.tests_state_colors pwms.tests_transitions \
+  pwms.tests_workflow_share
 ```
 
 - Tests run on a throwaway test database (PostgreSQL test DB). CI also starts a

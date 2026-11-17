@@ -458,10 +458,11 @@ one transition, then find the move on the **Timeline**.
    edited afterwards, and that only an administrator can revoke it.
 4. Finally, the bell. Open it, then **View all alerts**. Say that opening an alert
    marks it read but *viewing the page marks nothing*, and that **Mark all read**
-   clears everything. Then the caution: alert email depends on the mail service and
-   a background worker being configured, so if email is not arriving, the bell is
-   still telling the truth — check with the administrator rather than re-recording
-   anything.
+   clears everything. Say that the bell is the full audience, while email copies go
+   only to **staff in the affected groups**. Then the caution: alert email depends on
+   the mail service and a background worker being configured, so if email is not
+   arriving, the bell is still telling the truth — check with the administrator
+   rather than re-recording anything.
 
 ### 6.10 Wrap — help, house rules and the exit ticket (6 min)
 

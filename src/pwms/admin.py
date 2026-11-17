@@ -1158,17 +1158,32 @@ class CityAdmin(admin.ModelAdmin):
 
 @admin.register(Notification)
 class NotificationAdmin(admin.ModelAdmin):
-    """Read-mostly view of every alert the system recorded.
+    """Read-only view of every in-app alert and outbound email.
 
     These rows *are* the delivery log — who was told, on which channel, and
     whether the mail went out — so the useful operations are reading and
-    filtering. Every field is read-only: editing a row would falsify the record
-    it exists to keep.
+    filtering. Every field is read-only and rows cannot be deleted: editing or
+    erasing one would falsify the record it exists to keep.
     """
 
-    list_display = ("created_at", "recipient", "kind", "channel", "status", "subject")
+    list_display = (
+        "created_at",
+        "recipient",
+        "to_email",
+        "kind",
+        "channel",
+        "status",
+        "subject",
+    )
     list_filter = ("channel", "kind", "status")
-    search_fields = ("subject", "body", "recipient__username", "recipient__email")
+    search_fields = (
+        "subject",
+        "body",
+        "to_email",
+        "from_email",
+        "recipient__username",
+        "recipient__email",
+    )
     raw_id_fields = ("recipient", "actor")
     date_hierarchy = "created_at"
     ordering = ("-created_at",)
@@ -1181,15 +1196,20 @@ class NotificationAdmin(admin.ModelAdmin):
         # Raised by workflow activity, never typed in.
         return False
 
+    def has_delete_permission(self, request, obj=None):
+        # The log is evidence. Deleting a row would erase who was told what.
+        return False
+
 
 @admin.register(ReportShare)
 class ReportShareAdmin(admin.ModelAdmin):
-    """Read-mostly view of shared report links, plus a revoke action.
+    """Read-only view of shared report links, plus a revoke action.
 
     A share is a standing grant of access to one report's figures, so the row
-    records what was handed out and to whom. Nothing is editable — falsifying an
-    expiry or a recipient list would misrepresent that record — but a link can
-    be cut off, which is the one write an administrator actually needs.
+    records what was handed out and to whom. Nothing is editable or deletable —
+    falsifying an expiry or a recipient list would misrepresent that record —
+    but a link can be cut off, which is the one write an administrator actually
+    needs.
     """
 
     list_display = (
@@ -1217,6 +1237,10 @@ class ReportShareAdmin(admin.ModelAdmin):
 
     def has_add_permission(self, request):
         # Minted from the reports page, never typed in.
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        # A share records what was handed out; revoke it, do not erase it.
         return False
 
     @admin.action(description="Revoke selected report links")

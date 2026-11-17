@@ -19,6 +19,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils import timezone
 
+from ..notifications import record_email
 from .instruments import instrument_content
 from .sharing import default_from_email
 
@@ -66,6 +67,7 @@ def send_instrument_share_email(
     subject = f"Shared with you: {subject}"
     text_body = render_to_string(TEXT_TEMPLATE, context)
     html_body = render_to_string(HTML_TEMPLATE, context)
+    from_email = default_from_email()
 
     attachment = None
     if attachment_format:
@@ -74,12 +76,36 @@ def send_instrument_share_email(
 
     reply_to = [sender.email] if getattr(sender, "email", "") else None
 
+    # One log row per recipient, written before the send so a crash still leaves
+    # evidence of who was meant to receive the document. Each message goes to a
+    # single address, so recipients are not disclosed to one another.
+    rows = [
+        record_email(
+            kind="instrument-share",
+            subject=subject,
+            body=text_body,
+            html_body=html_body,
+            to_email=address,
+            from_email=from_email,
+            actor=sender,
+            url=link,
+            target=instance,
+            context={
+                "type": instance._meta.label,
+                "public_id": str(instance.public_id),
+                "attachment_format": attachment_format,
+                "reply_to": reply_to or [],
+            },
+        )
+        for address in recipients
+    ]
+
     sent = 0
-    for address in recipients:
+    for index, address in enumerate(recipients):
         email = EmailMultiAlternatives(
             subject=subject,
             body=text_body,
-            from_email=default_from_email(),
+            from_email=from_email,
             to=[address],
             reply_to=reply_to,
         )
@@ -87,7 +113,22 @@ def send_instrument_share_email(
         if attachment is not None:
             filename, content, media_type = attachment
             email.attach(filename, content, media_type)
-        email.send(fail_silently=False)
+        try:
+            email.send(fail_silently=False)
+        except Exception as error:
+            row = rows[index]
+            row.attempts = 1
+            row.mark_failed(error)
+            # The remaining addresses were never attempted; record that rather
+            # than leaving them ``pending`` forever.
+            for pending in rows[index + 1 :]:
+                pending.attempts = 1
+                pending.mark_failed("not attempted: an earlier send failed")
+            raise
+
+        row = rows[index]
+        row.attempts = 1
+        row.mark_sent()
         sent += 1
 
     logger.info(

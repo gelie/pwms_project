@@ -88,7 +88,7 @@ pwms_project/                     # repo root (git) — run manage.py from here
     │   ├── geography.py          # Country, City (reference data)
     │   ├── sharepoint.py         # SharePoint sync models
     │   ├── attachments.py        # Attachment, AttachmentVersion
-    │   ├── notifications.py      # Notification (bell + delivery log)
+    │   ├── notifications.py      # Notification (bell + outbound-email log)
     │   ├── reports.py            # ReportShare
     │   ├── workflows.py          # engine + instances + RBAC + events
     │   ├── meetings.py          # Meeting + MeetingAttendance (the Events workflow)
@@ -99,7 +99,7 @@ pwms_project/                     # repo root (git) — run manage.py from here
     │   ├── auth.py / tokens.py   # bearer auth, signed access + rotating refresh tokens
     │   ├── scopes.py             # users:read / memberships:read / bills:read
     │   └── throttling.py         # per-key rate limit + IP-scoped token throttle
-    ├── notifications/            # audience rules, dispatch, bell context
+    ├── notifications/            # audience rules, dispatch, share logging, bell context
     ├── reporting/                # builder, exports, instruments, sharing
     ├── membership/
     │   ├── resolver.py          # GroupResolver: Oracle pair -> seeded Group (+ group_aliases.csv)
@@ -299,13 +299,14 @@ helpers in `pwms/services/permissions.py`.
 
 ## 5. Auditing
 
-Two complementary mechanisms record history:
+These mechanisms record history:
 
 | Mechanism | Records | Granularity |
 | --- | --- | --- |
 | `auditlog.LogEntry` | every **create / update / delete** of a registered workflow instance | field-level before/after diffs, actor, IP, timestamp |
 | `pwms.TransitionLog` | every **semantic state transition** | `from_state → to_state`, actor, comment, IP, action label |
 | `pwms.WorkflowEvent` | every **domain event** (document attached, ATC published, referral created/responded/...) | append-only, typed registry (`EventType`), JSON payload, actor, origin |
+| `pwms.Notification` | every **in-app alert and outbound email** (alerts and explicit report/record shares) | one row per recipient, with subject, text/HTML body, envelope snapshot, status, attempts and error |
 
 - Registration happens in `PwmsConfig.ready()`: all four concrete subclasses
   (`InternationalResolution`, `DelegationReport`, `InternationalAgreement`,
@@ -318,6 +319,12 @@ Two complementary mechanisms record history:
   audit entries — they are typed rows whose lifecycle emits `WorkflowEvent` rows.
 - `perform_transition()` writes a `TransitionLog` row **and** the resulting
   `current_state` change is captured by auditlog as an UPDATE entry.
+- The `Notification` log is **append-only at the admin layer**: both it and
+  `ReportShare` are read-only and undeletable there. Alert email is queued (the
+  row records retries and the final outcome); explicit share email sends inline
+  and records one attempt per addressed recipient, including external addresses
+  with no `User` account. `to_email` / `from_email` snapshot the envelope so a
+  later profile or settings change cannot rewrite what was sent.
 - `utils/audit_helpers.py` exposes `get_audit_trail_for_instance(instance)` and
   `get_audit_trail_by_public_id(model_class, public_id)` used by the API.
 

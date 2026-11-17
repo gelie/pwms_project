@@ -11,8 +11,9 @@ ContentType-linked RBAC layer, and everything that happens to an instrument is
 **fully audited** (CRUD history + state-transition events).
 
 > **Status:** active early development (`0.1.0`). The workflow/RBAC/audit core,
-> Active Directory sign-in with a local fallback, in-app alerts and queued email
-> dispatch, SharePoint document attachments (with version history), a
+> Active Directory sign-in with a local fallback, in-app alerts and an
+> append-only outbound-email log (queued alerts and explicit report/record
+> shares), SharePoint document attachments (with version history), a
 > permission-scoped report builder (preview, exports, per-instrument documents,
 > sharing, scheduled delivery), the partner-facing Django-Ninja API
 > (scoped app keys with short-lived access/refresh tokens, usage logging and
@@ -37,7 +38,8 @@ ContentType-linked RBAC layer, and everything that happens to an instrument is
   - `TransitionLog` records each semantic state transition (who, from → to, comment, IP).
   - `WorkflowEvent` records append-only domain events (documents, referrals, …).
 - **Alerts & email** — a `Notification` table that is both the navbar bell and
-  the delivery log; dispatch is queued through `django-background-tasks`.
+  the append-only outbound-email log (alerts and explicit report/record shares);
+  dispatch is queued through `django-background-tasks`.
 - **Documents** — SharePoint attachments on every workflow record, with on-demand
   version history and `document-*` events on the audit trail.
 - **Meetings (the Events workflow)** — a **colour-coded calendar dashboard**
@@ -78,7 +80,7 @@ pwms_project/                     # repo root — run manage.py from here
     ├── static/                   # CSS / JS / images — auto-discovered
     ├── models/                   # User, Group, Role, workflows, RBAC, SharePoint, notifications, reports
     ├── api/             # Django-Ninja partner API (app keys, scopes, tokens, usage logs)
-    ├── notifications/            # alerts, audience rules, email dispatch
+    ├── notifications/            # alerts, audience rules, email dispatch + outbound log
     ├── reporting/                # report builder, exports, instrument documents, sharing
     ├── membership/               # sync services (e.g. MembershipSyncService)
     ├── services/                 # permission resolver, attachment service
@@ -112,7 +114,7 @@ The self-documentation lives in [`pwms/docs/`](src/pwms/docs/):
 | [Management Commands](src/pwms/docs/Management%20Commands.md) | Every `manage.py` command and its purpose |
 | [Group Overhaul Checklist](src/pwms/docs/Group%20Overhaul%20Checklist.md) | Runbook for moving an existing server onto the seeded group tree and resolver-backed user sync |
 | [SharePoint Sync](src/pwms/docs/SharePoint%20Sync.md) | `populate_sites`, the local `Sharepoint*` tables and document attachments |
-| [Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md) | Email, notifications, SharePoint, exports and what remains |
+| [Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md) | Email/notification audit log, SharePoint, exports and what remains |
 | [User Manual Introduction](src/pwms/docs/User%20Manual%20Introduction.md) | *Systems Overview* and *The Purpose* in plain language |
 | [Introductory Lesson Plan](src/pwms/docs/Introductory%20Lesson%20Plan.md) | The 90-minute induction session for the IRPD section: outcomes, timed running order, tasks, exit ticket |
 | [Training Manual](src/pwms/docs/Training%20Manual.md) | The IRPD training course: objectives and outcomes, modules, exercises, assessment |
@@ -177,8 +179,10 @@ Then open:
 
 > **Email is queued.** Alert email and scheduled report shares are delivered by
 > `django-background-tasks`, so `python manage.py process_tasks` has to be running
-> for anything to go out. With the console backend in the sample `.env`, that
-> worker prints each message rather than sending it. For production, see
+> for anything to go out. Explicit record/report shares send inline. In
+> development (`DEBUG=True`), `EMAIL_BACKEND` is the console backend, so messages
+> are printed rather than delivered; production defaults to SMTP and can be
+> configured with `EMAIL_BACKEND` / `EMAIL_HOST`. For production, see
 > [Management Commands § Running the worker under
 > systemd](src/pwms/docs/Management%20Commands.md#running-the-worker-under-systemd).
 
@@ -202,10 +206,11 @@ importable via the editable install):
 ```bash
 .venv/bin/python manage.py test \
   pwms.tests pwms.tests_api pwms.tests_attachments pwms.tests_authentication \
-  pwms.tests_detail pwms.tests_detail_actions pwms.tests_executive \
-  pwms.tests_meetings pwms.tests_messages pwms.tests_notifications \
-  pwms.tests_referral_access pwms.tests_referrals pwms.tests_reports \
-  pwms.tests_transitions
+  pwms.tests_bill_folders pwms.tests_detail pwms.tests_detail_actions \
+  pwms.tests_executive pwms.tests_meetings pwms.tests_messages \
+  pwms.tests_notifications pwms.tests_referral_access pwms.tests_referrals \
+  pwms.tests_reports pwms.tests_reset_groups pwms.tests_reset_site_members \
+  pwms.tests_state_colors pwms.tests_transitions pwms.tests_workflow_share
 ```
 
 See [Technical Stack](src/pwms/docs/Technical%20Stack.md#testing).
@@ -253,7 +258,7 @@ Email & notifications, SharePoint document attachments and reporting (report
 builder, exports, per-instrument documents, sharing, scheduled delivery) have
 shipped; see
 [Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md)
-for what remains (restoring / pinning document versions, HTML email templates).
+for what remains (restoring / pinning document versions).
 
 ---
 

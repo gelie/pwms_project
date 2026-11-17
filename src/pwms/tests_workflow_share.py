@@ -2,12 +2,13 @@
 
 from unittest import mock
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.test import TestCase
 from django.urls import reverse
 
-from .models import DelegationReport, WorkflowType
+from .models import DelegationReport, Notification, WorkflowType
 
 
 class WorkflowShareTests(TestCase):
@@ -79,6 +80,55 @@ class WorkflowShareTests(TestCase):
         self.assertTrue(all(len(message.to) == 1 for message in mail.outbox))
         self.assertIn(self._detail(), mail.outbox[0].body)
         self.assertIn("Please review.", mail.outbox[0].body)
+
+    def test_every_recipient_is_logged(self):
+        response = self.client.post(
+            self._url(),
+            {"recipients": "colleague@parliament.gov.za, ext@example.org"},
+        )
+        self.assertEqual(response.status_code, 200)
+
+        rows = list(
+            Notification.objects.filter(
+                kind="instrument-share", channel="email"
+            ).order_by("to_email")
+        )
+
+        self.assertEqual(
+            [row.to_email for row in rows],
+            ["colleague@parliament.gov.za", "ext@example.org"],
+        )
+        self.assertEqual({row.status for row in rows}, {"sent"})
+        self.assertEqual({row.attempts for row in rows}, {1})
+        self.assertEqual(
+            {row.from_email for row in rows}, {settings.DEFAULT_FROM_EMAIL}
+        )
+        self.assertTrue(all(row.actor == self.admin for row in rows))
+        self.assertTrue(all(row.content_object == self.report for row in rows))
+        self.assertIn(self._detail(), rows[0].body)
+        self.assertIn(self._detail(), rows[0].html_body)
+
+    def test_a_failed_send_is_logged_and_later_recipients_are_marked(self):
+        with mock.patch(
+            "pwms.reporting.instrument_sharing.EmailMultiAlternatives.send",
+            side_effect=OSError("smtp is down"),
+        ):
+            response = self.client.post(
+                self._url(), {"recipients": "a@example.org, b@example.org"}
+            )
+
+        self.assertEqual(response.status_code, 502)
+        rows = list(
+            Notification.objects.filter(
+                kind="instrument-share", channel="email"
+            ).order_by("to_email")
+        )
+        self.assertEqual(
+            [row.to_email for row in rows], ["a@example.org", "b@example.org"]
+        )
+        self.assertEqual({row.status for row in rows}, {"failed"})
+        self.assertIn("smtp is down", rows[0].error)
+        self.assertIn("not attempted", rows[1].error)
 
     def test_duplicate_addresses_are_sent_once(self):
         response = self.client.post(

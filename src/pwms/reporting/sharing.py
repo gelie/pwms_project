@@ -35,6 +35,7 @@ from django.utils import timezone
 
 from ..models import ReportShare
 from ..models.reports import SCHEDULE_CHOICES, next_occurrence
+from ..notifications import record_email
 from .builder import ReportFilters, build_report
 from .exports import export_content
 
@@ -121,13 +122,19 @@ def report_for_share(share):
     return build_report(share.created_by, ReportFilters.from_dict(share.filters))
 
 
-def send_share_email(share, *, request=None, report=None, attachment_format=""):
+def send_share_email(
+    share, *, request=None, report=None, attachment_format="", scheduled=False
+):
     """
     Email the share link to its recipients, returning how many were addressed.
 
     ``attachment_format`` names one of :data:`~pwms.reporting.exports.EXPORT_FORMATS`
     to attach the rendered document as well. The link always works while the
     share is active; the attachment is a point-in-time copy.
+
+    Every addressed recipient gets a row in the outbound-email log, written
+    before the send and marked sent or failed afterwards. ``scheduled`` records
+    whether this was an immediate request or the repeating job.
     """
     recipients = share.recipient_list
     if not recipients:
@@ -145,21 +152,58 @@ def send_share_email(share, *, request=None, report=None, attachment_format=""):
 
     subject = f"Report shared with you: {context['title']}"
     body = render_to_string(TEXT_TEMPLATE, context)
+    html_body = render_to_string(HTML_TEMPLATE, context)
+    from_email = default_from_email()
+
+    # One row per address: the message goes to all of them, but each delivery
+    # is auditable on its own (and an external address has no ``User`` row).
+    rows = [
+        record_email(
+            kind="report-share",
+            subject=subject,
+            body=body,
+            html_body=html_body,
+            to_email=address,
+            from_email=from_email,
+            actor=share.created_by,
+            url=link,
+            target=share,
+            context={
+                "share": str(share.public_id),
+                "schedule": share.schedule,
+                "scheduled": scheduled,
+                "attachment_format": attachment_format,
+            },
+        )
+        for address in recipients
+    ]
+
     # Multi-alternatives so the HTML part rides alongside the plain-text body
     # (an EmailMessage cannot carry both).
     message = EmailMultiAlternatives(
         subject=subject,
         body=body,
-        from_email=default_from_email(),
+        from_email=from_email,
         to=recipients,
     )
-    message.attach_alternative(render_to_string(HTML_TEMPLATE, context), "text/html")
+    message.attach_alternative(html_body, "text/html")
 
     if attachment_format and report is not None:
         filename, content, media_type = export_content(report, attachment_format)
         message.attach(filename, content, media_type)
 
-    message.send(fail_silently=False)
+    try:
+        message.send(fail_silently=False)
+    except Exception as error:
+        for row in rows:
+            row.attempts = 1
+            row.mark_failed(error)
+        raise
+
+    for row in rows:
+        row.attempts = 1
+        row.mark_sent()
+
     logger.info("Report share %s emailed to %s", share.pk, ", ".join(recipients))
     return len(recipients)
 
@@ -221,6 +265,7 @@ def deliver_scheduled_share(share, *, now=None):
                 share,
                 report=report_for_share(share),
                 attachment_format=share.schedule_format,
+                scheduled=True,
             )
         except Exception as exc:  # noqa: BLE001 - recorded, never re-raised
             error = str(exc)

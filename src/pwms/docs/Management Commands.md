@@ -12,7 +12,9 @@ All commands live in `pwms/management/commands/` and run as:
 > `pwms.models` (e.g. `Group`, `Role`, `WorkflowType`, `State`, `Transition`).
 > They are marked **legacy** below. Two of them (`notify_deadlines`,
 > `send_overdue_alerts`) import `workflows.tasks` *inside a function body*, so
-> the command still loads and only fails when that code path runs.
+> the command still loads and only fails when that code path runs. When they are
+> repointed, route their mail through `pwms.notifications` so it inherits the
+> staff-only email audience and the `Notification` outbound-email log.
 >
 > The reworked Oracle sync suite (`sync_roles_oracle`, `sync_users_oracle`),
 > `seed_structure`, `seed_executive`, `audit_group_mapping`,
@@ -376,24 +378,26 @@ and closes the ones nobody answered:
 
 | Window | Action |
 | --- | --- |
-| due within 24 hours, not yet reminded | alert the referred group's active members and the people the record names (owner, assignee), then stamp `deadline_notified_at` |
+| due within 24 hours, not yet reminded | alert the referred group's active members and the people the record names (owner, assignee) — in-app to the whole audience, email to staff of the affected groups — then stamp `deadline_notified_at` |
 | due within 1 hour, already reminded | send the final reminder (no second stamp) |
 | due date passed | `mark_expired()` the referral (emits `referral-expired`) and alert the parties |
 
 Only `status="open"` referrals are considered, so an answered or recalled one is
 left alone. Reminders go through `pwms.notifications` and are logged as
-`referral-deadline` alerts (an `in_app` row and an `email` row per recipient);
-the expiry alert is raised by `WorkflowReferral.mark_expired()` and is not sent
-by the command. Mail is one message per recipient, so no recipient sees another's
-address. `--dry-run` reports what would be sent or expired without sending mail
-or writing anything.
+`referral-deadline` alerts (an `in_app` row per recipient, plus an `email` row
+for each staff recipient in an affected group); the expiry alert is raised by
+`WorkflowReferral.mark_expired()` and is not sent by the command. Mail is one
+message per recipient, so no recipient sees another's address. `--dry-run`
+reports what would be sent or expired without sending mail or writing anything.
 
 ### Scheduled report shares
 
 `send_scheduled_report_shares` drains the shares a reader made repeat from the
 reports page (daily, weekly or monthly). It emails each due share — the link,
 plus the rendered document when the share names one — and moves its
-`next_send_at` on by one interval.
+`next_send_at` on by one interval. Each addressed recipient gets a
+`report-share` row in the `Notification` log (marked `sent` or `failed`, with the
+failure reason), so a scheduled send is as auditable as an immediate one.
 
 | Option | Effect |
 | --- | --- |
@@ -580,6 +584,10 @@ Two jobs run through `django-background-tasks` rather than inline, so
 | --- | --- | --- |
 | `pwms.tasks.deliver_notification_email` | `pwms.notifications.dispatch.queue_email()`, inside the transaction that wrote the alert row | delivers one alert email, retrying a transient failure (`MAX_ATTEMPTS` + backoff) |
 | `pwms.tasks.deliver_scheduled_report_shares` | `send_scheduled_report_shares --queue`, once | repeating drain for scheduled report shares |
+
+Explicit report and record shares send **inline** rather than through the queue
+(the person who clicked *Send* sees the outcome immediately), but each addressed
+recipient still gets a row in the `Notification` outbound-email log.
 
 `pwms/tasks.py` is the module the worker discovers — `process_tasks` imports
 `<installed app>.tasks` — and it is the only place that knows the queue exists:
