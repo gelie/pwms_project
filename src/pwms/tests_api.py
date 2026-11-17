@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.contrib.contenttypes.models import ContentType
 from django.core import signing
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
@@ -21,6 +22,8 @@ from .api.models import ApiClient, ApiRefreshToken, ApiUsageLog
 from .api.scopes import Scope
 from .api.tokens import ACCESS_TOKEN_SALT
 from .models import (
+    Attachment,
+    AttachmentVersion,
     Bill,
     BillVersion,
     Group,
@@ -29,6 +32,8 @@ from .models import (
     Role,
     State,
     Transition,
+    WorkflowNote,
+    WorkflowReferral,
     WorkflowType,
 )
 
@@ -172,7 +177,7 @@ class TokenLifecycleTests(ApiTestCase):
         self.assertTrue(payload["access_token"])
         self.assertTrue(payload["refresh_token"])
         self.assertEqual(payload["token_type"], "Bearer")
-        self.assertEqual(payload["expires_in"], 15 * 60)
+        self.assertEqual(payload["expires_in"], 60 * 60)
         self.assertEqual(payload["refresh_expires_in"], 24 * 60 * 60)
         self.assertEqual(payload["scope"], "users:read")
 
@@ -641,6 +646,124 @@ class ScopedResourceTests(ApiTestCase):
 
         blocked = self.client.get("/api/v1/users/", **self.auth(token))
         self.assertEqual(blocked.status_code, 403)
+
+    def test_bill_payload_includes_history_documents_notes_and_referrals(self):
+        token, _ = self.access_token([Scope.BILLS_READ])
+        introduced = BillVersion.objects.create(
+            bill=self.bill,
+            version_label="B 1-2026",
+            version_type=BillVersion.INTRODUCED,
+            version_date=date(2026, 1, 5),
+            recorded_by=self.user,
+        )
+        amended = BillVersion.objects.create(
+            bill=self.bill,
+            version_label="B 1A-2026",
+            version_type=BillVersion.AMENDED,
+            version_date=date(2026, 3, 1),
+            is_current=True,
+            recorded_by=self.user,
+        )
+        attachment = Attachment.objects.create(
+            content_type=ContentType.objects.get_for_model(Bill),
+            object_id=str(self.bill.pk),
+            name="B 1-2026.pdf",
+            drive_id="drive-1",
+            item_id="item-1",
+            type="bill",
+            sharepoint_web_url="https://contoso.sharepoint.com/bills/B 1-2026.pdf",
+            sharepoint_folder_path="/Bills/B 1-2026",
+            uploaded_by=self.user,
+        )
+        AttachmentVersion.objects.create(
+            attachment=attachment,
+            version_id="2.0",
+            size=2048,
+            modified_by="Alice Molefe",
+            is_current=True,
+        )
+        note = WorkflowNote.objects.create(
+            content_type=ContentType.objects.get_for_model(Bill),
+            object_id=self.bill.pk,
+            author=self.user,
+            body="Committee briefing scheduled.",
+        )
+        referral = WorkflowReferral.objects.create(
+            content_type=ContentType.objects.get_for_model(Bill),
+            object_id=self.bill.pk,
+            referred_to=self.group,
+            referred_by=self.user,
+            notes="Please advise on the wording.",
+        )
+        # A document on another bill must not leak into this bill's payload.
+        other_bill = Bill.objects.create(
+            workflow_type=self.workflow_type,
+            current_state=self.state,
+            bill_number="B 2-2026",
+            title="Another bill",
+            owner=self.user,
+        )
+        Attachment.objects.create(
+            content_type=ContentType.objects.get_for_model(Bill),
+            object_id=str(other_bill.pk),
+            name="B 2-2026.pdf",
+            drive_id="drive-1",
+            item_id="item-2",
+            type="bill",
+        )
+
+        detail = self.client.get(
+            f"/api/v1/bills/{self.bill.public_id}/", **self.auth(token)
+        )
+        self.assertEqual(detail.status_code, 200)
+        payload = detail.json()
+
+        self.assertEqual(
+            [version["version_label"] for version in payload["versions"]],
+            [amended.version_label, introduced.version_label],
+        )
+        self.assertTrue(payload["versions"][0]["is_current"])
+        self.assertEqual(payload["versions"][0]["recorded_by"]["username"], "alice")
+
+        self.assertEqual(len(payload["attachments"]), 1)
+        document = payload["attachments"][0]
+        self.assertEqual(document["name"], "B 1-2026.pdf")
+        self.assertEqual(document["type"], "bill")
+        self.assertEqual(document["sharepoint_folder_path"], "/Bills/B 1-2026")
+        self.assertEqual(document["uploaded_by"]["username"], "alice")
+        self.assertEqual(len(document["versions"]), 1)
+        self.assertEqual(document["versions"][0]["version_id"], "2.0")
+        self.assertEqual(document["versions"][0]["size"], 2048)
+        self.assertTrue(document["versions"][0]["is_current"])
+
+        self.assertEqual(len(payload["notes"]), 1)
+        self.assertEqual(payload["notes"][0]["body"], note.body)
+        self.assertEqual(payload["notes"][0]["author"]["username"], "alice")
+
+        self.assertEqual(len(payload["referrals"]), 1)
+        self.assertEqual(
+            payload["referrals"][0]["referred_to"]["public_id"],
+            str(self.group.public_id),
+        )
+        self.assertEqual(payload["referrals"][0]["notes"], referral.notes)
+        self.assertEqual(payload["referrals"][0]["status"], "open")
+        self.assertTrue(payload["referrals"][0]["is_open"])
+
+        # A bill with nothing recorded returns empty lists, not missing keys.
+        bare_bill = Bill.objects.create(
+            workflow_type=self.workflow_type,
+            current_state=self.state,
+            bill_number="B 3-2026",
+            title="A bare bill",
+            owner=self.user,
+        )
+        other = self.client.get(
+            f"/api/v1/bills/{bare_bill.public_id}/", **self.auth(token)
+        ).json()
+        self.assertEqual(other["notes"], [])
+        self.assertEqual(other["referrals"], [])
+        self.assertEqual(other["versions"], [])
+        self.assertEqual(other["attachments"], [])
 
     def test_unified_search_covers_scoped_resources(self):
         token, _ = self.access_token([Scope.USERS_READ, Scope.MEMBERSHIPS_READ])

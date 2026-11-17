@@ -2,16 +2,16 @@
 
 Two credentials are deliberately different in kind:
 
-* **Access tokens** are short-lived (15 minutes by default) and stateless:
+* **Access tokens** live for 60 minutes by default and are stateless:
   a JSON payload signed with Django's signer. Every API request presents one in
   ``Authorization: Bearer <token>``.
-* **Refresh tokens** live for an hour and are opaque random strings stored as a
+* **Refresh tokens** live for 24 hours and are opaque random strings stored as a
   SHA-256 hash in :class:`~pwms.api.models.ApiRefreshToken`. Redeeming
   one rotates it, so a stolen refresh token is usable at most once.
 
 Access tokens are checked against the client's *current* scopes and active flag
 on every request, so disabling a client or removing a scope takes effect
-immediately rather than when the 15-minute token happens to expire.
+immediately rather than when the 60-minute token happens to expire.
 """
 
 from __future__ import annotations
@@ -31,7 +31,7 @@ ACCESS_TOKEN_SALT = "pwms.api.access_token"
 
 def access_token_ttl() -> timedelta:
     return timedelta(
-        minutes=getattr(settings, "EXTERNAL_API_ACCESS_TOKEN_TTL_MINUTES", 15)
+        minutes=getattr(settings, "EXTERNAL_API_ACCESS_TOKEN_TTL_MINUTES", 60)
     )
 
 

@@ -171,6 +171,93 @@ class GroupPage(Schema):
 # ---------------------------------------------------------------------------
 
 
+class BillVersionOut(Schema):
+    """One preserved version in a bill's version history (BRS §15A)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    public_id: UUID
+    version_label: str
+    version_type: str
+    version_date: date
+    document_url: str
+    notes: str
+    recorded_by: UserRef | None = None
+    is_current: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class AttachmentVersionOut(Schema):
+    """One mirrored SharePoint version of an attachment."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    public_id: UUID
+    version_id: str
+    size: int | None = None
+    modified_at: datetime | None = None
+    modified_by: str
+    is_current: bool
+    created_at: datetime
+
+
+class AttachmentOut(Schema):
+    """A SharePoint document attached to a bill, with its version mirror."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    public_id: UUID
+    name: str
+    type: str
+    mimetype: str | None = None
+    size: int | None = None
+    sharepoint_web_url: str | None = None
+    download_url: str | None = None
+    sharepoint_folder_path: str
+    uploaded_by: UserRef | None = None
+    created_at: datetime
+    updated_at: datetime
+    versions: list[AttachmentVersionOut] = Field(default_factory=list)
+
+
+class BillNoteOut(Schema):
+    """One dated note recorded against a bill."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    public_id: UUID
+    author: UserRef | None = None
+    body: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class BillReferralOut(Schema):
+    """A bill referred to a committee or group, with its answer."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    public_id: UUID
+    referred_to: GroupRef
+    referred_by: UserRef | None = None
+    referred_at: datetime
+    due_date: datetime | None = None
+    status: str
+    is_open: bool
+    is_overdue: bool
+    responded_at: datetime | None = None
+    responded_by: UserRef | None = None
+    response_document_url: str
+    response_notes: str
+    recalled_at: datetime | None = None
+    recalled_by: UserRef | None = None
+    recall_reason: str
+    notes: str
+    created_at: datetime
+    updated_at: datetime
+
+
 class BillOut(Schema):
     model_config = ConfigDict(from_attributes=True)
 
@@ -198,6 +285,15 @@ class BillOut(Schema):
     introduced_version_date: date | None = None
     current_version: str
     current_version_date: date | None = None
+    # The full preserved version history and the SharePoint documents filed
+    # against the bill, both prefetched by the API bill queryset, plus the note
+    # log and referrals bulk-loaded for each page.
+    versions: list[BillVersionOut] = Field(default_factory=list)
+    attachments: list[AttachmentOut] = Field(default_factory=list)
+    notes: list[BillNoteOut] = Field(default_factory=list, validation_alias="api_notes")
+    referrals: list[BillReferralOut] = Field(
+        default_factory=list, validation_alias="api_referrals"
+    )
     bill_document_url: str
     identifier: str
     is_overdue: bool

@@ -43,13 +43,13 @@ curl -s -X POST "https://pwms.example.gov.za/api/v1/auth/token/" \
   "access_token": "eyJ…",
   "refresh_token": "8fK…",
   "token_type": "Bearer",
-  "expires_in": 900,
+  "expires_in": 3600,
   "refresh_expires_in": 86400,
   "scope": "users:read"
 }
 ```
 
-- **Access token** — valid for **15 minutes**. Send it with every request.
+- **Access token** — valid for **60 minutes**. Send it with every request.
 - **Refresh token** — valid for **24 hours**, single use. Exchange it for a new
   pair before it expires (or when a call returns `401`):
 

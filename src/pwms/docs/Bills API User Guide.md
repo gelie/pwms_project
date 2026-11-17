@@ -43,13 +43,13 @@ curl -s -X POST "https://workflows-dev.parliament.gov.za/api/v1/auth/token/" \
   "access_token": "eyJ…",
   "refresh_token": "8fK…",
   "token_type": "Bearer",
-  "expires_in": 900,
+  "expires_in": 3600,
   "refresh_expires_in": 86400,
   "scope": "bills:read"
 }
 ```
 
-- **Access token** — valid for **15 minutes**. Send it with every request.
+- **Access token** — valid for **60 minutes**. Send it with every request.
 - **Refresh token** — valid for **24 hours**, single use. Exchange it for a new
   pair before it expires (or when a call returns `401`):
 
@@ -165,12 +165,42 @@ A bill in `results` includes:
 `public_id`, `bill_number`, `title`, `short_title`, `description`, `bill_type`,
 `house_of_origin`, `sponsor` / `sponsor_name`, `introduced_date`,
 `responsible_committee`, `atc_reference`, `order_paper_reference`,
-`bill_document_url`, `public_status`, `current_version`, `identifier`,
-`is_overdue`, `deadline`, `priority`, `created_at` and `updated_at`.
+`bill_document_url`, `public_status`, `current_version`, `versions`,
+`attachments`, `notes`, `referrals`, `identifier`, `is_overdue`, `deadline`,
+`priority`, `created_at` and `updated_at`.
 
 `public_status` is the citizen-facing status. `current_version` is the label of
 the current bill version. Dates are ISO 8601; fields that have no value are
 `null` or an empty string.
+
+### Versions, attachments, notes and referrals
+
+Every bill also carries its full version history, its documents, its note log
+and its referrals, so one call is enough to render a bill page. All four are
+always present as arrays — empty when nothing has been recorded:
+
+- `versions` — the preserved bill versions, newest first. Each entry has
+  `public_id`, `version_label`, `version_type` (`introduced`, `amended` or
+  `amendment_schedule`), `version_date`, `document_url`, `notes`, `recorded_by`,
+  `is_current`, `created_at` and `updated_at`.
+- `attachments` — the SharePoint documents filed against the bill. Each entry
+  has `public_id`, `name`, `type`, `mimetype`, `size`, `sharepoint_web_url`,
+  `download_url`, `sharepoint_folder_path`, `uploaded_by`, `created_at`,
+  `updated_at` and `versions` (the document's own SharePoint version history).
+  An attachment version has `public_id`, `version_id` (e.g. `2.0`), `size`,
+  `modified_at`, `modified_by`, `is_current` and `created_at`.
+- `notes` — the bill's note log, newest first. Each entry has `public_id`,
+  `author`, `body`, `created_at` and `updated_at`.
+- `referrals` — the groups the bill was referred to, newest first. Each entry
+  has `public_id`, `referred_to`, `referred_by`, `referred_at`, `due_date`,
+  `status`, `is_open`, `is_overdue`, the response fields
+  (`responded_at`, `responded_by`, `response_document_url`, `response_notes`),
+  the recall fields (`recalled_at`, `recalled_by`, `recall_reason`), its own
+  `notes`, `created_at` and `updated_at`.
+
+The API never streams file content: use `sharepoint_web_url` or
+`download_url` to open a document, and the nested version rows to show its
+history.
 
 ### Combined search
 
@@ -210,7 +240,7 @@ IP address.
 
 ## 8. Practical tips
 
-- Refresh the access token before it expires (for example after 12 minutes)
+- Refresh the access token before it expires (for example after 45 minutes)
   rather than waiting for a `401`.
 - Cache a response only while it is still useful; bills change over time.
 - Use `limit` values you actually need — 20–50 keeps responses fast.

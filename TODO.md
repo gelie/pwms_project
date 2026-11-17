@@ -21,7 +21,7 @@ reports 104 findings (27 auto-fixable), `views.py` 2 643 lines,
       yet enforced (no `fail_under`).
 - [x] **External Django-Ninja API added; DRF retired.** `pwms/api/`
       registers partner applications in the admin (name, description, contact,
-      scopes, per-key rate limit), issues **15-minute access tokens** and
+      scopes, per-key rate limit), issues **60-minute access tokens** and
       **rotating 24-hour refresh tokens**, and exposes read-only **users**,
       **groups**, **memberships** and **bills** under `/api/v1/`, each gated by
       a scope.
