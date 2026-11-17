@@ -54,12 +54,14 @@
       {% include "pwms/_form_field.html" with field=form.bill_type wrapper_class="col-12 col-md-4" %}
       {% include "pwms/_form_field.html" with field=form.house_of_origin wrapper_class="col-12 col-md-4" %}
       {% include "pwms/_form_field.html" with field=form.introduced_date wrapper_class="col-12 col-md-4" %}
-      {% include "pwms/_picker_field.html" with field=form.sponsor search_url="pwms:user_search" placeholder="Type to search users..." selected_name=form.picker_labels.sponsor wrapper_class="col-12 col-md-6" %}
-      {% include "pwms/_form_field.html" with field=form.sponsor_name wrapper_class="col-12 col-md-6" %}
-      {% include "pwms/_picker_field.html" with field=form.responsible_committee search_url="pwms:group_search" placeholder="Type to search groups..." selected_name=form.picker_labels.responsible_committee wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_picker_field.html" with field=form.sponsor search_url="pwms:user_search" placeholder="Type to search users..." selected_name=form.picker_labels.sponsor wrapper_class="col-12 col-md-4" %}
+      <!--The sponsor name is always a ministry lookup: the visible box searches
+          Ministry groups, and the hidden text field keeps the chosen name.-->
+      {% include "pwms/_lookup_field.html" with field=form.sponsor_name search_url="pwms:ministry_search" placeholder="Type to search ministries..." selected_name=form.sponsor_name.value|default_if_none:"" wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_picker_field.html" with field=form.responsible_committee search_url="pwms:bill_committee_search" placeholder="Type to search committees..." selected_name=form.picker_labels.responsible_committee wrapper_class="col-12 col-md-4" %}
       <!--{% include "pwms/_form_field.html" with field=form.atc_reference wrapper_class="col-12 col-md-6" %}-->
       <!--{% include "pwms/_form_field.html" with field=form.order_paper_reference wrapper_class="col-12 col-md-6" %}-->
-      {% include "pwms/_form_field.html" with field=form.bill_document_url wrapper_class="col-12 col-md-6" %}
+      <!--{% include "pwms/_form_field.html" with field=form.bill_document_url wrapper_class="col-12 col-md-6" %}-->
       <!--{% include "pwms/_form_field.html" with field=form.notes wrapper_class="col-12" %}-->
       <div class="col-12"
            id="bill-folder-preview"

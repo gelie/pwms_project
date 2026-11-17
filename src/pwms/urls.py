@@ -310,6 +310,14 @@ urlpatterns = [
     path("events/add/", views.workflow_event_add, name="workflow_events_add"),
     # Group search for dynamic lookup
     path("group-search/", views.group_search, name="group_search"),
+    # Bill committee lookup (NA / NCOP committees only)
+    path(
+        "bill-committee-search/",
+        views.bill_committee_search,
+        name="bill_committee_search",
+    ),
+    # Ministry lookup for the bill sponsor-name field
+    path("ministry-search/", views.ministry_search, name="ministry_search"),
     # Delegation report lookup (the resolution form's parent picker)
     path("report-search/", views.report_search, name="report_search"),
     # Country / city lookup for the engagement location pickers

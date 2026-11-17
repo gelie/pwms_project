@@ -104,6 +104,7 @@ from .reporting import (
 )
 from .services import attachments as attachments_service
 from .services import bill_folders
+from .services.bill_committees import bill_committee_choices
 from .services.history import TIMELINE_PREVIEW_LIMIT, instance_timeline
 from .services.meetings_io import (
     MEETING_COLUMNS,
@@ -2478,20 +2479,44 @@ def user_search(request):
     )
 
 
-def group_search(request):
-    """Search groups and return HTML results for HTMX."""
+def _group_search_response(request, groups):
+    """Render the shared group-results fragment for ``groups``."""
     search_query = request.GET.get("search", "")
-
-    groups = Group.objects.all()
 
     if search_query:
         groups = groups.filter(Q(name__icontains=search_query))
 
-    groups = groups.order_by("name")[:20]  # Limit to 20 results
     return render(
         request=request,
         template_name="pwms/partials/group_search_results.html",
-        context={"groups": groups},
+        context={"groups": groups.order_by("name")[:20]},
+    )
+
+
+def group_search(request):
+    """Search groups and return HTML results for HTMX."""
+    return _group_search_response(request, Group.objects.all())
+
+
+def bill_committee_search(request):
+    """Search the committees a bill may be committed to, for HTMX."""
+    return _group_search_response(request, bill_committee_choices())
+
+
+def ministry_search(request):
+    """Search ministries for the bill sponsor-name lookup, for HTMX."""
+    search_query = request.GET.get("search", "").strip()
+
+    ministries = Group.objects.filter(group_type=Group.Type.MINISTRY, is_active=True)
+    if search_query:
+        ministries = ministries.filter(
+            Q(name__icontains=search_query) | Q(short_name__icontains=search_query)
+        )
+
+    return render(
+        request=request,
+        template_name="pwms/partials/ministry_search_results.html",
+        context={"ministries": ministries.order_by("name")[:20]},
     )
 
 

@@ -76,7 +76,7 @@
               <button type="button" class="rounded-pill btn btn-sm workflow-status-btn workflow-status-current" id="workflow-status-current" style="--state-color: {{ object.current_state.color }}" disabled>{{ object.current_state.name }}</button>
             </div>
             {% if transitions or not object.current_state.is_terminal %}
-            <div class="workflow-status-col d-flex flex-column align-items-stretch gap-2">
+            <div class="workflow-status-col d-flex flex-column align-items-stretch gap-2 text-center">
               <span class="workflow-status-heading">Next</span>
               {% for transition in transitions %}
                 {% if can_transition %}

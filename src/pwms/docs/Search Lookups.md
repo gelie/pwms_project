@@ -1,12 +1,12 @@
 # Search Lookups
 
 The form fields that point at a long list — the owner and assignee of a
-workflow instance, the responsible group, the engagement country and city — are
-rendered as **search pickers**: a text box that fetches matching options from the
-server with HTMX, plus the real form field kept hidden so an ordinary POST still
-works.
+workflow instance, the responsible group, the bill's sponsoring ministry, the
+engagement country and city — are rendered as **search pickers**: a text box
+that fetches matching options from the server with HTMX, plus the real form field
+kept hidden so an ordinary POST still works.
 
-Five lookups back them. All five return an **HTML fragment, not JSON** — they
+Seven lookups back them. All seven return an **HTML fragment, not JSON** — they
 are UI endpoints, so they are not part of the
 [API Reference](./API%20Reference.md).
 
@@ -24,12 +24,14 @@ sequenceDiagram
     U->>H: submits the form<br/>(name="location_city" = pk)
 ```
 
-## 1. The five lookups
+## 1. The seven lookups
 
 | Field(s) | Endpoint | Request parameters | Matching | Order | Fragment |
 | --- | --- | --- | --- | --- | --- |
 | `assigned_to`, `sponsor`, `responsible_minister` | `pwms:user_search` — `/pwms/user-search/` | `search` | active users by `username`, `first_name`, `last_name` (`icontains`) | first name, last name, username | `pwms/partials/user_search_results.html` |
-| `responsible_group`, `responsible_committee` | `pwms:group_search` — `/pwms/group-search/` | `search` | `name` (`icontains`) | name | `pwms/partials/group_search_results.html` |
+| `responsible_group` | `pwms:group_search` — `/pwms/group-search/` | `search` | `name` (`icontains`) | name | `pwms/partials/group_search_results.html` |
+| `responsible_committee` (bills only) | `pwms:bill_committee_search` — `/pwms/bill-committee-search/` | `search` | committees under the National Assembly or NCOP by `name` (`icontains`); joint committees are excluded | name | `pwms/partials/group_search_results.html` |
+| `sponsor_name` (bills only) | `pwms:ministry_search` — `/pwms/ministry-search/` | `search` | active `ministry` groups by `name` or `short_name` (`icontains`) | name | `pwms/partials/ministry_search_results.html` |
 | `parent_report` (resolutions only) | `pwms:report_search` — `/pwms/report-search/` | `search` | delegation reports the user may **edit**, by `reference_number` or `title` | newest first | `pwms/partials/report_search_results.html` |
 | `location_country` | `pwms:country_search` — `/pwms/country-search/` | `search` | `name` (`icontains`) or ISO code (`iexact`) | names starting with the query first, then name | `pwms/partials/country_search_results.html` |
 | `location_city` | `pwms:city_search` — `/pwms/city-search/` | `search`, `country` | `name` or `ascii_name` (`istartswith`), limited to `country` when it is a number | population desc, then name | `pwms/partials/city_search_results.html` |
@@ -39,7 +41,10 @@ the workflow views. `owner` is deliberately **not** a picker: it is disabled and
 taken from the acting user on create (`WorkflowInstanceFormMixin.__init__`).
 `report_search` filters through `resolve(user, report, EDIT)` rather than taking
 the whole register, because nesting a resolution under a report edits that
-report's hierarchy too. Two behaviours are deliberate:
+report's hierarchy too. `sponsor_name` is a text field rather than a foreign
+key, so its fragment calls `selectOption(name, name)`: the hidden field posts
+the ministry's **name**, which is what the bill stores. Two behaviours are
+deliberate:
 
 - `city_search` **ranks by population**, which keeps village namesakes out of the
   way (`cities.csv.gz` also carries 13,529 South African township sections, see
@@ -101,6 +106,10 @@ In `__init__` each candidate field is measured with `queryset.count()`:
 Because of that swap, `Meta.widgets` must declare `forms.Select` (not
 `HiddenInput`) for those fields.
 
+The bill's sponsoring ministry is the exception: `sponsor_name` is a `CharField`
+with no queryset to measure, so `bill-form.html` includes `_lookup_field.html`
+directly (with a hidden `sponsor_name` widget) and the search box is always shown.
+
 `picker_labels` reads the value from the model instance, falls back to the form's
 initial (`owner` defaults to the acting user on create) and then looks the option
 up in the field's queryset, returning `display_name` or `str(option)`. That is
@@ -145,7 +154,7 @@ wrapper, and the ids are derived from the field id
 
 | Helper | Called from | Behaviour |
 | --- | --- | --- |
-| `selectOption(pk, label)` | country, city fragments | writes the pk and the label |
+| `selectOption(value, label)` | country, city, ministry fragments | writes the value and the label (the ministry lookup passes the name as both) |
 | `selectGroup(pk, label)` | group fragment | same, kept for its fragment |
 | `selectUser(pk, username, fullName)` | user fragment | label is the full name, else the username |
 
@@ -186,7 +195,7 @@ declared in the template, not in the script:
 ## 6. Adding another lookup
 
 1. Put the choice list behind a queryset (a `ForeignKey` is the natural shape).
-2. Add a view that returns a fragment, mirroring the five above — filter on
+2. Add a view that returns a fragment, mirroring the seven above — filter on
    `request.GET["search"]`, rank results sensibly, cap at 20.
 3. Add the route in `pwms/urls.py` (`<thing>-search/`, e.g. `thing_search`).
 4. Add `pwms/partials/<thing>_search_results.html`; every row is a button

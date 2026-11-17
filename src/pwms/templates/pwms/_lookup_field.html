@@ -1,8 +1,10 @@
 {% comment %}
-Searchable foreign-key picker. The real form field is rendered hidden (a <select>
-would list every option up front) and an HTMX-driven text input searches instead.
-Choosing a result writes the option's pk into the hidden field, so an ordinary
-form POST still submits ``name="<field>"``.
+Searchable picker. The real form field is rendered hidden (a <select> would list
+every option up front) and an HTMX-driven text input searches instead. Choosing
+a result writes the option's value into the hidden field, so an ordinary form
+POST still submits ``name="<field>"``. Usually that value is a foreign-key pk;
+for a text field such as the bill's ``sponsor_name`` it is the chosen label
+(see ``bill-form.html`` and the ministry lookup).
 
 Reach it through ``pwms/_picker_field.html``, which only picks this branch for a
 field whose option list is longer than the form's search-picker threshold:
