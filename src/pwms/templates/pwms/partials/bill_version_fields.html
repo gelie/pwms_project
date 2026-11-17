@@ -1,0 +1,28 @@
+{% comment %}
+The editable fields of ``BillVersionForm``, shared by the standalone
+record-version page and the inline form on the bill detail page.
+
+  {% include "pwms/partials/bill_version_fields.html" with form=form %}
+
+Pass the bound form as ``form``.
+{% endcomment %}
+<div class="row g-3 mb-4">
+  {% include "pwms/_form_field.html" with field=form.version_label wrapper_class="col-12 col-md-4" %}
+  {% include "pwms/_form_field.html" with field=form.version_type wrapper_class="col-12 col-md-4" %}
+  {% include "pwms/_form_field.html" with field=form.version_date wrapper_class="col-12 col-md-4" %}
+  {% url "pwms:bill_version_document_options" bill.public_id as version_document_options_url %}
+  {% url "pwms:bill_version_document_upload" bill.public_id as version_document_upload_url %}
+  {% include "pwms/partials/sharepoint_document_field.html" with field=form.document_url options_url=version_document_options_url upload_url=version_document_upload_url folder_label="bill folder" wrapper_class="col-12 col-md-6" %}
+  <div class="col-12 col-md-6">
+    <div class="form-check mt-4 pt-2">
+      {{ form.is_current }}
+      <label class="form-check-label" for="{{ form.is_current.id_for_label }}">
+        {{ form.is_current.label }}
+      </label>
+      {% if form.is_current.help_text %}
+        <div class="form-text">{{ form.is_current.help_text }}</div>
+      {% endif %}
+    </div>
+  </div>
+  {% include "pwms/_form_field.html" with field=form.notes wrapper_class="col-12" %}
+</div>

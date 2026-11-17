@@ -90,7 +90,7 @@ update_form; plus updates_status ({level, message}) when one was just recorded.
                 {% if update.atc_page_number %}· p. {{ update.atc_page_number }}{% endif %}
                 {% if update.atc_publication_date %}· published {{ update.atc_publication_date|date:"d M Y" }}{% endif %}
                 {% if update.atc_document_url %}
-                  · <a href="{{ update.atc_document_url }}" rel="noopener" target="_blank">document</a>
+                  · <a href="{{ update.atc_document_url }}" rel="noopener" target="_blank">{{ update.atc_document_url|document_name|default:"document" }}</a>
                 {% endif %}
               {% else %}
                 —

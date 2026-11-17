@@ -1,6 +1,10 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}{% if is_create %}New Bill{% else %}Edit {{ bill.bill_number }}{% endif %}{% endblock title %}
-{% block extra_head %}{{ form.media }}{% endblock extra_head %}
+{% block extra_head %}
+  {{ form.media }}
+  <script src="{% static "js/bill-form.js" %}" defer></script>
+{% endblock extra_head %}
 {% block content %}
   <nav aria-label="breadcrumb">
     <ol class="breadcrumb">
@@ -61,7 +65,14 @@
       {% include "pwms/_picker_field.html" with field=form.responsible_committee search_url="pwms:bill_committee_search" placeholder="Type to search committees..." selected_name=form.picker_labels.responsible_committee wrapper_class="col-12 col-md-4" %}
       <!--{% include "pwms/_form_field.html" with field=form.atc_reference wrapper_class="col-12 col-md-6" %}-->
       <!--{% include "pwms/_form_field.html" with field=form.order_paper_reference wrapper_class="col-12 col-md-6" %}-->
-      <!--{% include "pwms/_form_field.html" with field=form.bill_document_url wrapper_class="col-12 col-md-6" %}-->
+      {% if is_create %}
+        {% url "pwms:bill_document_options" as document_options_url %}
+        {% url "pwms:bill_document_upload" as document_upload_url %}
+      {% else %}
+        {% url "pwms:bill_document_options_edit" bill.public_id as document_options_url %}
+        {% url "pwms:bill_document_upload_edit" bill.public_id as document_upload_url %}
+      {% endif %}
+      {% include "pwms/partials/sharepoint_document_field.html" with field=form.bill_document_url options_url=document_options_url upload_url=document_upload_url options_include="#id_bill_number" folder_label="bill folder" wrapper_class="col-12 col-md-6" %}
       <!--{% include "pwms/_form_field.html" with field=form.notes wrapper_class="col-12" %}-->
       <div class="col-12"
            id="bill-folder-preview"

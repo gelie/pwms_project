@@ -601,3 +601,338 @@ class AttachmentUploadForBillsTests(_BillFixtureTestCase):
             TOKEN, "drive-1", "picked-7", "minutes.pdf", b"%PDF-1.4"
         )
         self.assertNotIn("Filed into", response.context["attachment_status"]["message"])
+
+
+class BillVersionDocumentTests(_BillFixtureTestCase):
+    """The version form's document field uses only the bill's own folder."""
+
+    def setUp(self):
+        super().setUp()
+        self.bill = self._make_bill()
+        self.folder = attachments_service.resolve_folder(
+            self.drive, ITEM["id"], ITEM["name"]
+        )
+        self.bill.sharepoint_folder = self.folder
+        self.bill.save(update_fields=["sharepoint_folder"])
+
+    def _options_url(self):
+        return reverse("pwms:bill_version_document_options", args=[self.bill.public_id])
+
+    def _upload_url(self):
+        return reverse("pwms:bill_version_document_upload", args=[self.bill.public_id])
+
+    def test_the_version_form_offers_the_bill_folder_picker(self):
+        response = self.client.get(
+            reverse("pwms:bill_version_create", args=[self.bill.public_id])
+        )
+
+        self.assertContains(response, "Choose from bill folder")
+        self.assertContains(response, self._options_url())
+        self.assertContains(response, self._upload_url())
+        self.assertContains(response, 'name="document_url"')
+
+    def test_the_options_are_the_files_in_the_bill_folder(self):
+        with (
+            patch.object(
+                attachments_service.graph, "get_application_token", return_value=TOKEN
+            ),
+            patch.object(
+                attachments_service.graph,
+                "get_folder_items",
+                new=AsyncMock(return_value={"value": [_GRAPH_FILE]}),
+            ) as get_items,
+        ):
+            response = self.client.get(self._options_url())
+
+        get_items.assert_awaited_once_with(TOKEN, "drive-1", "child-item")
+        self.assertContains(response, "minutes.pdf")
+        self.assertContains(response, _GRAPH_FILE["webUrl"])
+
+    def test_an_unfiled_bill_says_so_in_the_picker(self):
+        self.bill.sharepoint_folder = None
+        self.bill.save(update_fields=["sharepoint_folder"])
+
+        response = self.client.get(self._options_url())
+
+        self.assertContains(response, "has not been filed yet")
+
+    def test_upload_stores_in_the_bill_folder_and_returns_its_url(self):
+        upload = SimpleUploadedFile("minutes.pdf", b"%PDF-1.4")
+        with (
+            patch.object(
+                attachments_service.graph, "get_application_token", return_value=TOKEN
+            ),
+            patch.object(
+                attachments_service.graph,
+                "upload_file",
+                new=AsyncMock(return_value=_GRAPH_FILE),
+            ) as upload_call,
+            patch.object(
+                attachments_service.graph,
+                "get_folder_items",
+                new=AsyncMock(return_value={"value": [_GRAPH_FILE]}),
+            ),
+        ):
+            response = self.client.post(
+                self._upload_url(), {"file": upload, "document_url": ""}
+            )
+
+        upload_call.assert_awaited_once_with(
+            TOKEN, "drive-1", "child-item", "minutes.pdf", b"%PDF-1.4"
+        )
+        self.assertContains(response, "uploaded to the bill folder")
+        self.assertContains(response, _GRAPH_FILE["webUrl"])
+        # A version document is a link on the version row, not an attachment.
+        self.assertFalse(Attachment.objects.filter(item_id=_GRAPH_FILE["id"]).exists())
+
+    def test_upload_without_a_file_reports_an_error(self):
+        with (
+            patch.object(
+                attachments_service.graph, "get_application_token", return_value=TOKEN
+            ),
+            patch.object(
+                attachments_service.graph,
+                "get_folder_items",
+                new=AsyncMock(return_value={"value": []}),
+            ),
+        ):
+            response = self.client.post(self._upload_url(), {"document_url": ""})
+
+        self.assertContains(response, "No file was selected")
+
+    def test_upload_requires_edit_permission(self):
+        stranger = get_user_model().objects.create_user(
+            username="version-doc-stranger", password="pw"
+        )
+        self.client.force_login(stranger)
+        upload = SimpleUploadedFile("minutes.pdf", b"%PDF-1.4")
+
+        response = self.client.post(self._upload_url(), {"file": upload})
+
+        self.assertEqual(response.status_code, 403)
+
+
+@override_settings(BILL_DRIVE="drive-1", BILL_FOLDER="parent-1")
+class BillDocumentPickerTests(_BillFixtureTestCase):
+    """The bill form's document field is scoped to the bill's own folder."""
+
+    def _create_options_url(self):
+        return reverse("pwms:bill_document_options")
+
+    def _create_upload_url(self):
+        return reverse("pwms:bill_document_upload")
+
+    def _edit_options_url(self, bill):
+        return reverse("pwms:bill_document_options_edit", args=[bill.public_id])
+
+    def _edit_upload_url(self, bill):
+        return reverse("pwms:bill_document_upload_edit", args=[bill.public_id])
+
+    def _with_folder(self, bill):
+        folder = attachments_service.resolve_folder(
+            self.drive, ITEM["id"], ITEM["name"]
+        )
+        bill.sharepoint_folder = folder
+        bill.save(update_fields=["sharepoint_folder"])
+        return folder
+
+    def test_the_create_form_offers_the_bill_folder_picker(self):
+        response = self.client.get(reverse("pwms:bill_create"))
+
+        self.assertContains(response, "Choose from bill folder")
+        self.assertContains(response, self._create_options_url())
+        self.assertContains(response, self._create_upload_url())
+        self.assertContains(response, 'name="bill_document_url"')
+        self.assertContains(response, "js/bill-form.js")
+
+    def test_the_edit_form_offers_the_bill_folder_picker(self):
+        bill = self._make_bill()
+        self._with_folder(bill)
+
+        response = self.client.get(reverse("pwms:bill_update", args=[bill.public_id]))
+
+        self.assertContains(response, "Choose from bill folder")
+        self.assertContains(response, self._edit_options_url(bill))
+        self.assertContains(response, self._edit_upload_url(bill))
+
+    def test_create_options_creates_the_folder_from_the_b_number(self):
+        with (
+            patch.object(
+                attachments_service.graph, "get_application_token", return_value=TOKEN
+            ),
+            patch.object(
+                attachments_service.graph,
+                "create_child_folder",
+                new=AsyncMock(return_value=(ITEM, True)),
+            ) as create,
+            patch.object(
+                attachments_service.graph,
+                "get_folder_items",
+                new=AsyncMock(return_value={"value": [_GRAPH_FILE]}),
+            ),
+        ):
+            response = self.client.get(
+                self._create_options_url(), {"bill_number": "B 99—2026"}
+            )
+
+        create.assert_awaited_once_with(TOKEN, "drive-1", "parent-1", "B 99—2026")
+        self.assertContains(response, "minutes.pdf")
+        self.assertContains(response, _GRAPH_FILE["webUrl"])
+        self.assertEqual(
+            SharepointFolder.objects.get(folder_id=ITEM["id"]).name, ITEM["name"]
+        )
+
+    def test_create_options_refuse_an_existing_b_number(self):
+        self._make_bill(number="B 99—2026")
+
+        response = self.client.get(
+            self._create_options_url(), {"bill_number": "B 99—2026"}
+        )
+
+        self.assertContains(response, "already exists")
+
+    def test_create_options_refuse_a_blank_b_number(self):
+        response = self.client.get(self._create_options_url(), {"bill_number": ""})
+
+        self.assertContains(response, "Enter the B-number")
+
+    def test_create_upload_creates_the_folder_and_returns_the_file_url(self):
+        upload = SimpleUploadedFile("minutes.pdf", b"%PDF-1.4")
+        with (
+            patch.object(
+                attachments_service.graph, "get_application_token", return_value=TOKEN
+            ),
+            patch.object(
+                attachments_service.graph,
+                "create_child_folder",
+                new=AsyncMock(return_value=(ITEM, True)),
+            ) as create,
+            patch.object(
+                attachments_service.graph,
+                "upload_file",
+                new=AsyncMock(return_value=_GRAPH_FILE),
+            ) as upload_call,
+            patch.object(
+                attachments_service.graph,
+                "get_folder_items",
+                new=AsyncMock(return_value={"value": [_GRAPH_FILE]}),
+            ),
+        ):
+            response = self.client.post(
+                self._create_upload_url(),
+                {
+                    "bill_number": "B 99—2026",
+                    "bill_document_url": "",
+                    "file": upload,
+                },
+            )
+
+        create.assert_awaited_once_with(TOKEN, "drive-1", "parent-1", "B 99—2026")
+        upload_call.assert_awaited_once_with(
+            TOKEN, "drive-1", "child-item", "minutes.pdf", b"%PDF-1.4"
+        )
+        self.assertContains(response, "uploaded to the bill folder")
+        self.assertContains(response, _GRAPH_FILE["webUrl"])
+        self.assertFalse(Attachment.objects.filter(item_id=_GRAPH_FILE["id"]).exists())
+
+    def test_edit_options_create_the_folder_when_it_is_missing(self):
+        bill = self._make_bill()
+        with (
+            patch.object(
+                attachments_service.graph, "get_application_token", return_value=TOKEN
+            ),
+            patch.object(
+                attachments_service.graph,
+                "create_child_folder",
+                new=AsyncMock(return_value=(ITEM, True)),
+            ) as create,
+            patch.object(
+                attachments_service.graph,
+                "get_folder_items",
+                new=AsyncMock(return_value={"value": []}),
+            ),
+        ):
+            response = self.client.get(
+                self._edit_options_url(bill), {"bill_number": bill.bill_number}
+            )
+
+        self.assertEqual(response.status_code, 200)
+        create.assert_awaited_once_with(TOKEN, "drive-1", "parent-1", "B 99—2026")
+        bill.refresh_from_db()
+        self.assertEqual(bill.sharepoint_folder.folder_id, ITEM["id"])
+
+    def test_edit_options_use_the_bills_folder(self):
+        bill = self._make_bill()
+        self._with_folder(bill)
+        with (
+            patch.object(
+                attachments_service.graph, "get_application_token", return_value=TOKEN
+            ),
+            patch.object(
+                attachments_service.graph,
+                "get_folder_items",
+                new=AsyncMock(return_value={"value": [_GRAPH_FILE]}),
+            ) as get_items,
+        ):
+            response = self.client.get(
+                self._edit_options_url(bill), {"bill_number": bill.bill_number}
+            )
+
+        get_items.assert_awaited_once_with(TOKEN, "drive-1", ITEM["id"])
+        self.assertContains(response, "minutes.pdf")
+
+    def test_edit_options_refuse_an_unsaved_b_number_change(self):
+        bill = self._make_bill()
+        self._with_folder(bill)
+        with patch.object(attachments_service.graph, "create_child_folder") as create:
+            response = self.client.get(
+                self._edit_options_url(bill), {"bill_number": "B 100—2026"}
+            )
+
+        self.assertContains(response, "Save the new B-number")
+        create.assert_not_called()
+
+    def test_edit_upload_stores_in_the_bills_folder(self):
+        bill = self._make_bill()
+        self._with_folder(bill)
+        upload = SimpleUploadedFile("minutes.pdf", b"%PDF-1.4")
+        with (
+            patch.object(
+                attachments_service.graph, "get_application_token", return_value=TOKEN
+            ),
+            patch.object(
+                attachments_service.graph,
+                "upload_file",
+                new=AsyncMock(return_value=_GRAPH_FILE),
+            ) as upload_call,
+            patch.object(
+                attachments_service.graph,
+                "get_folder_items",
+                new=AsyncMock(return_value={"value": [_GRAPH_FILE]}),
+            ),
+        ):
+            response = self.client.post(
+                self._edit_upload_url(bill),
+                {
+                    "bill_number": bill.bill_number,
+                    "bill_document_url": "",
+                    "file": upload,
+                },
+            )
+
+        upload_call.assert_awaited_once_with(
+            TOKEN, "drive-1", ITEM["id"], "minutes.pdf", b"%PDF-1.4"
+        )
+        self.assertContains(response, "uploaded to the bill folder")
+
+    def test_create_options_require_the_create_role(self):
+        stranger = get_user_model().objects.create_user(
+            username="bill-doc-stranger", password="pw"
+        )
+        self.client.force_login(stranger)
+
+        response = self.client.get(
+            self._create_options_url(), {"bill_number": "B 99—2026"}
+        )
+
+        self.assertEqual(response.status_code, 403)

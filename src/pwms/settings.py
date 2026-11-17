@@ -125,7 +125,10 @@ TEMPLATES = [
                 # Unread count + recent alerts for the bell in the site chrome.
                 "pwms.notifications.alerts",
             ],
-            "builtins": ["lucide.templatetags.lucide"],
+            "builtins": [
+                "lucide.templatetags.lucide",
+                "pwms.templatetags.pwms_extras",
+            ],
         },
     },
 ]
@@ -509,3 +512,27 @@ if AUTH_LDAP_SERVER_URI and AUTH_LDAP_BASE_DN:
 
 BILL_DRIVE = config("BILL_DRIVE", default="")
 BILL_FOLDER = config("BILL_FOLDER", default="")
+
+# Per-workflow-type SharePoint folders for the Events tab's document picker.
+# Keys are WorkflowType.name; each entry names a Graph drive and the folder
+# (item) id inside it, plus an optional "name" used as the UI label. An empty
+# folder id means the drive root. Leave both blank to keep the plain URL input
+# for that type. Bills use their own B-number folder instead of this map.
+WORKFLOW_TYPE_SHAREPOINT_LOCATIONS = {
+    "Delegation Report": {
+        "drive_id": config("WORKFLOW_DELEGATION_REPORT_DRIVE", default=""),
+        "folder_id": config("WORKFLOW_DELEGATION_REPORT_FOLDER", default=""),
+    },
+    "International Resolution": {
+        "drive_id": config("WORKFLOW_INTERNATIONAL_RESOLUTION_DRIVE", default=""),
+        "folder_id": config("WORKFLOW_INTERNATIONAL_RESOLUTION_FOLDER", default=""),
+    },
+    "International Agreement": {
+        "drive_id": config("WORKFLOW_INTERNATIONAL_AGREEMENT_DRIVE", default=""),
+        "folder_id": config("WORKFLOW_INTERNATIONAL_AGREEMENT_FOLDER", default=""),
+    },
+    "Meeting": {
+        "drive_id": config("WORKFLOW_MEETING_DRIVE", default=""),
+        "folder_id": config("WORKFLOW_MEETING_FOLDER", default=""),
+    },
+}

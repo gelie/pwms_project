@@ -1,0 +1,77 @@
+{% comment %}
+A SharePoint-backed document URL field: an editable URL, a dropdown of files in
+one SharePoint folder, and an upload that stores a new file there.
+
+Context:
+  field            the bound URL field (its name is what the form posts)
+  options_url      URL of the folder-options fragment
+  upload_url       URL of the upload endpoint
+  folder_label     what the folder is called in the UI, e.g. "bill folder"
+  wrapper_class    grid classes for the field column
+  options_include  optional CSS selector whose value the options request needs
+                   (the bill form sends its B-number)
+  document_files, document_options_error, document_status  optional, when an
+                   upload or a previous attempt re-renders the field
+  document_field_id  optional DOM id when the form field's auto-id would
+                   collide with another field on the page; the POST name
+                   stays ``field.html_name``
+{% endcomment %}
+{% with document_field_id=document_field_id|default:field.auto_id %}
+<div class="{{ wrapper_class|default:'col-12 col-md-6' }}"
+     id="{{ document_field_id }}_field">
+  <label class="form-label" for="{{ field.id_for_label }}">
+    {{ field.label }}
+    {% if field.field.required %}<span class="text-danger" aria-hidden="true">*</span>{% endif %}
+  </label>
+  {{ field }}
+  {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+  {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+  {% if document_status %}
+    <div class="alert alert-{{ document_status.level }} py-2 mt-2 mb-0" role="alert">{{ document_status.message }}</div>
+  {% endif %}
+  {% if document_options_error %}<div class="form-text text-danger">{{ document_options_error }}</div>{% endif %}
+  <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+    <div class="dropdown">
+      <button class="btn btn-sm btn-outline-secondary dropdown-toggle"
+              type="button"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+              {% if not document_files %}
+                hx-get="{{ options_url }}?field_id={{ document_field_id|urlencode }}"
+                hx-trigger="click once"
+                hx-target="#{{ document_field_id }}_files"
+                hx-swap="innerHTML"
+                {% if options_include %}hx-include="{{ options_include }}"{% endif %}
+              {% endif %}>
+        {% lucide "folder-open" size=14 %} Choose from {{ folder_label }}
+      </button>
+      <ul class="dropdown-menu" id="{{ document_field_id }}_files">
+        {% if document_files %}
+          {% include "pwms/partials/sharepoint_document_options.html" with document_files=document_files document_options_error=document_options_error field_id=document_field_id folder_label=folder_label %}
+        {% else %}
+          <li>
+            <span class="dropdown-item-text small text-body-secondary">Open to load the {{ folder_label }}…</span>
+          </li>
+        {% endif %}
+      </ul>
+    </div>
+    <input type="hidden"
+           name="wrapper_class"
+           value="{{ wrapper_class|default:'col-12 col-md-6' }}">
+    <input type="file"
+           class="form-control form-control-sm w-auto"
+           name="file"
+           aria-label="Upload a document to the {{ folder_label }}">
+    <button type="button"
+            class="btn btn-sm btn-outline-primary"
+            hx-post="{{ upload_url }}"
+            hx-encoding="multipart/form-data"
+            hx-include="closest form"
+            hx-target="#{{ document_field_id }}_field"
+            hx-swap="outerHTML"
+            hx-disabled-elt="this">
+      {% lucide "upload" size=14 %} Upload
+    </button>
+  </div>
+</div>
+{% endwith %}

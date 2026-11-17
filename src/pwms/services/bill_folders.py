@@ -106,6 +106,23 @@ def ensure_bill_folder(bill_number: str) -> str:
     return _ensure(bill_number)[0]
 
 
+def ensure_bill_folder_row(bill_number: str):
+    """Ensure the folder exists and return its mirrored ``SharepointFolder`` row.
+
+    Used by the bill form's document picker before the bill exists: the folder is
+    the same one :func:`file_bill_folder` will link to the bill on save.
+    """
+    status, item = _ensure(bill_number)
+    if status == UNCONFIGURED:
+        raise BillFolderError("SharePoint filing is not configured.")
+    folder = _mirror_folder(item)
+    if folder is None:
+        raise BillFolderError(
+            "The bill folder exists on SharePoint but could not be mirrored locally."
+        )
+    return folder
+
+
 def file_bill_folder(bill) -> str:
     """Ensure the folder on SharePoint and link the bill to its mirror row.
 
@@ -210,6 +227,16 @@ def _mirror_folder(item: dict) -> SharepointFolder | None:
         folder_name=item.get("name") or item["id"],
         parent_folder_id=parent_item_id,
     )
+
+
+def mirror_drive(drive_id: str) -> SharepointDrive | None:
+    """Resolve a Graph drive into the local site/drive mirror rows, or ``None``.
+
+    Shared with the Events document picker's configured workflow-type
+    locations: a configured drive need not have been synced by
+    ``populate_sites`` first.
+    """
+    return _mirror_drive(drive_id)
 
 
 def _mirror_drive(drive_id: str) -> SharepointDrive | None:

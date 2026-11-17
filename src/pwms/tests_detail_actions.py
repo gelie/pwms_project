@@ -1,12 +1,16 @@
 """The detail page's add-* affordances: participants, resolutions, notes and attachments."""
 
+from unittest.mock import AsyncMock, patch
+
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from .forms import DelegationParticipantFormSet
 from .models import (
+    Attachment,
     Bill,
     DelegationParticipant,
     DelegationReport,
@@ -16,9 +20,12 @@ from .models import (
     InternationalAgreement,
     InternationalResolution,
     Role,
+    SharepointDrive,
+    SharepointSite,
     WorkflowGroupAccess,
     WorkflowType,
 )
+from .services import attachments as attachments_service
 from .services.permissions import EDIT, resolve
 
 
@@ -625,6 +632,238 @@ class DetailAddAffordancePermissionTests(TestCase):
         self.assertEqual(response.status_code, 200)
         for label in self.BUTTONS:
             self.assertNotContains(response, label)
+
+
+class BillVersionFormAffordanceTests(TestCase):
+    """The bill page's inline record-version form follows the edit right."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.owner = User.objects.create_user(username="version-owner", password="pw")
+        cls.viewer = User.objects.create_user(username="version-viewer", password="pw")
+        wt = WorkflowType.objects.get(name="Bill")
+        cls.bill = Bill.objects.create(
+            workflow_type=wt,
+            current_state=wt.get_initial_state(),
+            title="Version affordance bill",
+            bill_number="B VERSION-1",
+            owner=cls.owner,
+        )
+        group = Group.objects.create(name="Version Viewers", group_type="committee")
+        GroupMembership.objects.create(
+            user=cls.viewer,
+            group=group,
+            role=Role.objects.create(name="Version Viewer Role"),
+        )
+        WorkflowGroupAccess.objects.create(
+            content_type=ContentType.objects.get_for_model(Bill),
+            object_id=cls.bill.pk,
+            group=group,
+            can_view=True,
+            can_edit=False,
+        )
+
+    def _detail_url(self):
+        return reverse("pwms:bill_detail", kwargs={"public_id": self.bill.public_id})
+
+    def test_an_editor_is_offered_the_inline_record_version_form(self):
+        self.client.force_login(self.owner)
+        response = self.client.get(self._detail_url())
+        url = reverse("pwms:bill_version_create", args=[self.bill.public_id])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-bs-target="#version-form"')
+        self.assertContains(response, 'id="version-form"')
+        self.assertContains(response, f'action="{url}"')
+        self.assertContains(response, 'name="version_label"')
+        self.assertContains(response, 'name="version_date"')
+        # The inline form brings the date picker's media with it.
+        self.assertContains(response, "flatpickr.min.js")
+
+    def test_a_viewer_is_not_offered_the_form(self):
+        self.client.force_login(self.viewer)
+        response = self.client.get(self._detail_url())
+        url = reverse("pwms:bill_version_create", args=[self.bill.public_id])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, 'data-bs-target="#version-form"')
+        self.assertNotContains(response, 'id="version-form"')
+        self.assertNotContains(response, f'action="{url}"')
+
+
+TOKEN = {"access_token": "test-token"}
+
+
+def _graph_file():
+    return {
+        "id": "item-1",
+        "name": "minutes.pdf",
+        "size": 2048,
+        "file": {"mimeType": "application/pdf"},
+        "webUrl": "https://contoso.sharepoint.com/minutes.pdf",
+    }
+
+
+@override_settings(
+    WORKFLOW_TYPE_SHAREPOINT_LOCATIONS={
+        "Delegation Report": {
+            "drive_id": "drive-1",
+            "folder_id": "folder-9",
+            "name": "Delegation reports",
+        }
+    }
+)
+class EventDocumentPickerTests(TestCase):
+    """The Events document field follows the record's SharePoint location."""
+
+    @classmethod
+    def setUpTestData(cls):
+        User = get_user_model()
+        cls.owner = User.objects.create_user(username="event-doc-owner", password="pw")
+        cls.outsider = User.objects.create_user(
+            username="event-doc-outsider", password="pw"
+        )
+        cls.report_type = WorkflowType.objects.get(name="Delegation Report")
+        cls.report = DelegationReport.objects.create(
+            workflow_type=cls.report_type,
+            current_state=cls.report_type.get_initial_state(),
+            title="Event document report",
+            owner=cls.owner,
+        )
+        cls.site = SharepointSite.objects.create(
+            name="Committee Library",
+            url="https://contoso.sharepoint.com/sites/committee",
+            site_id="contoso,committee",
+        )
+        cls.drive = SharepointDrive.objects.create(
+            site=cls.site, name="Documents", drive_id="drive-1"
+        )
+        bill_type = WorkflowType.objects.get(name="Bill")
+        cls.bill = Bill.objects.create(
+            workflow_type=bill_type,
+            current_state=bill_type.get_initial_state(),
+            title="Event document bill",
+            bill_number="B 99—2026",
+            owner=cls.owner,
+        )
+        cls.bill.sharepoint_folder = attachments_service.resolve_folder(
+            cls.drive, "bill-folder", "B 99—2026"
+        )
+        cls.bill.save(update_fields=["sharepoint_folder"])
+
+    def setUp(self):
+        self.client.force_login(self.owner)
+
+    def _target(self, target=None):
+        target = target or self.report
+        return {
+            "content_type": f"{target._meta.app_label}.{target._meta.model_name}",
+            "object_id": target.pk,
+        }
+
+    def _detail_url(self, target=None):
+        target = target or self.report
+        name = (
+            "bill_detail"
+            if target._meta.model_name == "bill"
+            else "delegation_report_detail"
+        )
+        return reverse(f"pwms:{name}", args=[target.public_id])
+
+    def _options_url(self):
+        return reverse("pwms:workflow_event_document_options")
+
+    def _upload_url(self):
+        return reverse("pwms:workflow_event_document_upload")
+
+    def test_the_events_form_uses_the_configured_workflow_folder(self):
+        response = self.client.get(self._detail_url())
+
+        self.assertContains(response, "Choose from Delegation reports")
+        self.assertContains(response, self._options_url())
+        self.assertContains(response, self._upload_url())
+        self.assertContains(response, 'name="document_url"')
+        self.assertContains(response, 'id="event-document_url"')
+
+    def test_the_options_are_the_configured_folder_contents(self):
+        with (
+            patch.object(
+                attachments_service.graph, "get_application_token", return_value=TOKEN
+            ),
+            patch.object(
+                attachments_service.graph,
+                "get_folder_items",
+                new=AsyncMock(return_value={"value": [_graph_file()]}),
+            ) as get_items,
+        ):
+            response = self.client.get(self._options_url(), self._target())
+
+        get_items.assert_awaited_once_with(TOKEN, "drive-1", "folder-9")
+        self.assertContains(response, "minutes.pdf")
+
+    def test_upload_stores_in_the_configured_folder(self):
+        upload = SimpleUploadedFile("minutes.pdf", b"%PDF-1.4")
+        with (
+            patch.object(
+                attachments_service.graph, "get_application_token", return_value=TOKEN
+            ),
+            patch.object(
+                attachments_service.graph,
+                "upload_file",
+                new=AsyncMock(return_value=_graph_file()),
+            ) as upload_call,
+            patch.object(
+                attachments_service.graph,
+                "get_folder_items",
+                new=AsyncMock(return_value={"value": [_graph_file()]}),
+            ),
+        ):
+            response = self.client.post(
+                self._upload_url(),
+                {**self._target(), "document_url": "", "file": upload},
+            )
+
+        upload_call.assert_awaited_once_with(
+            TOKEN, "drive-1", "folder-9", "minutes.pdf", b"%PDF-1.4"
+        )
+        self.assertContains(response, "uploaded to the Delegation reports")
+        self.assertContains(response, "https://contoso.sharepoint.com/minutes.pdf")
+        self.assertFalse(Attachment.objects.filter(item_id="item-1").exists())
+
+    def test_a_bill_uses_its_own_folder(self):
+        response = self.client.get(self._detail_url(self.bill))
+
+        self.assertContains(response, "Choose from bill folder")
+
+        with (
+            patch.object(
+                attachments_service.graph, "get_application_token", return_value=TOKEN
+            ),
+            patch.object(
+                attachments_service.graph,
+                "get_folder_items",
+                new=AsyncMock(return_value={"value": [_graph_file()]}),
+            ) as get_items,
+        ):
+            options = self.client.get(self._options_url(), self._target(self.bill))
+
+        get_items.assert_awaited_once_with(TOKEN, "drive-1", "bill-folder")
+        self.assertContains(options, "minutes.pdf")
+
+    def test_options_need_the_edit_right(self):
+        self.client.force_login(self.outsider)
+
+        response = self.client.get(self._options_url(), self._target())
+
+        self.assertEqual(response.status_code, 403)
+
+    @override_settings(WORKFLOW_TYPE_SHAREPOINT_LOCATIONS={})
+    def test_an_unconfigured_type_keeps_the_plain_url_input(self):
+        response = self.client.get(self._detail_url())
+
+        self.assertNotContains(response, "Choose from")
+        self.assertContains(response, 'name="document_url"')
 
 
 class ReportUpdateAddTests(TestCase):

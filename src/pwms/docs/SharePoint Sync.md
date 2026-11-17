@@ -78,6 +78,30 @@ Derived automatically in `settings.py`:
 - `SHAREPOINT_SCOPE` = `https://graph.microsoft.com/.default` (app-only, grants
   whatever the app registration has been consented for)
 
+### Events document locations
+
+The **Events** tab's document field is a SharePoint picker when the record has a
+location:
+
+- a **bill** uses its own B-number folder under the Bill Folder (`BILL_DRIVE` /
+  `BILL_FOLDER`), created when first needed;
+- every other type uses the folder configured in
+  `WORKFLOW_TYPE_SHAREPOINT_LOCATIONS`, keyed by `WorkflowType.name`:
+
+```python
+WORKFLOW_TYPE_SHAREPOINT_LOCATIONS = {
+    "Delegation Report": {
+        "drive_id": "…",
+        "folder_id": "…",       # blank / "root" = the drive root
+        "name": "Delegation reports",  # optional UI label
+    },
+}
+```
+
+An entry without a `drive_id` leaves the plain URL input in place. A configured
+drive is resolved into the local `SharepointDrive` mirror on first use if
+`populate_sites` has not already synced it.
+
 ### Token handling
 
 `pwms.utils.sharepoint.get_application_token()` (aliased as `get_token()`):

@@ -161,6 +161,29 @@ urlpatterns = [
         views.bill_file_folder,
         name="bill_file_folder",
     ),
+    # The bill form's document URL picker. The create routes have no bill id yet
+    # (the folder is ensured from the typed B-number); the edit routes use the
+    # saved bill and refuse an unsaved B-number change.
+    path(
+        "workflows/bills/document-options/",
+        views.bill_document_options,
+        name="bill_document_options",
+    ),
+    path(
+        "workflows/bills/document-upload/",
+        views.bill_document_upload,
+        name="bill_document_upload",
+    ),
+    path(
+        "workflows/bills/<uuid:public_id>/document-options/",
+        views.bill_document_options,
+        name="bill_document_options_edit",
+    ),
+    path(
+        "workflows/bills/<uuid:public_id>/document-upload/",
+        views.bill_document_upload,
+        name="bill_document_upload_edit",
+    ),
     path(
         "workflows/bills/<uuid:public_id>/",
         views.bill_detail,
@@ -180,6 +203,18 @@ urlpatterns = [
         "workflows/bills/<uuid:public_id>/versions/<uuid:version_public_id>/edit/",
         views.bill_version_update,
         name="bill_version_update",
+    ),
+    # The version form's document URL picker: only the bill's own folder, with
+    # an upload that stores the file there. Both gate on edit via the view.
+    path(
+        "workflows/bills/<uuid:public_id>/versions/document-options/",
+        views.bill_version_document_options,
+        name="bill_version_document_options",
+    ),
+    path(
+        "workflows/bills/<uuid:public_id>/versions/document-upload/",
+        views.bill_version_document_upload,
+        name="bill_version_document_upload",
     ),
     path(
         "workflows/bills/<uuid:public_id>/delete/",
@@ -308,6 +343,18 @@ urlpatterns = [
     # Domain events: one cross-type route to record one, since any instrument can
     # carry them. The log is append-only, so there is no edit or delete route.
     path("events/add/", views.workflow_event_add, name="workflow_events_add"),
+    # The event form's document picker: the bill's folder, or the workflow
+    # type's configured SharePoint folder.
+    path(
+        "events/document-options/",
+        views.workflow_event_document_options,
+        name="workflow_event_document_options",
+    ),
+    path(
+        "events/document-upload/",
+        views.workflow_event_document_upload,
+        name="workflow_event_document_upload",
+    ),
     # Group search for dynamic lookup
     path("group-search/", views.group_search, name="group_search"),
     # Bill committee lookup (NA / NCOP committees only)

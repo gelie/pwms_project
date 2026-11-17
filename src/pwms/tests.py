@@ -79,12 +79,35 @@ from .services.permissions import (
 )
 from .services.progress import machine_for
 from .services.search import DEFAULT_PER_CATEGORY, search_site
+from .utils.documents import document_name
 
 
 def make_state(**kwargs):
     """A ``State`` with a default public status, for these ad-hoc test machines."""
     kwargs.setdefault("public_status", PublicStatus.objects.get(name="New"))
     return State.objects.create(**kwargs)
+
+
+class DocumentNameTests(SimpleTestCase):
+    """The readable file name used as a document link's label."""
+
+    def test_the_last_path_segment_is_decoded(self):
+        self.assertEqual(
+            document_name(
+                "https://contoso.sharepoint.com/sites/pwms/Shared%20Documents/"
+                "Bill%20Report.pdf?download=1"
+            ),
+            "Bill Report.pdf",
+        )
+
+    def test_a_url_without_a_file_name_returns_empty(self):
+        for url in (
+            "",
+            "https://contoso.sharepoint.com/sites/pwms/",
+            "https://contoso.sharepoint.com/download.aspx?UniqueId=1",
+        ):
+            with self.subTest(url=url):
+                self.assertEqual(document_name(url), "")
 
 
 class WorkflowAuditingTests(TestCase):
@@ -2003,6 +2026,37 @@ class WorkflowCrudViewTests(TestCase):
         response = self.client.post(reverse("pwms:bill_delete", args=[bill.public_id]))
         self.assertRedirects(response, reverse("pwms:bills"))
         self.assertFalse(Bill.objects.filter(pk=bill.pk).exists())
+
+    def test_bill_number_change_requires_clearing_the_document_url(self):
+        url = "https://contoso.sharepoint.com/doc.pdf"
+        with mock.patch("pwms.views._file_bill_folder"):
+            self.client.post(
+                reverse("pwms:bill_create"),
+                self._bill_payload(bill_document_url=url),
+            )
+            bill = Bill.objects.get(bill_number="B 99—2026")
+
+            # The B-number names the folder: the old document URL would point
+            # into the old folder, so the save is refused until it is cleared.
+            response = self.client.post(
+                reverse("pwms:bill_update", args=[bill.public_id]),
+                self._bill_payload(bill_number="B 100—2026", bill_document_url=url),
+            )
+            self.assertContains(response, "Clear the Bill document URL")
+            bill.refresh_from_db()
+            self.assertEqual(bill.bill_number, "B 99—2026")
+
+            response = self.client.post(
+                reverse("pwms:bill_update", args=[bill.public_id]),
+                self._bill_payload(bill_number="B 100—2026", bill_document_url=""),
+            )
+
+        self.assertRedirects(
+            response, reverse("pwms:bill_detail", args=[bill.public_id])
+        )
+        bill.refresh_from_db()
+        self.assertEqual(bill.bill_number, "B 100—2026")
+        self.assertEqual(bill.bill_document_url, "")
 
     def test_bill_edit_renders_the_state_readonly_and_ignores_a_crafted_post(self):
         self.client.post(reverse("pwms:bill_create"), self._bill_payload())

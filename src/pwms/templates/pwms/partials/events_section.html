@@ -40,11 +40,21 @@ event_form, target_content_type, target_object_id; plus events_status
             hx-target="#events-section"
             hx-swap="outerHTML">
         {% csrf_token %}
-        <input type="hidden" name="content_type" value="{{ target_content_type }}">
-        <input type="hidden" name="object_id" value="{{ target_object_id }}">
+        <input type="hidden"
+               name="content_type"
+               id="event-content-type"
+               value="{{ target_content_type }}">
+        <input type="hidden"
+               name="object_id"
+               id="event-object-id"
+               value="{{ target_object_id }}">
         {% include "pwms/_form_field.html" with field=event_form.event_type wrapper_class="col-12" %}
         {% include "pwms/_form_field.html" with field=event_form.notes wrapper_class="col-12" %}
-        {% include "pwms/_form_field.html" with field=event_form.document_url wrapper_class="col-12" %}
+        {% if event_document_picker %}
+          {% include "pwms/partials/sharepoint_document_field.html" with field=event_form.document_url document_field_id=event_document_field_id options_url=event_document_options_url upload_url=event_document_upload_url options_include="#event-content-type, #event-object-id" folder_label=event_document_folder_label wrapper_class="col-12" %}
+        {% else %}
+          {% include "pwms/_form_field.html" with field=event_form.document_url wrapper_class="col-12" %}
+        {% endif %}
         <div class="d-flex gap-2 mt-2">
           <button class="btn btn-primary btn-sm" type="submit">Record event</button>
           <button class="btn btn-link btn-sm"
@@ -71,7 +81,7 @@ event_form, target_content_type, target_object_id; plus events_status
         {% endif %}
         {% if event.document_url %}
           <div class="mt-1">
-            <a href="{{ event.document_url }}">Document</a>
+            <a href="{{ event.document_url }}">{{ event.document_url|document_name|default:"Document" }}</a>
           </div>
         {% endif %}
       </li>

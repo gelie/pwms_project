@@ -773,6 +773,22 @@ class InternationalAgreementForm(WorkflowInstanceFormMixin, forms.ModelForm):
         }
 
 
+class BillDocumentUrlForm(forms.Form):
+    """The bill document URL field alone.
+
+    The document picker re-renders just this field after an upload; building a
+    full :class:`BillForm` for that would query the picker option lists for
+    fields the response never renders.
+    """
+
+    bill_document_url = forms.URLField(
+        required=False,
+        label="Bill document url",
+        help_text="SharePoint link to the bill document",
+        widget=forms.TextInput(attrs={"class": "form-control", "type": "url"}),
+    )
+
+
 class BillForm(WorkflowInstanceFormMixin, forms.ModelForm):
     """Create/update form for a :class:`Bill` (Online Bill Tracking BRS)."""
 
@@ -797,6 +813,27 @@ class BillForm(WorkflowInstanceFormMixin, forms.ModelForm):
         # joint committees and every non-committee group are not offered.
         self.fields["responsible_committee"].queryset = bill_committee_choices()
         self.fields["sponsor_name"].help_text = "Ministry or originating authority."
+
+    def clean(self):
+        cleaned = super().clean()
+        if self.instance.pk is None:
+            return cleaned
+        number = cleaned.get("bill_number")
+        # The B-number names the bill's SharePoint folder. Re-pointing the link
+        # while renumbering would leave the document pointing into the old
+        # folder, so make the user clear it, save, and pick again in the new one.
+        if (
+            number
+            and number != self.instance.bill_number
+            and cleaned.get("bill_document_url")
+        ):
+            self.add_error(
+                "bill_number",
+                "The B-number names the bill's SharePoint folder. Clear the "
+                "Bill document URL before changing it, then save and choose "
+                "the document from the new folder.",
+            )
+        return cleaned
 
     class Meta:
         model = Bill
