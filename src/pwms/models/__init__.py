@@ -3,7 +3,7 @@ from .base import BaseModel
 from .geography import City, Country
 from .groups import Group
 from .meetings import Meeting, MeetingAttendance
-from .notifications import Notification
+from .notifications import Notification, NotificationPreference, NotificationRule
 from .permissions import GroupMembership, Role
 from .reports import ReportShare
 from .sharepoint import (
@@ -61,6 +61,8 @@ __all__ = [
     "Meeting",
     "MeetingAttendance",
     "Notification",
+    "NotificationPreference",
+    "NotificationRule",
     "PublicStatus",
     "ReportShare",
     "Role",

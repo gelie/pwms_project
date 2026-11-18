@@ -85,6 +85,8 @@ from .notifications import (
     notify_meeting_attendance,
     notify_meeting_created,
     notify_workflow_created,
+    preference_rows,
+    save_preferences,
 )
 from .reporting import (
     ATTACHMENT_CHOICES,
@@ -612,9 +614,7 @@ def all_groups(request):
         **_directory_page(request, groups),
         "query": query,
         "type_choices": [
-            (value, label)
-            for value, label in Group.Type.choices
-            if value in in_use
+            (value, label) for value, label in Group.Type.choices if value in in_use
         ],
         "has_filters": bool(query or type_filter),
     }
@@ -2647,6 +2647,25 @@ def notification_open(request, public_id):
     # Alerts without a target (e.g. an account-level notice) just mark themselves
     # read and leave the reader on the list.
     return redirect(alert.url or "pwms:notifications")
+
+
+def notification_preferences(request):
+    """
+    The signed-in user's own mute switches, per alert kind and channel.
+
+    A switch can only turn an alert *off* for this person: who is told is still
+    decided by the workflow type's audience rules, and alerts the user owes an
+    action on (their turn, a referral to their committee) are always delivered.
+    """
+    if request.method == "POST":
+        save_preferences(request.user, request.POST.keys())
+        messages.success(request, "Alert preferences saved.")
+        return redirect("pwms:notification_preferences")
+    return render(
+        request,
+        "pwms/notification-preferences.html",
+        {"rows": preference_rows(request.user)},
+    )
 
 
 @require_POST

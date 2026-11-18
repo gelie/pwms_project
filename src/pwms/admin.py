@@ -4,6 +4,7 @@ from django import forms
 from django.contrib import admin
 from django.contrib.contenttypes.admin import GenericTabularInline
 from django.db.models import Q
+from django.forms.models import BaseInlineFormSet
 from mptt.admin import MPTTModelAdmin
 
 from .forms import DelegationParticipantInlineFormSet
@@ -26,6 +27,8 @@ from .models import (
     Meeting,
     MeetingAttendance,
     Notification,
+    NotificationPreference,
+    NotificationRule,
     PublicStatus,
     ReportShare,
     Role,
@@ -49,6 +52,7 @@ from .models import (
     WorkflowStatePermission,
     WorkflowType,
 )
+from .models.notifications import EVENT_TRANSITION
 
 admin.site.site_header = "PWMS Admin"
 admin.site.site_title = "PWMS Admin Portal"
@@ -227,8 +231,9 @@ class TransitionInline(admin.TabularInline):
 
     ``from_state`` / ``to_state`` reference states of this same workflow type
     (choose existing states; to wire up a brand-new state, save the type first
-    and then add the transition). Allowed/notify roles are edited from the
-    :class:`TransitionAdmin` change page, not inline.
+    and then add the transition). Allowed roles and the alert rules that name a
+    transition are edited from the :class:`TransitionAdmin` change page, not
+    inline.
     """
 
     model = Transition
@@ -295,13 +300,60 @@ class WorkflowTypeAdminForm(forms.ModelForm):
         return cleaned
 
 
+class NotificationRuleInline(admin.TabularInline):
+    """Who is alerted about a type's records: one row per audience declaration.
+
+    These add to the built-in audience (named people, whoever acts next, officer
+    oversight). Pick the ``scope`` deliberately: ``custodian`` is the owning group
+    only, ``referred_group`` the committee a referral went to, and
+    ``instance_groups`` every group with access to the record.
+    """
+
+    model = NotificationRule
+    extra = 0
+    fields = ("event", "transition", "scope", "role", "channel", "is_active")
+    autocomplete_fields = ("role",)
+
+    def formfield_for_foreignkey(self, db_field, request, **kwargs):
+        # Only this type's transitions are valid choices on its rules.
+        if db_field.name == "transition":
+            type_id = request.resolver_match.kwargs.get("object_id")
+            if type_id:
+                kwargs["queryset"] = Transition.objects.filter(workflow_type_id=type_id)
+            else:
+                kwargs["queryset"] = Transition.objects.none()
+        return super().formfield_for_foreignkey(db_field, request, **kwargs)
+
+
+class TransitionRuleFormSet(BaseInlineFormSet):
+    """A rule added on a transition's page is, by definition, a rule about it."""
+
+    def _construct_form(self, i, **kwargs):
+        form = super()._construct_form(i, **kwargs)
+        form.instance.workflow_type_id = self.instance.workflow_type_id
+        form.instance.event = EVENT_TRANSITION
+        return form
+
+
+class TransitionNotificationRuleInline(admin.TabularInline):
+    """Rules that name this transition, on the transition's own page."""
+
+    model = NotificationRule
+    formset = TransitionRuleFormSet
+    extra = 0
+    fields = ("scope", "role", "channel", "is_active")
+    autocomplete_fields = ("role",)
+    verbose_name = "alert rule"
+    verbose_name_plural = "alert rules (who is told when this transition happens)"
+
+
 @admin.register(WorkflowType)
 class WorkflowTypeAdmin(admin.ModelAdmin):
     """Admin for reusable workflow state machines (states + transitions inline)."""
 
     form = WorkflowTypeAdminForm
-    list_display = ("name", "group", "enabled", "created_at")
-    list_filter = ("enabled",)
+    list_display = ("name", "group", "enabled", "oversight_channel", "created_at")
+    list_filter = ("enabled", "oversight_channel")
     search_fields = ("name", "group__name")
     autocomplete_fields = ("group",)
     filter_horizontal = ("create_roles", "viewer_groups")
@@ -309,6 +361,7 @@ class WorkflowTypeAdmin(admin.ModelAdmin):
     inlines: ClassVar[list[type[admin.TabularInline]]] = [
         StateInline,
         TransitionInline,
+        NotificationRuleInline,
     ]
 
 
@@ -369,9 +422,12 @@ class TransitionAdmin(admin.ModelAdmin):
         "to_state__name",
     )
     autocomplete_fields = ("workflow_type", "from_state", "to_state")
-    filter_horizontal = ("allowed_roles", "notify_roles", "required_event_types")
+    filter_horizontal = ("allowed_roles", "required_event_types")
     ordering = ("workflow_type", "order", "name")
-    inlines: ClassVar[list[type[admin.TabularInline]]] = [TransitionConditionInline]
+    inlines: ClassVar[list[type[admin.TabularInline]]] = [
+        TransitionConditionInline,
+        TransitionNotificationRuleInline,
+    ]
 
 
 @admin.register(TransitionCondition)
@@ -1173,6 +1229,7 @@ class NotificationAdmin(admin.ModelAdmin):
         "kind",
         "channel",
         "status",
+        "why",
         "subject",
     )
     list_filter = ("channel", "kind", "status")
@@ -1188,6 +1245,10 @@ class NotificationAdmin(admin.ModelAdmin):
     date_hierarchy = "created_at"
     ordering = ("-created_at",)
 
+    @admin.display(description="Why")
+    def why(self, obj):
+        return ", ".join(obj.reasons)
+
     def get_readonly_fields(self, request, obj=None):
         """Alerts are evidence, not data entry: nothing here is editable."""
         return [field.name for field in self.model._meta.fields]
@@ -1199,6 +1260,34 @@ class NotificationAdmin(admin.ModelAdmin):
     def has_delete_permission(self, request, obj=None):
         # The log is evidence. Deleting a row would erase who was told what.
         return False
+
+
+@admin.register(NotificationRule)
+class NotificationRuleAdmin(admin.ModelAdmin):
+    """Every alert audience rule, across workflow types, in one filterable list."""
+
+    list_display = (
+        "workflow_type",
+        "event",
+        "transition",
+        "scope",
+        "role",
+        "channel",
+        "is_active",
+    )
+    list_filter = ("workflow_type", "event", "scope", "channel", "is_active")
+    search_fields = ("workflow_type__name", "role__name", "transition__name")
+    autocomplete_fields = ("workflow_type", "transition", "role")
+
+
+@admin.register(NotificationPreference)
+class NotificationPreferenceAdmin(admin.ModelAdmin):
+    """Users' own mute switches; people normally set these from the Alerts page."""
+
+    list_display = ("user", "kind", "in_app_enabled", "email_enabled")
+    list_filter = ("kind", "in_app_enabled", "email_enabled")
+    search_fields = ("user__username", "user__email")
+    raw_id_fields = ("user",)
 
 
 @admin.register(ReportShare)

@@ -19,7 +19,9 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
   declarative transition guards (`Transition.required_event_types`)
 - In-app alerts + the append-only outbound-email log (`Notification`,
   `pwms/notifications/`), covering alerts and explicit report/record shares and
-  raised from the workflow domain methods and the create views
+  raised from the workflow domain methods and the create views; the audience is
+  declared per workflow type (`NotificationRule`, oversight settings) and each
+  row records why the person was told, with per-user mute preferences
 - SharePoint document attachments with on-demand version history and a document
   audit trail (`pwms.Attachment` / `AttachmentVersion`)
 - Per-instrument **notes** (`WorkflowNote`), **referrals** (raise / respond /
@@ -44,16 +46,18 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
 - `Notification` (`pwms/models/notifications.py`, migration `0026_notification`)
   — one row per (recipient, channel, event); the table is deliberately also the
   outbound-email log (see [Data Model](./Data%20Model.md)).
-- `pwms/notifications/`: `dispatch.py` (audience rules + delivery), `context.py`
-  (the bell's context processor), re-exported from `__init__.py`.
+- `pwms/notifications/`: `dispatch.py` (the `Audience` builder, scopes, rules
+  and delivery), `preferences.py` (per-user mutes), `context.py` (the bell's
+  context processor), re-exported from `__init__.py`.
 - Hooked on explicit domain methods, never `save()`:
   `AbstractLegislativeWorkflow.perform_transition()` (`notify_transition`) and
   `.refer()` (`notify_referral_created`); `WorkflowReferral.respond()` /
   `recall()` / `mark_expired()` (`notify_referral_closed`); and the four create
   views in `pwms/views.py` (`notify_workflow_created`). Fixtures, imports and
   admin writes notify nobody.
-- Each dispatch writes an `in_app` row (sent immediately) and — when the
-  recipient is staff of an affected group and has an email address — an `email`
+- Each dispatch writes, per recipient and only on the channels their audience
+  reason grants, an `in_app` row (sent immediately) and — when the recipient is
+  staff of a group the event concerns and has an email address — an `email`
   row (`pending` → `sent`/`failed`). Delivery is **queued**: the row's task is
   written in the *same transaction* as the row itself (`pwms/tasks.py`,
   django-background-tasks), so a workflow change that rolls back queues nothing,
@@ -65,23 +69,38 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
   attempts by default); the row is marked `failed` once the attempts are spent.
   `attempts` and `error` are therefore the log of a mail that never went out.
   `queue_email()` hands a row to the queue; `deliver_email()` makes one attempt.
-- Audience: the in-app bell follows the full RBAC-aware audience — the type's
-  officers (active members of `WorkflowType.group` holding one of its
-  `create_roles`), the roles a transition names (`Transition.notify_roles` plus
-  the roles allowed to act next) and the people the record names (`owner`,
-  `assigned_to`) — minus the actor and anyone who cannot VIEW the instance
-  (`pwms.services.permissions.resolve`). Referrals use `referral_audience()`: the
-  referred group's active members plus the people the record names (`owner`,
-  `assigned_to`), deliberately not RBAC-filtered (a referred committee may hold
-  no `WorkflowGroupAccess` row — the referral is the entitlement) and carrying
-  only the referral's own facts. **Email is narrower**: `email_audience()` keeps
-  only active staff (`is_staff_member`, or `employee_type` of `staff`/`graduate`)
-  who hold a membership of an affected group — the type's group, any group the
-  record grants access to, the groups it names (a bill's responsible committee, a
-  resolution's responsible group, an agreement's referral committees, a meeting's
-  host group), and a referral's `referred_to` group. Named owners/assignees and
-  invited guests outside those groups still hear through the bell, but are not
-  emailed.
+- **Audience is explicit and every row says why.** `stakeholders()` (records)
+  and `referral_audience()` (referrals) return an `Audience` of recipients, each
+  with the **reasons** they were chosen and the channels those reasons grant:
+  `next-actor` (holder of a role allowed next *and* able to `transition`),
+  `assignee`, `referred-group`, `owner`, `referrer`, `participant` (a meeting's
+  register), `officer` (oversight) and `rule:<id>`. The reasons are stored on the
+  row (`Notification.reasons`, *Why* in the admin).
+- **Scope, not blast.** An event is resolved in the groups it concerns — the
+  type's **custodian** group, plus a meeting's **host group** or a referral's
+  **referred group** — not in every group that can see the record. A committee that
+  merely holds view access, or was once referred the matter, does not hear about
+  every later transition unless a rule opts in with `scope=instance_groups`.
+- **Officers are oversight**, told at `WorkflowType.oversight_channel` (default
+  *email only*, so no bell count for every record); `notify_next_actors` and
+  `notify_named_people` switch the other built-ins off.
+- **`NotificationRule`** adds recipients per type, event (optionally one
+  transition), scope, role and channel; it replaces `Transition.notify_roles`
+  (migration `0067` converted existing entries to `instance_groups` rules, the
+  reach `notify_roles` had). Managed in the admin on the type and transition
+  pages.
+- **RBAC still has the last word.** Everyone is checked against VIEW
+  (`pwms.services.permissions.resolve`), minus the actor. The referred committee
+  is the stated exception: the referral is its entitlement, so it is not
+  RBAC-filtered (it may hold no `WorkflowGroupAccess` row) and the message
+  carries only the referral's own facts. **Email is narrower**: only active staff
+  (`is_staff_member`, or `employee_type` of `staff`/`graduate`) who hold a
+  membership of a group the event concerns; members (MPs), owners, assignees and
+  invited guests outside those groups still hear through the bell where a reason
+  grants it, but are not emailed.
+- **Preferences** (`NotificationPreference`, `/pwms/alerts/preferences/`): a
+  user can mute the bell and/or email per alert kind. It only narrows, and is
+  ignored for alerts they owe an action on and for `referral-deadline`.
 - The same `Notification` table is the **single outbound-email log**. Explicit
   report and record sharing write one `email` row per addressed recipient
   (including external addresses with no `User` account) and no bell row; the
@@ -98,26 +117,38 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
   otherwise (configurable with `EMAIL_BACKEND` / `EMAIL_HOST`);
   `DEFAULT_FROM_EMAIL` and `PWMS_BASE_URL` set the sender and the absolute links.
 - UI: the navbar bell (`templates/navbar.html`, `static/css/style.css`), the
-  alerts page (`templates/pwms/notifications.html`) and the views/URLs
-  `pwms:notifications`, `pwms:notification_open` and
-  `pwms:notifications_read_all`. Body templates:
+  alerts page (`templates/pwms/notifications.html`), the preferences page
+  (`templates/pwms/notification-preferences.html`) and the views/URLs
+  `pwms:notifications`, `pwms:notification_open`,
+  `pwms:notifications_read_all` and `pwms:notification_preferences`. Body
+  templates:
   `templates/emails/notification.txt` and `emails/notification.html` (sent as
   the HTML alternative part alongside the stored plain text).
-- Tests: `pwms/tests_notifications.py` covers the audience rules, RBAC
-  filtering, the two channel rows, queued (not inline) alert delivery, the
-  same-transaction rollback guarantee, per-recipient delivery, the retry policy,
-  terminal failure, envelope snapshots and the append-only admin;
+- Tests: `pwms/tests_notifications.py` covers RBAC filtering, the two channel
+  rows, queued (not inline) alert delivery, the same-transaction rollback
+  guarantee, per-recipient delivery, the retry policy, terminal failure, envelope
+  snapshots and the append-only admin; `pwms/tests_notification_audience.py`
+  covers who is told and why — oversight channels, reasons, next actors, rules
+  and their validation, scope (custodian / referred / host / instance groups),
+  referral and meeting audiences, preferences and the preferences page, the
+  `0067` data migration and the admin;
   `pwms/tests_reports.py` and `pwms/tests_workflow_share.py` cover per-recipient
   share logging (success and failure).
 
-> `Transition.notify_roles` exists but the RBAC seeds leave it unpopulated, so
-> the working audience for a transition is the type's `create_roles` officers
-> (plus the other sources above) until an administrator fills it in per
-> transition.
+> The RBAC seeds define no `NotificationRule`s, so out of the box the audience for
+> a transition is the named people, whoever acts next, and the type's officers by
+> email. Add rules per type to widen it.
+>
+> Known gap: `export_workflow_type` / `import_workflow_type` still import the
+> retired `workflows` app and do not carry notification rules; they need
+> repointing to `pwms.models` (see [Management Commands](./Management%20Commands.md))
+> before rules can round-trip through them.
 
-**Acceptance:** role members receive email when a transition they are subscribed
-to (`notify_roles`) fires; referral-deadline reminders are sent; all sends are
-recorded.
+**Acceptance:** the people a record names, whoever acts next and any role a
+`NotificationRule` names receive the alert on the channels declared; officers get
+the oversight channel; a member is never emailed; a person can mute what they do
+not owe an action on; referral-deadline reminders are sent; every send is recorded
+with the reason.
 
 ---
 

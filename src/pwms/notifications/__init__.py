@@ -2,10 +2,12 @@
 
 from .context import alerts
 from .dispatch import (
+    Audience,
     NotificationDeliveryError,
+    Recipient,
     alert,
     deliver_email,
-    email_audience,
+    event_groups,
     max_attempts,
     notify_meeting_attendance,
     notify_meeting_created,
@@ -21,13 +23,17 @@ from .dispatch import (
     referral_audience,
     stakeholders,
 )
+from .preferences import apply_preferences, preference_rows, save_preferences
 
 __all__ = [
+    "Audience",
     "NotificationDeliveryError",
+    "Recipient",
     "alert",
     "alerts",
+    "apply_preferences",
     "deliver_email",
-    "email_audience",
+    "event_groups",
     "max_attempts",
     "notify_meeting_attendance",
     "notify_meeting_created",
@@ -38,8 +44,10 @@ __all__ = [
     "notify_referral_deadline",
     "notify_transition",
     "notify_workflow_created",
+    "preference_rows",
     "queue_email",
     "record_email",
     "referral_audience",
+    "save_preferences",
     "stakeholders",
 ]

@@ -747,7 +747,10 @@ class MeetingWebViewTests(MeetingFixture):
         # A colleague in the owning unit so the creation alert has a recipient
         # other than the actor (nobody is told about their own act).
         colleague = User.objects.create_user(
-            username="colleague", email="colleague@example.com", password="pw"
+            username="colleague",
+            email="colleague@example.com",
+            password="pw",
+            is_staff_member=True,
         )
         GroupMembership.objects.create(
             user=colleague, group=self.ict_group, role=self.ecm_role
@@ -768,12 +771,15 @@ class MeetingWebViewTests(MeetingFixture):
         meeting = Meeting.objects.get(title="House Plenary")
         self.assertEqual(meeting.owner, self.organiser)
         self.assertEqual(meeting.current_state, self.scheduled)
-        # Creation raises the alert to the unit's officers.
-        self.assertTrue(
-            Notification.objects.filter(
-                kind="meeting-created", channel="in_app", recipient=colleague
-            ).exists()
+        # Creation raises the alert to the unit's officers — by email only: they
+        # are the oversight tier, so the type's default is no bell count for them.
+        officer_rows = Notification.objects.filter(
+            kind="meeting-created", recipient=colleague
         )
+        self.assertEqual(
+            list(officer_rows.values_list("channel", flat=True)), ["email"]
+        )
+        self.assertEqual(officer_rows.get().reasons, ["officer"])
 
     def test_create_is_refused_to_a_user_without_the_create_role(self):
         self.client.force_login(self.outsider)

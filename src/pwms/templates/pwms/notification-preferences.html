@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Alert preferences{% endblock title %}
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <h1 class="mb-0">Alert preferences</h1>
+    <a class="btn btn-sm btn-outline-secondary"
+       href="{% url "pwms:notifications" %}">Back to alerts</a>
+  </div>
+  <p class="text-body-secondary">
+    Choose how you hear about each kind of event. Who is told in the first place
+    is decided by the workflow's alert rules; these switches can only turn things
+    <em>off</em> for you. You are always told about anything you need to act on —
+    when it is your turn, or when a matter is referred to a committee you belong
+    to — whatever you choose here.
+  </p>
+  <form method="post">
+    {% csrf_token %}
+    <div class="table-responsive">
+      <table class="table align-middle">
+        <thead>
+          <tr>
+            <th scope="col">Event</th>
+            <th scope="col" class="text-center">Bell</th>
+            <th scope="col" class="text-center">Email</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+            <tr>
+              <th scope="row" class="fw-normal">
+                {{ row.label }}
+                {% if row.locked %}
+                  <small class="text-body-secondary d-block">Always sent — cannot be turned off.</small>
+                {% endif %}
+              </th>
+              <td class="text-center">
+                <input class="form-check-input"
+                       type="checkbox"
+                       name="in_app__{{ row.kind }}"
+                       aria-label="Bell: {{ row.label }}"
+                       {% if row.in_app %}checked{% endif %}
+                       {% if row.locked %}disabled{% endif %}>
+              </td>
+              <td class="text-center">
+                <input class="form-check-input"
+                       type="checkbox"
+                       name="email__{{ row.kind }}"
+                       aria-label="Email: {{ row.label }}"
+                       {% if row.email %}checked{% endif %}
+                       {% if row.locked %}disabled{% endif %}>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <button type="submit" class="btn btn-primary">Save preferences</button>
+  </form>
+{% endblock content %}

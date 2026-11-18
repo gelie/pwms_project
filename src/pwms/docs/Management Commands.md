@@ -413,14 +413,15 @@ and closes the ones nobody answered:
 
 | Window | Action |
 | --- | --- |
-| due within 24 hours, not yet reminded | alert the referred group's active members and the people the record names (owner, assignee) — in-app to the whole audience, email to staff of the affected groups — then stamp `deadline_notified_at` |
+| due within 24 hours, not yet reminded | alert the referred group's active members (reason `referred-group`) and the people the record names (owner, assignee), plus any `referral-deadline` `NotificationRule` — in-app to everyone, email to staff of the referred group — then stamp `deadline_notified_at` |
 | due within 1 hour, already reminded | send the final reminder (no second stamp) |
 | due date passed | `mark_expired()` the referral (emits `referral-expired`) and alert the parties |
 
 Only `status="open"` referrals are considered, so an answered or recalled one is
 left alone. Reminders go through `pwms.notifications` and are logged as
 `referral-deadline` alerts (an `in_app` row per recipient, plus an `email` row
-for each staff recipient in an affected group); the expiry alert is raised by
+for each staff recipient in the referred group); a deadline reminder is
+**mandatory**, so a user's alert preferences never suppress it. The expiry alert is raised by
 `WorkflowReferral.mark_expired()` and is not sent by the command. Mail is one
 message per recipient, so no recipient sees another's address. `--dry-run`
 reports what would be sent or expired without sending mail or writing anything.

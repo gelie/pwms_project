@@ -39,7 +39,10 @@ ContentType-linked RBAC layer, and everything that happens to an instrument is
   - `WorkflowEvent` records append-only domain events (documents, referrals, …).
 - **Alerts & email** — a `Notification` table that is both the navbar bell and
   the append-only outbound-email log (alerts and explicit report/record shares);
-  dispatch is queued through `django-background-tasks`.
+  dispatch is queued through `django-background-tasks`. Who is told is declared
+  per workflow type (`NotificationRule`, oversight channel) and scoped to the
+  groups an event concerns; every row records *why* the person was told, and
+  users can mute what they do not owe an action on.
 - **Documents** — SharePoint attachments on every workflow record, with on-demand
   version history and `document-*` events on the audit trail.
 - **Meetings (the Events workflow)** — a **colour-coded calendar dashboard**

@@ -115,6 +115,47 @@ class WorkflowType(BaseModel):
         help_text="New instances let this group manage the record's access.",
     )
 
+    # Alert audience. Who hears about a record is declared here (and, for anything
+    # more specific, in ``NotificationRule`` rows) rather than derived from RBAC
+    # alone. These three are the built-in audiences every type has; see
+    # ``pwms.notifications.dispatch`` for how they combine and
+    # ``NotificationRule`` for the per-event additions.
+    OVERSIGHT_OFF = "off"
+    OVERSIGHT_IN_APP = "in_app"
+    OVERSIGHT_EMAIL = "email"
+    OVERSIGHT_BOTH = "both"
+    OVERSIGHT_CHOICES = [
+        (OVERSIGHT_OFF, _("Nothing")),
+        (OVERSIGHT_IN_APP, _("Bell only")),
+        (OVERSIGHT_EMAIL, _("Email only")),
+        (OVERSIGHT_BOTH, _("Bell and email")),
+    ]
+    oversight_channel = models.CharField(
+        max_length=10,
+        choices=OVERSIGHT_CHOICES,
+        default=OVERSIGHT_EMAIL,
+        verbose_name=_("Officer oversight"),
+        help_text=(
+            "How the officers (holders of the create roles in the owning group) are "
+            "told about creations and transitions. They can already see everything "
+            "in the lists, so the default is email only: no bell count for every "
+            "record of the type."
+        ),
+    )
+    notify_next_actors = models.BooleanField(
+        default=True,
+        verbose_name=_("Tell whoever acts next"),
+        help_text=(
+            "After a transition, alert the holders of the roles allowed to act from "
+            "the new state (in the groups that may transition the record)."
+        ),
+    )
+    notify_named_people = models.BooleanField(
+        default=True,
+        verbose_name=_("Tell the owner and assignee"),
+        help_text="Alert the people the record itself names.",
+    )
+
     # Type-level hierarchy: lets the registry declare container relationships,
     # e.g. "International Resolution" nests under "Delegation Report".
     parent_type = models.ForeignKey(
@@ -137,6 +178,14 @@ class WorkflowType(BaseModel):
 
     def get_initial_state(self):
         return self.states.filter(is_initial=True).first()
+
+    @property
+    def oversight_in_app(self):
+        return self.oversight_channel in (self.OVERSIGHT_IN_APP, self.OVERSIGHT_BOTH)
+
+    @property
+    def oversight_email(self):
+        return self.oversight_channel in (self.OVERSIGHT_EMAIL, self.OVERSIGHT_BOTH)
 
     # -- group-scoped RBAC --------------------------------------------------
     def group_roles(self):
@@ -1269,9 +1318,7 @@ class State(BaseModel):
         PublicStatus,
         on_delete=models.PROTECT,
         related_name="states",
-        help_text=(
-            "Simplified citizen-facing status this state publishes."
-        ),
+        help_text=("Simplified citizen-facing status this state publishes."),
     )
     slug = AutoSlugField(
         populate_from="name",
@@ -1358,13 +1405,8 @@ class Transition(BaseModel):
     # Permissions (roles are the same Role records used for group membership)
     allowed_roles = models.ManyToManyField(Role, related_name="allowed_transitions")
 
-    # Email alert roles - members with these roles will be notified on this transition
-    notify_roles = models.ManyToManyField(
-        Role,
-        related_name="notified_transitions",
-        blank=True,
-        help_text="Group members with these roles will receive an email alert when this transition occurs",
-    )
+    # Who is alerted about this transition is declared with ``NotificationRule``
+    # rows (event "Record transitioned", optionally limited to this transition).
 
     # Transition guards: at least one event of each listed type must have been
     # recorded on the instance before this transition can be performed, e.g.

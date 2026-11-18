@@ -7,6 +7,8 @@
       <span class="text-muted">
         {{ alert_total }} alert{{ alert_total|pluralize }} · {{ unread_count }} unread
       </span>
+      <a class="btn btn-sm btn-outline-secondary"
+         href="{% url "pwms:notification_preferences" %}">Preferences</a>
       {% if unread_count %}
         <form method="post" action="{% url "pwms:notifications_read_all" %}">
           {% csrf_token %}

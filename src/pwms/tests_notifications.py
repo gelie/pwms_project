@@ -3,10 +3,13 @@ Alerts: who is told, what is recorded, and what actually goes out.
 
 The dispatch layer has three jobs, and each gets a group of tests here:
 
-* **audience** — the officers who run the workflow type, anyone a transition
-  names, and the people the record names, minus the actor and minus anyone who
-  may not open the record (``stakeholders``); **email is narrower**, keeping only
-  active staff of the affected groups (``email_audience``);
+* **audience** — the people the record names, whoever acts next and the officers
+  at the type's oversight channel, minus the actor and minus anyone who may not
+  open the record (``stakeholders``); **email is narrower**, keeping only active
+  staff of the groups the event concerns. The fixture here sets the officers'
+  oversight to *bell and email* so these tests exercise the whole pipeline; who
+  is told by default, the rules and the preferences are in
+  ``tests_notification_audience``;
 * **record** — every dispatch writes an ``in_app`` row (the bell) and, for staff
   of the affected groups, an ``email`` row (the delivery log) that ends up
   ``sent`` or ``failed`` with the reason kept;
@@ -53,7 +56,6 @@ from .models import (
     WorkflowType,
 )
 from .notifications import (
-    email_audience,
     max_attempts,
     notify_referral_created,
     notify_workflow_created,
@@ -132,8 +134,12 @@ class AlertFixture(TestCase):
             user=cls.denied, group=cls.office, role=cls.denied_role
         )
 
+        # Officers hear by bell *and* email here so the delivery tests have
+        # recipients on both channels (the default is email only).
         cls.workflow_type = WorkflowType.objects.create(
-            name="Alert Test Report", group=cls.office
+            name="Alert Test Report",
+            group=cls.office,
+            oversight_channel=WorkflowType.OVERSIGHT_BOTH,
         )
         cls.workflow_type.create_roles.add(cls.officer_role, cls.denied_role)
 
@@ -169,7 +175,7 @@ class EmailAudienceTests(AlertFixture):
     """Email is narrower than the bell: staff who belong to an affected group."""
 
     def test_staff_members_of_the_group_are_emailed(self):
-        audience = email_audience(self.report, stakeholders(self.report))
+        audience = [entry.user for entry in stakeholders(self.report) if entry.email]
 
         self.assertCountEqual(audience, [self.officer, self.second_officer])
 
@@ -214,7 +220,7 @@ class EmailAudienceTests(AlertFixture):
             is_staff_member=False, employee_type="staff"
         )
 
-        audience = email_audience(self.report, stakeholders(self.report))
+        audience = [entry.user for entry in stakeholders(self.report) if entry.email]
 
         self.assertIn(self.second_officer, audience)
 
@@ -223,7 +229,7 @@ class StakeholderTests(AlertFixture):
     """``stakeholders()`` — the in-app audience rules."""
 
     def test_officers_of_the_type_are_the_audience(self):
-        audience = stakeholders(self.report)
+        audience = stakeholders(self.report).users
 
         # The two officers holding a create role, plus the owner the record names.
         self.assertCountEqual(
@@ -241,7 +247,7 @@ class StakeholderTests(AlertFixture):
         The denied role is a create role, so ``denied`` is a candidate, but the
         group access denies it view — an alert would link to a 403.
         """
-        audience = stakeholders(self.report)
+        audience = stakeholders(self.report).users
 
         self.assertNotIn(self.denied, audience)
 
@@ -250,11 +256,13 @@ class StakeholderTests(AlertFixture):
             user=self.second_officer, group=self.office
         ).update(is_active=False)
 
-        self.assertCountEqual(stakeholders(self.report), [self.officer, self.author])
+        self.assertCountEqual(
+            stakeholders(self.report).users, [self.officer, self.author]
+        )
 
     def test_owner_is_told_without_holding_a_role(self):
         """The record names them, so they hear about it with no membership at all."""
-        self.assertIn(self.author, stakeholders(self.report))
+        self.assertIn(self.author, stakeholders(self.report).users)
 
 
 class DispatchRecordTests(AlertFixture):
@@ -526,7 +534,7 @@ class ReferralAlertTests(AlertFixture):
             object_id=self.report.pk,
         ).delete()
 
-        self.assertIn(self.member, referral_audience(referral))
+        self.assertIn(self.member, referral_audience(referral).users)
 
     def test_assignee_hears_about_referral_activity(self):
         """
