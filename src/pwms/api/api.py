@@ -1,8 +1,8 @@
 """Django-Ninja API for external (partner application) integrations.
 
-Mounted at ``/api/v1/`` from :mod:`pwms.root_urls`. Three read-only resource
-families are exposed — users, memberships and bills — and access to each is
-gated by the scope registered on the calling :class:`ApiClient`.
+Mounted at ``/api/v1/`` from :mod:`pwms.root_urls`. Four read-only resource
+families are exposed — users, memberships, bills and meetings — and access to
+each is gated by the scope registered on the calling :class:`ApiClient`.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ from django.db.models import DateField, OuterRef, Prefetch, Q, Subquery
 from django.db.models.functions import Coalesce, TruncDate
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from ninja import NinjaAPI, Router
 from ninja.errors import HttpError
 
@@ -25,6 +26,8 @@ from ..models import (
     BillVersion,
     Group,
     GroupMembership,
+    Meeting,
+    MeetingAttendance,
     TransitionLog,
     User,
     WorkflowNote,
@@ -39,6 +42,8 @@ from .schemas import (
     ErrorOut,
     GroupOut,
     GroupPage,
+    MeetingDetailOut,
+    MeetingPage,
     MembershipOut,
     MembershipPage,
     RefreshRequest,
@@ -55,6 +60,7 @@ from .scopes import Scope
 from .search import (
     BILL_SEARCH_FIELDS,
     GROUP_SEARCH_FIELDS,
+    MEETING_SEARCH_FIELDS,
     MEMBERSHIP_SEARCH_FIELDS,
     USER_SEARCH_FIELDS,
     apply_search,
@@ -86,6 +92,7 @@ api = NinjaAPI(
         f"{settings.EXTERNAL_API_REFRESH_TOKEN_TTL_MINUTES} minutes and rotate on "
         "use. Each key only sees the scopes it was registered for. "
         "Use `GET /search/` to search users, groups, memberships and bills in one call."
+        " Use `GET /meetings/?user=` to list a member's meetings."
     ),
     urls_namespace="api",
     auth=api_auth,
@@ -97,6 +104,7 @@ users_router = Router(tags=["Users"])
 groups_router = Router(tags=["Groups"])
 memberships_router = Router(tags=["Memberships"])
 bills_router = Router(tags=["Bills"])
+meetings_router = Router(tags=["Meetings"])
 
 
 # ---------------------------------------------------------------------------
@@ -255,6 +263,73 @@ def _group_queryset():
     )
 
 
+def _meeting_queryset():
+    """Meetings with everything the API serialises, in one query per relation.
+
+    The attendance register is prefetched because each meeting's tally is derived
+    from it; without the prefetch every row on a page would re-query its
+    register. ``attendance_counts()`` and the member lookup then read the cache.
+    """
+    return Meeting.objects.select_related(
+        "workflow_type",
+        "current_state",
+        "owner",
+        "assigned_to",
+        "host_group",
+        "chaired_by",
+        "secretary",
+        "venue",
+        "venue__building",
+    ).prefetch_related(
+        Prefetch(
+            "attendances",
+            queryset=MeetingAttendance.objects.select_related("user"),
+        )
+    )
+
+
+def _resolve_user(value: str):
+    """Find a user by ``public_id``, username or email (``None`` when absent)."""
+    condition = Q(username__iexact=value) | Q(email__iexact=value)
+    try:
+        public_id = UUID(str(value))
+    except AttributeError, TypeError, ValueError:
+        pass
+    else:
+        condition |= Q(public_id=public_id)
+    return User.objects.filter(condition).order_by("pk").first()
+
+
+def _parse_period(value: str | None, name: str):
+    """Parse an inclusive ``YYYY-MM-DD`` period bound, rejecting a bad value."""
+    if not value:
+        return None
+    parsed = parse_date(value)
+    if parsed is None:
+        raise HttpError(400, f"{name} must be a date in YYYY-MM-DD format.")
+    return parsed
+
+
+def _attach_meeting_counts(meetings, member=None):
+    """Attach each meeting's register tally (and the member's own row) in place."""
+    for meeting in meetings:
+        meeting.api_attendance_counts = meeting.attendance_counts()
+        meeting.api_member_attendance = None
+        if member is not None:
+            meeting.api_member_attendance = next(
+                (row for row in meeting.attendances.all() if row.user_id == member.pk),
+                None,
+            )
+    return meetings
+
+
+def _meetings_page(request, queryset, limit: int, offset: int, member=None) -> dict:
+    """Paginate meetings, then compute each page's register tally."""
+    page = _paginate(request, queryset, limit, offset)
+    _attach_meeting_counts(page["results"], member=member)
+    return page
+
+
 SEARCH_RESOURCES = ("users", "groups", "memberships", "bills")
 
 
@@ -347,6 +422,8 @@ def api_root(request):
         resources.append(ResourceLink(name="memberships", url="/api/v1/memberships/"))
     if principal.has_scope(Scope.BILLS_READ):
         resources.append(ResourceLink(name="bills", url="/api/v1/bills/"))
+    if principal.has_scope(Scope.MEETINGS_READ):
+        resources.append(ResourceLink(name="meetings", url="/api/v1/meetings/"))
     if resources:
         resources.append(ResourceLink(name="search", url="/api/v1/search/"))
 
@@ -431,6 +508,53 @@ def list_users(
 def get_user(request, public_id: UUID):
     require_scope(request, Scope.USERS_READ)
     return get_object_or_404(_user_queryset(), public_id=public_id)
+
+
+@users_router.get(
+    "/{public_id}/meetings/",
+    response={200: MeetingPage, 400: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+    summary="List a user's meetings",
+)
+def list_user_meetings(
+    request,
+    public_id: UUID,
+    limit: int = 20,
+    offset: int = 0,
+    search: str = "",
+    search_fields: str | None = None,
+    group: str | None = None,
+    meeting_type: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    state: str | None = None,
+    minutes_status: str | None = None,
+    attendance_mode: str | None = None,
+    ordering: str = "-start_datetime",
+):
+    """A user's meetings, as ``GET /meetings/?user=<public_id>``.
+
+    A convenience alias for integrations that address the person first. The
+    same member/period/group/type filters and the same response shape apply;
+    the user must exist (``404`` otherwise).
+    """
+    require_scope(request, Scope.MEETINGS_READ)
+    get_object_or_404(User, public_id=public_id)
+    return list_meetings(
+        request,
+        limit=limit,
+        offset=offset,
+        search=search,
+        search_fields=search_fields,
+        user=str(public_id),
+        group=group,
+        meeting_type=meeting_type,
+        start=start,
+        end=end,
+        state=state,
+        minutes_status=minutes_status,
+        attendance_mode=attendance_mode,
+        ordering=ordering,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -631,6 +755,127 @@ def get_bill(request, public_id: UUID):
 
 
 # ---------------------------------------------------------------------------
+# Meetings
+# ---------------------------------------------------------------------------
+
+MEETING_ORDERING = {
+    "start_datetime",
+    "end_datetime",
+    "title",
+    "meeting_type",
+    "created_at",
+}
+
+
+def _meeting_ordering(value: str) -> str:
+    field = value.removeprefix("-")
+    if field not in MEETING_ORDERING:
+        return "-start_datetime"
+    return value
+
+
+@meetings_router.get(
+    "/",
+    response={200: MeetingPage, 400: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+    summary="List meetings, optionally for one member",
+)
+def list_meetings(
+    request,
+    limit: int = 20,
+    offset: int = 0,
+    search: str = "",
+    search_fields: str | None = None,
+    user: str | None = None,
+    group: str | None = None,
+    meeting_type: str | None = None,
+    start: str | None = None,
+    end: str | None = None,
+    state: str | None = None,
+    minutes_status: str | None = None,
+    attendance_mode: str | None = None,
+    ordering: str = "-start_datetime",
+):
+    """Every meeting the key may read, filtered by member, group and period.
+
+    ``user`` is the headline filter: pass a ``public_id``, username or email and
+    the result is that person's meetings — the ones they sit on the attendance
+    register for, chair or minute, own or are assigned, or that are convened by
+    a group they actively belong to (``MeetingQuerySet.for_member``). Results
+    then carry the member's own RSVP/attendance row in ``member_attendance``.
+
+    ``start``/``end`` are inclusive ``YYYY-MM-DD`` bounds on the start date, so
+    ``?user=jsmith&start=2026-01-01&end=2026-06-30&group=Health`` answers "what
+    did this member attend in the first half of the year, in Health?".
+    """
+    require_scope(request, Scope.MEETINGS_READ)
+
+    queryset = apply_search(
+        _meeting_queryset(), search, MEETING_SEARCH_FIELDS, search_fields
+    ).distinct()
+
+    member = None
+    if user:
+        member = _resolve_user(user)
+        if member is None:
+            # Unlike the other filters, an unresolved person is almost always a
+            # bad identifier rather than an empty diary, so say which formats
+            # the filter accepts instead of silently returning zero rows.
+            raise HttpError(
+                404,
+                f"No user matches '{user}'. Pass a public_id, username or email.",
+            )
+        queryset = queryset.for_member(member)
+
+    if group:
+        queryset = queryset.filter(group_filter_q("host_group", group))
+
+    if meeting_type:
+        types = [value.strip() for value in meeting_type.split(",") if value.strip()]
+        if types:
+            queryset = queryset.filter(meeting_type__in=types)
+
+    start_date = _parse_period(start, "start")
+    end_date = _parse_period(end, "end")
+    if start_date is not None and end_date is not None:
+        if start_date > end_date:
+            raise HttpError(400, "start must be on or before end.")
+        queryset = queryset.in_period(start_date, end_date)
+    elif start_date is not None:
+        queryset = queryset.filter(start_datetime__date__gte=start_date)
+    elif end_date is not None:
+        queryset = queryset.filter(start_datetime__date__lte=end_date)
+
+    if state:
+        queryset = queryset.filter(
+            Q(current_state__slug__iexact=state) | Q(current_state__name__iexact=state)
+        )
+    if minutes_status:
+        queryset = queryset.filter(minutes_status__iexact=minutes_status)
+    if attendance_mode:
+        queryset = queryset.filter(attendance_mode__iexact=attendance_mode)
+
+    return _meetings_page(
+        request, queryset.order_by(_meeting_ordering(ordering)), limit, offset, member
+    )
+
+
+@meetings_router.get(
+    "/{public_id}/",
+    response={200: MeetingDetailOut, 400: ErrorOut, 403: ErrorOut, 404: ErrorOut},
+    summary="Retrieve a meeting with its attendance register",
+)
+def get_meeting(request, public_id: UUID, user: str | None = None):
+    """One meeting, its register and (optionally) one member's place on it."""
+    require_scope(request, Scope.MEETINGS_READ)
+    meeting = get_object_or_404(_meeting_queryset(), public_id=public_id)
+
+    member = _resolve_user(user) if user else None
+    _attach_meeting_counts([meeting], member=member)
+    meeting.api_attendances = list(meeting.attendances.all())
+    return meeting
+
+
+# ---------------------------------------------------------------------------
 # Cross-resource search
 # ---------------------------------------------------------------------------
 
@@ -740,3 +985,4 @@ api.add_router("/users", users_router)
 api.add_router("/groups", groups_router)
 api.add_router("/memberships", memberships_router)
 api.add_router("/bills", bills_router)
+api.add_router("/meetings", meetings_router)

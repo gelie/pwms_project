@@ -313,6 +313,138 @@ class BillPage(Schema):
 
 
 # ---------------------------------------------------------------------------
+# Meetings
+# ---------------------------------------------------------------------------
+
+
+class BuildingRef(Schema):
+    model_config = ConfigDict(from_attributes=True)
+
+    public_id: UUID
+    name: str
+    short_name: str
+
+
+class VenueRef(Schema):
+    model_config = ConfigDict(from_attributes=True)
+
+    public_id: UUID
+    name: str
+    floor: str
+    capacity: int | None = None
+    building: BuildingRef
+
+
+class StateRef(Schema):
+    model_config = ConfigDict(from_attributes=True)
+
+    public_id: UUID
+    name: str
+    slug: str
+    is_terminal: bool
+
+
+class MeetingAttendanceOut(Schema):
+    """One person's place on a meeting's register, with their RSVP/attendance."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    public_id: UUID
+    user: UserRef | None = None
+    guest_name: str
+    display_name: str
+    email: str
+    source: str
+    capacity: str
+    is_required: bool
+    rsvp_status: str
+    attendance_status: str
+    is_present: bool
+    invited_at: datetime
+    responded_at: datetime | None = None
+    recorded_at: datetime | None = None
+    note: str
+
+
+class MeetingAttendanceCounts(Schema):
+    """The tally on a meeting's register (also the figures the quorum check uses)."""
+
+    invited: int
+    present: int
+    absent: int
+    excused: int
+    late: int
+    not_recorded: int
+    accepted: int
+    declined: int
+    required: int
+    host_group: int
+    invitee: int
+    quorum_met: bool
+
+
+class MeetingOut(Schema):
+    """A parliamentary meeting (the Events workflow)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    public_id: UUID
+    reference_number: str
+    title: str
+    description: str
+    meeting_type: str
+    meeting_type_display: str
+    start_datetime: datetime
+    end_datetime: datetime | None = None
+    all_day: bool
+    duration_minutes: int | None = None
+    attendance_mode: str
+    venue: VenueRef | None = None
+    venue_display: str
+    off_site_venue: str
+    off_site_address: str
+    meeting_link: str
+    host_group: GroupRef | None = None
+    chaired_by: UserRef | None = None
+    secretary: UserRef | None = None
+    quorum: int | None = None
+    state: StateRef = Field(validation_alias="current_state")
+    calendar_state: str
+    is_upcoming: bool
+    is_finished: bool
+    minutes_status: str
+    priority: str
+    deadline: datetime | None = None
+    # Bulk-computed from the prefetched register (see the API queryset).
+    attendance_counts: MeetingAttendanceCounts = Field(
+        validation_alias="api_attendance_counts"
+    )
+    # The requesting member's own row, when the list is filtered by ``user``.
+    member_attendance: MeetingAttendanceOut | None = Field(
+        default=None, validation_alias="api_member_attendance"
+    )
+    created_at: datetime
+    updated_at: datetime
+
+
+class MeetingDetailOut(MeetingOut):
+    """A meeting plus its full attendance register."""
+
+    attendances: list[MeetingAttendanceOut] = Field(
+        default_factory=list, validation_alias="api_attendances"
+    )
+
+
+class MeetingPage(Schema):
+    count: int
+    limit: int
+    offset: int
+    next: str | None = None
+    previous: str | None = None
+    results: list[MeetingOut]
+
+
+# ---------------------------------------------------------------------------
 # Cross-resource search
 # ---------------------------------------------------------------------------
 

@@ -82,6 +82,40 @@ BILL_SEARCH_FIELDS: dict[str, tuple[str, ...]] = {
 }
 
 
+#: Meetings: the scheduling detail, the convening group and the people named on
+#: the record.
+MEETING_SEARCH_FIELDS: dict[str, tuple[str, ...]] = {
+    "reference_number": ("reference_number",),
+    "title": ("title",),
+    "description": ("description",),
+    "host_group": (
+        "host_group__name",
+        "host_group__short_name",
+        "host_group__slug",
+    ),
+    "chair": (
+        "chaired_by__username",
+        "chaired_by__first_name",
+        "chaired_by__last_name",
+    ),
+    "secretary": (
+        "secretary__username",
+        "secretary__first_name",
+        "secretary__last_name",
+    ),
+    "venue": ("venue__name", "venue__building__name"),
+    "off_site_venue": ("off_site_venue", "off_site_address"),
+    # Attendees, so ``?search=<member name>`` also finds meetings by the people
+    # on the register (the meetings queryset is de-duplicated afterwards).
+    "attendee": (
+        "attendances__user__username",
+        "attendances__user__first_name",
+        "attendances__user__last_name",
+        "attendances__guest_name",
+    ),
+}
+
+
 def _allowed_fields_text(field_map: dict[str, tuple[str, ...]]) -> str:
     return ", ".join(sorted(field_map))
 
