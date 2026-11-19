@@ -1,0 +1,56 @@
+{% comment %}
+One expanded level of the event browser's tree, swapped into a site's or
+folder's child ``<ul>``. Renders a site's drives
+(``event_document_drives``) or a folder's subfolders
+(``event_document_subfolders``); ``event_document_error`` is shown instead when
+the level could not be read.
+
+Context: event_content_type, event_object_id, plus one of
+event_document_drives / event_document_subfolders / event_document_error.
+{% endcomment %}
+{% if event_document_error %}
+  <li class="small text-danger">{{ event_document_error }}</li>
+{% endif %}
+{% for drive in event_document_drives %}
+  <li>
+    <div class="d-flex align-items-center gap-1">
+      <button type="button"
+              class="btn btn-link btn-sm p-0 text-decoration-none"
+              aria-label="Expand {{ drive.name }}"
+              hx-get="{% url "pwms:workflow_event_document_tree" %}?drive_id={{ drive.drive_id|urlencode }}&folder_id=root"
+              hx-target="#event-drive-{{ drive.pk }}-children"
+              hx-swap="innerHTML"
+              hx-include="#event-content-type, #event-object-id">{% lucide "chevron-right" size=14 %}</button>
+      <button type="button"
+              class="btn btn-link btn-sm p-0 text-decoration-none text-truncate"
+              hx-get="{% url "pwms:workflow_event_document_folder" %}?drive_id={{ drive.drive_id|urlencode }}&folder_id=root&folder_name={{ drive.name|urlencode }}"
+              hx-target="#event-document-contents"
+              hx-swap="innerHTML"
+              hx-include="#event-content-type, #event-object-id">{% lucide "hard-drive" size=14 %} {{ drive.name }}</button>
+    </div>
+    <ul class="list-unstyled ms-3" id="event-drive-{{ drive.pk }}-children"></ul>
+  </li>
+{% endfor %}
+{% for folder in event_document_subfolders %}
+  <li>
+    <div class="d-flex align-items-center gap-1">
+      <button type="button"
+              class="btn btn-link btn-sm p-0 text-decoration-none"
+              aria-label="Expand {{ folder.name }}"
+              hx-get="{% url "pwms:workflow_event_document_tree" %}?drive_id={{ event_document_drive_id|urlencode }}&folder_id={{ folder.id|urlencode }}"
+              hx-target="#event-folder-{{ folder.id }}-children"
+              hx-swap="innerHTML"
+              hx-include="#event-content-type, #event-object-id">{% lucide "chevron-right" size=14 %}</button>
+      <button type="button"
+              class="btn btn-link btn-sm p-0 text-decoration-none text-truncate"
+              hx-get="{% url "pwms:workflow_event_document_folder" %}?drive_id={{ event_document_drive_id|urlencode }}&folder_id={{ folder.id|urlencode }}&folder_name={{ folder.name|urlencode }}&parent_folder_id={{ event_document_parent_folder_id|urlencode }}"
+              hx-target="#event-document-contents"
+              hx-swap="innerHTML"
+              hx-include="#event-content-type, #event-object-id">{% lucide "folder" size=14 %} {{ folder.name }}</button>
+    </div>
+    <ul class="list-unstyled ms-3" id="event-folder-{{ folder.id }}-children"></ul>
+  </li>
+{% endfor %}
+{% if not event_document_drives and not event_document_subfolders and not event_document_error %}
+  <li class="small text-muted ps-2">No folders.</li>
+{% endif %}

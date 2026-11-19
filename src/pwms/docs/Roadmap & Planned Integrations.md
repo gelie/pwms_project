@@ -327,10 +327,14 @@ record gains an **Events** tab holding its append-only domain-event log
 (`WorkflowEvent`) with a form that records an event by hand
 (`partials/events_section.html`, route `pwms:workflow_events_add`): add-only,
 since a correction is a new compensating event rather than an edit, and gated on
-the record's **edit** right. The **Timeline** now merges those events with the
-`TransitionLog` state changes and the auditlog CRUD trail into the one
-newest-first table (`pwms/services/history.py`), so a record's whole story reads
-in one place.
+the record's **edit** right. The form's document field opens a **SharePoint
+browser** (`event_document_*` partials and routes): a bill starts on its own
+B-number folder and files every upload there, other types start on their
+configured folder or the user's sites, and an existing document (*Use this
+document*) or an uploaded file fills the event's document link. The **Timeline**
+now merges those events with the `TransitionLog` state changes and the auditlog
+CRUD trail into the one newest-first table (`pwms/services/history.py`), so a
+record's whole story reads in one place.
 
 Remaining (🔜):
 

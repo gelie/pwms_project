@@ -343,12 +343,23 @@ urlpatterns = [
     # Domain events: one cross-type route to record one, since any instrument can
     # carry them. The log is append-only, so there is no edit or delete route.
     path("events/add/", views.workflow_event_add, name="workflow_events_add"),
-    # The event form's document picker: the bill's folder, or the workflow
-    # type's configured SharePoint folder.
+    # The event form's document browser: a bill opens on its dedicated folder,
+    # other types on their user's SharePoint sites. Uploads land in the folder
+    # the browser selected (a bill always files into its own folder).
     path(
-        "events/document-options/",
-        views.workflow_event_document_options,
-        name="workflow_event_document_options",
+        "events/document-browser/",
+        views.workflow_event_document_browser,
+        name="workflow_event_document_browser",
+    ),
+    path(
+        "events/document-tree/",
+        views.workflow_event_document_tree,
+        name="workflow_event_document_tree",
+    ),
+    path(
+        "events/document-folder/",
+        views.workflow_event_document_folder,
+        name="workflow_event_document_folder",
     ),
     path(
         "events/document-upload/",

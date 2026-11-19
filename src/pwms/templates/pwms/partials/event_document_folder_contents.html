@@ -1,0 +1,92 @@
+{% comment %}
+The documents in the folder selected in the event browser, swapped into
+``#event-document-contents``.
+
+Each document has a "Use this document" action that writes its SharePoint URL
+into the event's document field (``pwms/static/js/event-document.js``). The
+controls below upload a local file into this folder and put its link in the
+same field. A bill always files its uploads into its own folder, so that is
+called out when the browser is showing a different one.
+
+Context: event_document_drive, event_document_files, event_document_folder_id,
+event_document_folder_name, event_document_parent_folder_id,
+event_document_upload_url, event_document_error; for a bill also event_is_bill
+and event_bill_folder.
+{% endcomment %}
+{% if event_document_error %}
+  <div class="alert alert-danger py-2 mb-0" role="alert">{{ event_document_error }}</div>
+{% else %}
+  {% if event_is_bill %}
+    <div class="alert alert-info py-2" role="status">
+      {% if event_bill_folder %}
+        Uploads for this bill are filed in its own SharePoint folder ("{{ event_bill_folder.name }}").
+      {% elif event_filing_configured %}
+        Uploads for this bill will create and use its own SharePoint folder.
+      {% else %}
+        This bill has no SharePoint folder and SharePoint filing is not configured.
+      {% endif %}
+    </div>
+  {% endif %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <h3 class="h6 mb-0">
+      {% lucide "folder-open" size=16 %}
+      {{ event_document_drive.name }}{% if event_document_folder_name and event_document_folder_name != event_document_drive.name %} / {{ event_document_folder_name }}{% endif %}
+    </h3>
+    <span class="small text-body-secondary">{{ event_document_files|length }} document{{ event_document_files|length|pluralize }}</span>
+  </div>
+  {% if event_document_files %}
+    <ul class="list-group list-group-flush mb-3">
+      {% for file in event_document_files %}
+        <li class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2 px-0">
+          <div class="text-truncate">
+            {% if file.web_url %}
+              <a href="{{ file.web_url }}" target="_blank" rel="noopener" class="text-decoration-none">{{ file.name }}</a>
+            {% else %}
+              {{ file.name }}
+            {% endif %}
+            <span class="d-block small text-body-secondary">
+              {{ file.size|filesizeformat }}
+              {% if file.mimetype %}· {{ file.mimetype }}{% endif %}
+            </span>
+          </div>
+          {% if file.web_url %}
+            <button type="button"
+                    class="btn btn-sm btn-outline-primary text-nowrap"
+                    data-event-document-use="{{ file.web_url }}"
+                    data-event-document-name="{{ file.name }}">Use this document</button>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="small text-muted">No documents in this folder.</p>
+  {% endif %}
+  <div class="border-top pt-3">
+    <input type="hidden" name="drive_id" value="{{ event_document_drive.drive_id }}">
+    <input type="hidden" name="folder_id" value="{{ event_document_folder_id }}">
+    <input type="hidden" name="folder_name" value="{{ event_document_folder_name }}">
+    <input type="hidden" name="parent_folder_id" value="{{ event_document_parent_folder_id }}">
+    <label class="form-label" for="event-document-upload-file">Upload a document into this folder</label>
+    <div class="row g-2 align-items-center">
+      <div class="col-12 col-md-7">
+        <input type="file"
+               class="form-control"
+               id="event-document-upload-file"
+               name="file">
+      </div>
+      <div class="col-12 col-md-5 d-grid">
+        <button type="button"
+                class="btn btn-primary"
+                hx-post="{{ event_document_upload_url }}"
+                hx-encoding="multipart/form-data"
+                hx-include="closest form"
+                hx-target="#event-document-field"
+                hx-swap="outerHTML"
+                hx-disabled-elt="this">
+          {% lucide "upload" size=16 %} Upload
+        </button>
+      </div>
+    </div>
+    <div class="form-text">The file stays in SharePoint; the event records its link.</div>
+  </div>
+{% endif %}

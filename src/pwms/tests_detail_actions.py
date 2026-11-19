@@ -1,6 +1,7 @@
 """The detail page's add-* affordances: participants, resolutions, notes and attachments."""
 
 from unittest.mock import AsyncMock, patch
+from urllib.parse import urlencode
 
 from django.contrib.auth import get_user_model
 from django.contrib.contenttypes.models import ContentType
@@ -22,6 +23,7 @@ from .models import (
     Role,
     SharepointDrive,
     SharepointSite,
+    SharepointSiteMember,
     WorkflowGroupAccess,
     WorkflowType,
 )
@@ -705,6 +707,15 @@ def _graph_file():
     }
 
 
+def _graph_folder(folder_id="folder-child", name="Reports"):
+    return {
+        "id": folder_id,
+        "name": name,
+        "folder": {"childCount": 0},
+        "webUrl": "https://contoso.sharepoint.com/folder",
+    }
+
+
 @override_settings(
     WORKFLOW_TYPE_SHAREPOINT_LOCATIONS={
         "Delegation Report": {
@@ -715,7 +726,7 @@ def _graph_file():
     }
 )
 class EventDocumentPickerTests(TestCase):
-    """The Events document field follows the record's SharePoint location."""
+    """The Events document field browses the user's SharePoint sites."""
 
     @classmethod
     def setUpTestData(cls):
@@ -739,6 +750,7 @@ class EventDocumentPickerTests(TestCase):
         cls.drive = SharepointDrive.objects.create(
             site=cls.site, name="Documents", drive_id="drive-1"
         )
+        SharepointSiteMember.objects.create(site=cls.site, user=cls.owner)
         bill_type = WorkflowType.objects.get(name="Bill")
         cls.bill = Bill.objects.create(
             workflow_type=bill_type,
@@ -771,22 +783,75 @@ class EventDocumentPickerTests(TestCase):
         )
         return reverse(f"pwms:{name}", args=[target.public_id])
 
-    def _options_url(self):
-        return reverse("pwms:workflow_event_document_options")
+    def _url(self, name, target=None, **params):
+        """A picker URL for ``target``, with extra query parameters."""
+        query = self._target(target)
+        query.update(params)
+        return f"{reverse(f'pwms:{name}')}?{urlencode(query)}"
+
+    def _browser_url(self, target=None):
+        return self._url("workflow_event_document_browser", target)
 
     def _upload_url(self):
         return reverse("pwms:workflow_event_document_upload")
 
-    def test_the_events_form_uses_the_configured_workflow_folder(self):
+    def test_the_events_form_offers_the_sharepoint_browser(self):
         response = self.client.get(self._detail_url())
 
-        self.assertContains(response, "Choose from Delegation reports")
-        self.assertContains(response, self._options_url())
-        self.assertContains(response, self._upload_url())
+        self.assertContains(response, "Browse SharePoint")
+        self.assertContains(response, self._browser_url())
+        self.assertContains(response, "Source a document from your SharePoint sites")
         self.assertContains(response, 'name="document_url"')
         self.assertContains(response, 'id="event-document_url"')
 
-    def test_the_options_are_the_configured_folder_contents(self):
+    def test_the_browser_lists_the_users_sites_and_opens_the_configured_folder(self):
+        response = self.client.get(self._browser_url())
+
+        self.assertContains(response, "Sites you are a member of")
+        self.assertContains(response, "Committee Library")
+        # The configured workflow folder is the starting point when it exists.
+        self.assertContains(response, "Opening the Delegation reports")
+        self.assertContains(response, "folder_id=folder-9")
+
+    def test_a_bill_opens_on_its_dedicated_folder(self):
+        response = self.client.get(self._browser_url(self.bill))
+
+        self.assertContains(response, "Opening the bill folder")
+        self.assertContains(response, "folder_id=bill-folder")
+
+    def test_the_tree_lists_a_sites_drives(self):
+        response = self.client.get(
+            self._url("workflow_event_document_tree", site_id=self.site.site_id)
+        )
+
+        self.assertContains(response, "Documents")
+
+    def test_the_tree_lists_a_drives_subfolders(self):
+        response = {
+            "value": [_graph_folder("f1", "Reports"), _graph_file()]
+        }
+        with (
+            patch.object(
+                attachments_service.graph, "get_application_token", return_value=TOKEN
+            ),
+            patch.object(
+                attachments_service.graph,
+                "get_folder_items",
+                new=AsyncMock(return_value=response),
+            ),
+        ):
+            page = self.client.get(
+                self._url(
+                    "workflow_event_document_tree",
+                    drive_id="drive-1",
+                    folder_id="root",
+                )
+            )
+
+        self.assertContains(page, "Reports")
+        self.assertNotContains(page, "minutes.pdf")
+
+    def test_a_folder_lists_documents_with_use_and_upload(self):
         with (
             patch.object(
                 attachments_service.graph, "get_application_token", return_value=TOKEN
@@ -797,12 +862,23 @@ class EventDocumentPickerTests(TestCase):
                 new=AsyncMock(return_value={"value": [_graph_file()]}),
             ) as get_items,
         ):
-            response = self.client.get(self._options_url(), self._target())
+            page = self.client.get(
+                self._url(
+                    "workflow_event_document_folder",
+                    drive_id="drive-1",
+                    folder_id="folder-9",
+                    folder_name="Delegation reports",
+                )
+            )
 
         get_items.assert_awaited_once_with(TOKEN, "drive-1", "folder-9")
-        self.assertContains(response, "minutes.pdf")
+        self.assertContains(page, "minutes.pdf")
+        self.assertContains(page, "Use this document")
+        self.assertContains(page, "Upload")
+        self.assertContains(page, "https://contoso.sharepoint.com/minutes.pdf")
+        self.assertContains(page, self._upload_url())
 
-    def test_upload_stores_in_the_configured_folder(self):
+    def test_upload_stores_in_the_selected_folder(self):
         upload = SimpleUploadedFile("minutes.pdf", b"%PDF-1.4")
         with (
             patch.object(
@@ -821,49 +897,86 @@ class EventDocumentPickerTests(TestCase):
         ):
             response = self.client.post(
                 self._upload_url(),
-                {**self._target(), "document_url": "", "file": upload},
+                {
+                    **self._target(),
+                    "document_url": "",
+                    "drive_id": "drive-1",
+                    "folder_id": "folder-9",
+                    "folder_name": "Delegation reports",
+                    "file": upload,
+                },
             )
 
         upload_call.assert_awaited_once_with(
             TOKEN, "drive-1", "folder-9", "minutes.pdf", b"%PDF-1.4"
         )
         self.assertContains(response, "uploaded to the Delegation reports")
-        self.assertContains(response, "https://contoso.sharepoint.com/minutes.pdf")
+        self.assertContains(
+            response, 'value="https://contoso.sharepoint.com/minutes.pdf"'
+        )
+        # An event document is a link, not an Attachment row on the record.
         self.assertFalse(Attachment.objects.filter(item_id="item-1").exists())
 
-    def test_a_bill_uses_its_own_folder(self):
-        response = self.client.get(self._detail_url(self.bill))
-
-        self.assertContains(response, "Choose from bill folder")
-
+    def test_a_bill_upload_ignores_the_browsed_folder(self):
+        upload = SimpleUploadedFile("minutes.pdf", b"%PDF-1.4")
         with (
             patch.object(
                 attachments_service.graph, "get_application_token", return_value=TOKEN
             ),
             patch.object(
                 attachments_service.graph,
+                "upload_file",
+                new=AsyncMock(return_value=_graph_file()),
+            ) as upload_call,
+            patch.object(
+                attachments_service.graph,
                 "get_folder_items",
                 new=AsyncMock(return_value={"value": [_graph_file()]}),
-            ) as get_items,
+            ),
         ):
-            options = self.client.get(self._options_url(), self._target(self.bill))
+            response = self.client.post(
+                self._upload_url(),
+                {
+                    **self._target(self.bill),
+                    "document_url": "",
+                    "drive_id": "drive-1",
+                    "folder_id": "somewhere-else",
+                    "folder_name": "Elsewhere",
+                    "file": upload,
+                },
+            )
 
-        get_items.assert_awaited_once_with(TOKEN, "drive-1", "bill-folder")
-        self.assertContains(options, "minutes.pdf")
+        # The bill's own folder is the destination whatever the browser showed.
+        upload_call.assert_awaited_once_with(
+            TOKEN, "drive-1", "bill-folder", "minutes.pdf", b"%PDF-1.4"
+        )
+        self.assertContains(response, "uploaded to the bill folder")
 
-    def test_options_need_the_edit_right(self):
+    def test_the_folder_fragments_need_the_edit_right(self):
         self.client.force_login(self.outsider)
 
-        response = self.client.get(self._options_url(), self._target())
+        tree = self.client.get(
+            self._url("workflow_event_document_tree", site_id=self.site.site_id)
+        )
+        folder = self.client.get(
+            self._url(
+                "workflow_event_document_folder",
+                drive_id="drive-1",
+                folder_id="root",
+            )
+        )
 
-        self.assertEqual(response.status_code, 403)
+        self.assertEqual(tree.status_code, 403)
+        self.assertEqual(folder.status_code, 403)
 
     @override_settings(WORKFLOW_TYPE_SHAREPOINT_LOCATIONS={})
-    def test_an_unconfigured_type_keeps_the_plain_url_input(self):
-        response = self.client.get(self._detail_url())
+    def test_an_unconfigured_type_still_offers_the_users_sites(self):
+        form = self.client.get(self._detail_url())
+        self.assertContains(form, "Browse SharePoint")
 
-        self.assertNotContains(response, "Choose from")
-        self.assertContains(response, 'name="document_url"')
+        browser = self.client.get(self._browser_url())
+        self.assertContains(browser, "Committee Library")
+        self.assertContains(browser, "Select a folder to see its documents")
 
 
 class ReportUpdateAddTests(TestCase):

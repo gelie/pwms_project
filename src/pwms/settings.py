@@ -291,7 +291,7 @@ DJANGO_FLATPICKR = {
 #         "DEFAULT_FROM_EMAIL", default="noreply@parliament.gov.za"
 #     )
 
-if SERVER=="DEV":
+if SERVER=="DEV" or SERVER=="LOCAL":
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
     EMAIL_HOST = "localhost"
     EMAIL_PORT = 1025
@@ -525,11 +525,12 @@ if AUTH_LDAP_SERVER_URI and AUTH_LDAP_BASE_DN:
 BILL_DRIVE = config("BILL_DRIVE", default="")
 BILL_FOLDER = config("BILL_FOLDER", default="")
 
-# Per-workflow-type SharePoint folders for the Events tab's document picker.
+# Per-workflow-type SharePoint folders for the Events tab's document browser.
 # Keys are WorkflowType.name; each entry names a Graph drive and the folder
 # (item) id inside it, plus an optional "name" used as the UI label. An empty
-# folder id means the drive root. Leave both blank to keep the plain URL input
-# for that type. Bills use their own B-number folder instead of this map.
+# folder id means the drive root. A type without an entry (or without a drive
+# id) still browses the user's sites; it simply has no default folder. Bills
+# open on and upload into their own B-number folder instead of this map.
 WORKFLOW_TYPE_SHAREPOINT_LOCATIONS = {
     "Delegation Report": {
         "drive_id": config("WORKFLOW_DELEGATION_REPORT_DRIVE", default=""),

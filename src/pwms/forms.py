@@ -1275,7 +1275,7 @@ class WorkflowEventForm(forms.ModelForm):
                 }
             ),
             "document_url": forms.URLInput(
-                attrs={"class": "form-control", "placeholder": "https://… (optional)"}
+                attrs={"class": "form-control", "placeholder": "https://… (optional)", "hidden": "hidden"}
             ),
         }
 
