@@ -747,7 +747,10 @@ class MeetingWebViewTests(MeetingFixture):
         # A colleague in the owning unit so the creation alert has a recipient
         # other than the actor (nobody is told about their own act).
         colleague = User.objects.create_user(
-            username="colleague", email="colleague@example.com", password="pw"
+            username="colleague",
+            email="colleague@example.com",
+            password="pw",
+            is_staff_member=True,
         )
         GroupMembership.objects.create(
             user=colleague, group=self.ict_group, role=self.ecm_role
@@ -768,12 +771,15 @@ class MeetingWebViewTests(MeetingFixture):
         meeting = Meeting.objects.get(title="House Plenary")
         self.assertEqual(meeting.owner, self.organiser)
         self.assertEqual(meeting.current_state, self.scheduled)
-        # Creation raises the alert to the unit's officers.
-        self.assertTrue(
-            Notification.objects.filter(
-                kind="meeting-created", channel="in_app", recipient=colleague
-            ).exists()
+        # Creation raises the alert to the unit's officers — by email only: they
+        # are the oversight tier, so the type's default is no bell count for them.
+        officer_rows = Notification.objects.filter(
+            kind="meeting-created", recipient=colleague
         )
+        self.assertEqual(
+            list(officer_rows.values_list("channel", flat=True)), ["email"]
+        )
+        self.assertEqual(officer_rows.get().reasons, ["officer"])
 
     def test_create_is_refused_to_a_user_without_the_create_role(self):
         self.client.force_login(self.outsider)
@@ -1451,3 +1457,103 @@ class MeetingImportExportTests(MeetingFixture):
         self.assertEqual((report.created, report.updated, report.skipped), (0, 0, 1))
         self.assertEqual(Meeting.objects.filter(reference_number="RT/1").count(), 1)
         self.assertEqual(Meeting.objects.count(), 1)
+
+
+class SeedMeetingsCommandTests(MeetingFixture):
+    """The demo seeder builds a member-focused calendar on a clean database."""
+
+    @classmethod
+    def setUpTestData(cls):
+        super().setUpTestData()
+        cls.committee = Group.objects.create(
+            name="Portfolio Committee on Demo Health", group_type="committee"
+        )
+        cls.house = Group.objects.create(
+            name="Demo National Assembly", group_type="house"
+        )
+        cls.mps = []
+        for index in range(10):
+            user = User.objects.create_user(
+                username=f"mp{index:02d}",
+                email=f"mp{index:02d}@example.com",
+                password="pw",
+                first_name="Member",
+                last_name=f"Number{index}",
+                is_mp=True,
+            )
+            GroupMembership.objects.create(
+                user=user, group=cls.committee, role=cls.ecm_role
+            )
+            cls.mps.append(user)
+
+        for index in range(3):
+            User.objects.create_user(
+                username=f"staff{index:02d}",
+                email=f"staff{index:02d}@example.com",
+                password="pw",
+                first_name="Staff",
+                last_name=f"Member{index}",
+                is_staff_member=True,
+            )
+
+    def _seed(self, *args):
+        out = StringIO()
+        call_command("seed_meetings", *args, stdout=out)
+        return out.getvalue()
+
+    def test_seeds_a_member_focused_calendar(self):
+        output = self._seed("--count", "24", "--seed", "5", "--force")
+
+        meetings = Meeting.objects.all()
+        self.assertEqual(meetings.count(), 24)
+        self.assertIn("Seeded 24 meetings", output)
+
+        references = list(meetings.values_list("reference_number", flat=True))
+        self.assertTrue(all(references))
+        self.assertEqual(len(references), len(set(references)))
+
+        committee_types = (
+            "portfolio_committee",
+            "select_committee",
+            "committee",
+            "ad_hoc_committee",
+        )
+        self.assertGreater(
+            meetings.filter(meeting_type__in=committee_types).count(),
+            meetings.count() // 2,
+        )
+        self.assertTrue(meetings.filter(meeting_type="plenary").exists())
+        self.assertTrue(meetings.filter(host_group=self.committee).exists())
+
+        # Every meeting has a register and the people named on the record.
+        for meeting in meetings:
+            self.assertTrue(meeting.attendances.exists(), meeting.title)
+            self.assertIsNotNone(meeting.chaired_by, meeting.title)
+            self.assertIsNotNone(meeting.secretary, meeting.title)
+
+        self.assertTrue(meetings.filter(current_state__name="Completed").exists())
+        self.assertTrue(meetings.filter(current_state__name="Scheduled").exists())
+        self.assertTrue(
+            MeetingAttendance.objects.filter(recorded_at__isnull=False).exists()
+        )
+
+        # A member is on several registers, so the API's member filter is useful.
+        self.assertTrue(
+            Meeting.objects.for_member(self.mps[0]).exists(),
+        )
+        # Every real account is reachable by the per-user filter, even when the
+        # random registers would not have picked them.
+        for user in self.mps:
+            self.assertTrue(
+                Meeting.objects.for_member(user).exists(),
+                f"{user.username} is on no seeded meeting",
+            )
+        # Enough real accounts existed, so no fallback accounts were created.
+        self.assertFalse(User.objects.filter(username__startswith="demo-").exists())
+
+    def test_reset_replaces_the_previous_batch(self):
+        self._seed("--count", "6", "--seed", "1", "--force")
+        self.assertEqual(Meeting.objects.count(), 6)
+
+        self._seed("--count", "5", "--seed", "2", "--force", "--reset")
+        self.assertEqual(Meeting.objects.count(), 5)

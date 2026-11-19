@@ -3,7 +3,7 @@
 PWMS exposes a **read-only Django-Ninja API** for registered partner applications
 under `/api/v1/`.
 
-The API is intentionally narrow. Three resource families are available:
+The API is intentionally narrow. Five resource families are available:
 
 | Resource | Collection | Detail | Scope |
 | --- | --- | --- | --- |
@@ -11,7 +11,8 @@ The API is intentionally narrow. Three resource families are available:
 | Groups | `GET /api/v1/groups/` | `GET /api/v1/groups/{public_id}/` | `groups:read` |
 | Memberships | `GET /api/v1/memberships/` | `GET /api/v1/memberships/{public_id}/` | `memberships:read` |
 | Bills | `GET /api/v1/bills/` | `GET /api/v1/bills/{public_id}/` | `bills:read` |
-| Search | `GET /api/v1/search/` | — | any of the three scopes |
+| Meetings | `GET /api/v1/meetings/` | `GET /api/v1/meetings/{public_id}/` | `meetings:read` |
+| Search | `GET /api/v1/search/` | — | any of the users/groups/memberships/bills scopes |
 
 There are no write endpoints: `POST`, `PUT`, `PATCH` and `DELETE` return
 `405 Method Not Allowed`. Ninja's interactive docs are served at
@@ -35,7 +36,7 @@ clients**. Each registration records:
 | `contact_name` / `contact_email` | Human owner of the integration. |
 | `client_id` | Public identifier used in the token request. Generated on save. |
 | `client_secret_hash` | One-way hash of the secret. The plaintext is never stored. |
-| `scopes` | Subset of `users:read`, `memberships:read`, `bills:read`. |
+| `scopes` | Subset of `users:read`, `groups:read`, `memberships:read`, `bills:read`, `meetings:read`. |
 | `rate_limit_per_minute` | Per-key request ceiling across all endpoints. |
 | `is_active` | Disabling a client kills its existing access tokens immediately. |
 
@@ -168,12 +169,15 @@ endpoint checks the one it needs:
 | `groups:read` | `GET /api/v1/groups/`, `GET /api/v1/groups/{public_id}/` |
 | `memberships:read` | `GET /api/v1/memberships/`, `GET /api/v1/memberships/{public_id}/` |
 | `bills:read` | `GET /api/v1/bills/`, `GET /api/v1/bills/{public_id}/` |
+| `meetings:read` | `GET /api/v1/meetings/`, `GET /api/v1/meetings/{public_id}/` |
 
 `GET /api/v1/search/` is available to any key and searches only the resource
-families it is allowed to read; naming an out-of-scope resource in `resources`
-returns `403`. `GET /api/v1/` describes the API and lists only the resources the
-calling key can use; `GET /api/v1/me/` returns the registration's own name,
-scopes and rate limit.
+families it is allowed to read (users, groups, memberships and bills); naming an
+out-of-scope resource in `resources` returns `403`. Meetings are not part of the
+cross-resource search — query the meetings collection directly with `user=`,
+`group=`, `start=` and `end=`. `GET /api/v1/` describes the API and lists only
+the resources the calling key can use; `GET /api/v1/me/` returns the
+registration's own name, scopes and rate limit.
 
 The seeded partner registrations do not include `groups:read`; grant it in the
 admin if a partner needs the group register.
@@ -362,6 +366,74 @@ carries `public_id`, `referred_to` (nested group reference), `referred_by`
 
 `versions`, `attachments`, `notes` and `referrals` are always present as arrays —
 empty when the bill has none recorded.
+
+### Meetings
+
+Sittings of the Events workflow: House plenaries, joint sittings, portfolio /
+select / ad hoc committee meetings, and staff engagements (management,
+administration, task teams, workshops, public participation). The headline use
+is **a member's diary**: pass `user=` and the collection returns the meetings
+that person is a party to.
+
+```http
+GET /api/v1/meetings/?user=jsmith&start=2026-01-01&end=2026-06-30
+Authorization: Bearer <access_token>
+```
+
+`user=` is the precise filter (it also returns the member's own register row).
+The same list is available as a nested route,
+`GET /api/v1/users/{public_id}/meetings/`, for integrations that address the
+person first; it accepts the same filters below (except `user=` itself) and
+returns `404` when the user does not exist.
+`search=` additionally matches attendee usernames and names, so
+`?search=Khumalo` finds meetings where a person called Khumalo is on the
+register; combine it with `user=` and the period/group filters when both the
+person and their register row are needed.
+
+| Query parameter | Meaning |
+| --- | --- |
+| `user` | A user `public_id`, username or email. Narrows the list to that person's meetings: those where they are on the attendance register, chair or minute the meeting, own or are assigned it, or where the convening group is one they actively belong to. Each result then carries `member_attendance`. An identifier that matches no user is a `404` (rather than a silently empty page), so a bad username is easy to diagnose. |
+| `group` | A group `public_id`, name, short name or slug. Filters on the **convening** (`host`) group. |
+| `meeting_type` | One type or a comma-separated list: `plenary`, `joint_sitting`, `committee`, `portfolio_committee`, `select_committee`, `ad_hoc_committee`, `administration`, `management`, `task_team`, `workshop`, `public_participation`, `other`. |
+| `start`, `end` | Inclusive `YYYY-MM-DD` bounds on the meeting's start date. Either may be supplied alone. A malformed date, or `start` after `end`, is a `400`. |
+| `state` | A workflow state slug or exact name, e.g. `scheduled`, `in-progress`, `completed`, `postponed`, `cancelled`. |
+| `minutes_status` | `not_recorded`, `draft`, `filed` or `approved`. |
+| `attendance_mode` | `on_premise`, `hybrid` or `virtual`. |
+| `search` | Case-insensitive across the meeting fields below. |
+| `search_fields` | Comma-separated subset of `reference_number`, `title`, `description`, `host_group`, `chair`, `secretary`, `venue`, `off_site_venue`, `attendee`. |
+| `ordering` | `-start_datetime` (default), `start_datetime`, `end_datetime`, `title`, `meeting_type`, `created_at`; prefix with `-` to reverse. |
+
+Exposed fields: `public_id`, `reference_number`, `title`, `description`,
+`meeting_type`, `meeting_type_display`, `start_datetime`, `end_datetime`,
+`all_day`, `duration_minutes`, `attendance_mode`, `venue` (nested reference with
+`public_id`, `name`, `floor`, `capacity` and its `building`), `venue_display`,
+`off_site_venue`, `off_site_address`, `meeting_link`, `host_group` (nested group
+reference), `chaired_by` / `secretary` (nested user references), `quorum`,
+`state` (nested reference with `public_id`, `name`, `slug`, `is_terminal`),
+`calendar_state` (`scheduled`, `running`, `past`, `closed` or `cancelled`),
+`is_upcoming`, `is_finished`, `minutes_status`, `priority`, `deadline`,
+`attendance_counts`, `member_attendance` (only when `user=` was supplied),
+`created_at` and `updated_at`.
+
+`attendance_counts` is the register tally: `invited`, `present`, `absent`,
+`excused`, `late`, `not_recorded`, `accepted`, `declined`, `required`,
+`host_group`, `invitee` and `quorum_met`.
+
+`member_attendance` is the requesting member's own row: `public_id`, `user`
+(nested user reference, `null` for a guest), `guest_name`, `display_name`,
+`email`, `source` (`host_group` or `invitee`), `capacity`, `is_required`,
+`rsvp_status`, `attendance_status`, `is_present`, `invited_at`, `responded_at`,
+`recorded_at` and `note`.
+
+The **detail** endpoint returns the same shape plus `attendances` — the full
+register, one object per person with the same fields as `member_attendance`. It
+also accepts `?user=` to populate `member_attendance`:
+
+```http
+GET /api/v1/meetings/{public_id}/?user=jsmith
+```
+
+Neither the agenda body nor attendees' recorded IP addresses are exposed.
 
 ---
 

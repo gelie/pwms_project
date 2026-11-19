@@ -336,6 +336,7 @@ type or date are reported and skipped, and the command ends with a summary.
 | Command | Purpose | Status |
 | --- | --- | --- |
 | `import_meetings` | bulk-import meetings (the Events workflow) from a CSV/XLSX file | ✅ live |
+| `seed_meetings` | create demo meetings and attendance registers for walkthroughs | ✅ live — see below |
 
 Bulk-imports meetings from the calendar's own import format — the same columns
 and behaviour as the **Import** page on `/pwms/meetings/`, because it calls the
@@ -360,6 +361,40 @@ python manage.py import_meetings meetings.csv --actor jsmith
 The command ends with a summary (created / updated / skipped / errors) and lists
 every row it could not import, with its line number.
 
+### `seed_meetings`
+
+Creates ~100 presentation-ready meetings and their attendance registers: mostly
+portfolio/select committee business, with House plenaries, joint sittings and a
+smaller set of staff engagements, spread over the last ~18 months plus a few
+upcoming sittings. Past meetings are walked through the real workflow machine, so
+they carry genuine transition history; only the timestamps are back-dated.
+Automatic alert fan-out is suppressed.
+
+```bash
+python manage.py seed_meetings
+python manage.py seed_meetings --count 120 --seed 7
+python manage.py seed_meetings --reset --force
+```
+
+| Option | Effect |
+| --- | --- |
+| `--count N` | How many meetings to create (default `100`) |
+| `--seed N` | Random seed, so a demo database is reproducible (default `20261118`) |
+| `--actor USERNAME` | Who the seeded meetings are owned by (default: a member of the Meeting workflow's owning group, else a superuser) |
+| `--reset` | Delete every existing meeting first (asks for confirmation) |
+| `--force` | Skip the `--reset` confirmation prompt |
+| `--no-demo-users` | Never create fallback accounts; fail instead when there are too few accounts to build a register |
+
+The command reuses the group tree (`seed_structure` must have run) and existing
+accounts. `is_mp` / `is_staff_member` are not required: anyone with an active
+committee/House/party membership is treated as a member, and as a final fallback
+a small cast of `demo-member-*` / `demo-staff-*` accounts (with unusable
+passwords) is created so a scratch database still produces a convincing
+register; `--no-demo-users` disables that. Every member, staff and superuser
+account is guaranteed at least one place on a register, so a per-user lookup in
+the API always finds something. Additive by default — use `--reset` to replace a
+previous batch (re-run it after upgrading to pick up the coverage pass).
+
 ## Notifications & deadlines
 
 | Command | Purpose | Status |
@@ -378,14 +413,15 @@ and closes the ones nobody answered:
 
 | Window | Action |
 | --- | --- |
-| due within 24 hours, not yet reminded | alert the referred group's active members and the people the record names (owner, assignee) — in-app to the whole audience, email to staff of the affected groups — then stamp `deadline_notified_at` |
+| due within 24 hours, not yet reminded | alert the referred group's active members (reason `referred-group`) and the people the record names (owner, assignee), plus any `referral-deadline` `NotificationRule` — in-app to everyone, email to staff of the referred group — then stamp `deadline_notified_at` |
 | due within 1 hour, already reminded | send the final reminder (no second stamp) |
 | due date passed | `mark_expired()` the referral (emits `referral-expired`) and alert the parties |
 
 Only `status="open"` referrals are considered, so an answered or recalled one is
 left alone. Reminders go through `pwms.notifications` and are logged as
 `referral-deadline` alerts (an `in_app` row per recipient, plus an `email` row
-for each staff recipient in an affected group); the expiry alert is raised by
+for each staff recipient in the referred group); a deadline reminder is
+**mandatory**, so a user's alert preferences never suppress it. The expiry alert is raised by
 `WorkflowReferral.mark_expired()` and is not sent by the command. Mail is one
 message per recipient, so no recipient sees another's address. `--dry-run`
 reports what would be sent or expired without sending mail or writing anything.

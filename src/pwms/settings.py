@@ -279,8 +279,12 @@ DJANGO_FLATPICKR = {
 #         "DEFAULT_FROM_EMAIL", default="noreply@parliament.gov.za"
 #     )
 
+# EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
 if DEBUG:
-    EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+    EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+    EMAIL_HOST = "localhost"
+    EMAIL_PORT = 1025
+    EMAIL_USE_TLS = False
 else:
     EMAIL_BACKEND = config(
         "EMAIL_BACKEND",

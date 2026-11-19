@@ -104,10 +104,12 @@ Definitions are customisable in the admin, including:
 - which transitions are allowed (from → to);
 - which roles from the type's group may **create** instances (`create_roles`);
 - which roles are named on each transition (`allowed_roles`) — **advisory**
-  metadata: it labels the diagram and, with `notify_roles`, widens who is alerted
-  when the move happens (`next_actor_roles()`), but it grants nothing
-  (authorisation is the RBAC tables — see [§4](#4-access-control));
-- which roles should be notified when it happens (`notify_roles`);
+  metadata: it labels the diagram and, through `next_actor_roles()`, says whose
+  turn it is after the move, but it grants nothing (authorisation is the RBAC
+  tables — see [§4](#4-access-control));
+- **who is alerted** — the type's built-in audiences (`oversight_channel`,
+  `notify_next_actors`, `notify_named_people`) and its `NotificationRule` rows
+  (see [§6](#6-alerts-notifications--email));
 - whether a comment is mandatory.
 
 Definitions are reusable: they are exported/imported as JSON
@@ -322,9 +324,10 @@ default `WorkflowGroupAccess.can_transition`. Superusers bypass the lot.
 Three things are easy to misread, so they are worth stating plainly:
 
 - **`Transition.allowed_roles` is not an authorisation rule.** It is advisory
-  metadata: a diagram label, and — through `next_actor_roles()` — extra
-  recipients of the transition's alert. The seeded machines attach no roles to
-  their transitions.
+  metadata: a diagram label, and — through `next_actor_roles()` — what makes
+  someone "next" for the transition's alert (and then only if they can
+  `transition` the record). The seeded machines attach no roles to their
+  transitions.
 - **`Role.can_transition_workflows` is a legacy flag** that `PermissionResolver`
   never consults (see [§2](#2-identity--organisation-management)).
 - **A referral confers no `transition`.** The group a record was referred to may
@@ -379,8 +382,10 @@ People are told when something happens or is due, without watching a page:
 
 - A **`Notification`** row is written per (recipient, channel, event): an
   `in_app` row that backs the navbar bell, and — when the recipient is staff of
-  an affected group and has an email address — an `email` row that is both the
-  message and the outbound-email log.
+  a group the event concerns and has an email address — an `email` row that is
+  both the message and the outbound-email log. A person gets **only the channels
+  their audience rule grants**: oversight readers get email without a bell row
+  by default, for instance.
 - **Every outbound email is in that log.** Explicit report and record sharing
   writes one `email` row per addressed recipient (including external addresses
   with no `User` account); it never writes a bell row. Each row snapshots the
@@ -393,15 +398,58 @@ People are told when something happens or is due, without watching a page:
   `perform_transition()`, `refer()`,
   `WorkflowReferral.respond()` / `recall()` / `mark_expired()` and the create
   views. Fixtures, imports and admin writes notify nobody.
-- **Audience is RBAC-aware**: the type's officer roles, the roles a transition
-  names (`notify_roles` plus the roles allowed to act next), and the people the
-  record names (`owner`, `assigned_to`) — minus the actor and anyone who cannot
-  VIEW the instance. A referral notifies the referred group's active members plus
-  the named people. **Email is narrower than the bell**: it goes only to active
-  staff (`is_staff_member`, or `employee_type` of `staff`/`graduate`) who belong
-  to an affected group — the type's group, the groups the record grants access
-  to, the groups it names (responsible committee/group, host group, referral
-  committees), and a referral's `referred_to` group.
+- **The audience is explicit, and every row says why.** Each recipient is in an
+  audience for a named **reason**, which is stored on their rows
+  (`Notification.reasons`, shown as *Why* in the admin log) and which decides
+  their channels:
+
+  | Reason | Who | Bell | Email |
+  |---|---|---|---|
+  | `next-actor` | holders of a role the next transitions allow, who can `transition` the record | yes | yes |
+  | `assignee` | `assigned_to` | yes | yes |
+  | `referred-group` | active members of the committee a matter was referred to | yes | yes |
+  | `owner` | `owner` | yes | yes |
+  | `referrer` | who raised a referral, when it is answered, recalled or expires | yes | yes |
+  | `participant` | a meeting's register, chair, secretary | yes | yes |
+  | `officer` | holders of the type's create roles in its owning group (**oversight**) | per type (default off) | per type (default on) |
+  | `rule:<id>` | the holders a `NotificationRule` names | per rule | per rule |
+
+  "Bell" and "email" above are the *channels offered*; email is always further
+  limited to active **staff** (`is_staff_member`, or `employee_type` of
+  `staff`/`graduate`) who belong to a group the event concerns, so a member (MP)
+  is told in the bell and never emailed.
+- **Scope keeps a role from becoming a blast.** `Role` is shared across the whole
+  organisation, so an audience is always resolved in named groups, per event:
+  the **custodian** (the type's owning group) for creations and transitions, the
+  **referred group** for referrals, and the **host group** for meetings. Groups
+  that merely hold view access (viewer groups, or a committee that was once
+  referred the record) are *not* told about every later move unless a rule opts
+  in with the `instance_groups` scope.
+- **Oversight is quiet by default.** The officers who run a type can already see
+  every record in the lists, so `WorkflowType.oversight_channel` defaults to
+  *email only*: no bell count for every record. Set it to *Bell only*, *Bell and
+  email* or *Nothing* per type. `notify_next_actors` and `notify_named_people`
+  switch the other two built-in audiences off.
+- **`NotificationRule`** is the explicit way to add recipients: *when* `event`
+  (created, transitioned — optionally one transition — referral raised/closed/
+  deadline, meeting document/attendance) happens on this type, tell the holders
+  of `role` (empty means every member) in `scope` (`custodian`, `referred_group`,
+  `host_group` or `instance_groups`) over `channel` (bell, email or both).
+  Rules are managed on the workflow type's admin page (and, for one transition,
+  on that transition's page). They replace the old per-transition
+  `notify_roles`, which migration 0067 converted to rules.
+- **RBAC still has the last word.** Everyone is checked against VIEW on the
+  record, whatever selected them — a rule can narrow or add by scope but never
+  tells someone about a record they cannot open. The one deliberate exception is
+  the **referred committee**: the referral is its entitlement to know, so it is
+  told even before an access row exists. A referral notifies that committee and
+  the named people — **not** the custodian's officers, unless a rule says so.
+  The actor is never told about their own act.
+- **Users can mute, never widen.** Each person has *Alert preferences* (from the
+  alerts page, `/pwms/alerts/preferences/`): bell and email switches per kind.
+  A preference only removes a channel the rules granted. It is **ignored for
+  alerts you owe an action on** — your turn, an assignment, a referral to your
+  committee — and for referral deadline reminders, which cannot be muted at all.
 - **Mail is multipart**: the stored plain-text body (`emails/notification.txt`)
   travels with an HTML alternative (`emails/notification.html`), exactly as the
   report-share and instrument-share messages already do.
@@ -411,7 +459,8 @@ People are told when something happens or is due, without watching a page:
   process_tasks` delivers it, retrying transient failures and marking a row
   `failed` once the attempts are spent.
 - The **bell** in the site chrome shows the unread count and the newest alerts;
-  the **alerts page** (`/pwms/alerts/`) lists them and marks them read.
+  the **alerts page** (`/pwms/alerts/`) lists them and marks them read, and links
+  to the **preferences** page.
 - `check_referral_deadlines` sends the 24-hour and 1-hour reminders and logs the
   expiry alert (see [Management Commands](./Management%20Commands.md)).
 
@@ -579,7 +628,9 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
   HMAC for lookups (`cryptography`, `IDNO_HMAC_KEY`).
 - Full audit trails enable accountability for every state change and edit.
 - Alert recipients are filtered through the same RBAC as the UI, so
-  notifications never leak a record to someone who cannot view it.
+  notifications never leak a record to someone who cannot view it (the referred
+  committee, whose entitlement is the referral itself, is the one stated
+  exception). Each alert row records the reason the person was told.
 
 ---
 

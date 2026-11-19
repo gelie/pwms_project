@@ -279,6 +279,11 @@ class Meeting(AbstractLegislativeWorkflow):
     def __str__(self):
         return self.title or f"Meeting #{self.pk}"
 
+    @property
+    def meeting_type_display(self):
+        """The human-readable meeting type label (for exports and the API)."""
+        return self.get_meeting_type_display()
+
     # -- scheduling ----------------------------------------------------------
     @property
     def end(self):

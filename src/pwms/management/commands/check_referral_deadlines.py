@@ -21,6 +21,7 @@ from django.utils import timezone
 from django.utils.timesince import timeuntil
 
 from pwms.models import WorkflowReferral
+from pwms.models.notifications import EVENT_REFERRAL_DEADLINE
 from pwms.notifications import notify_referral_deadline, referral_audience
 
 #: How long before the due date each reminder goes out.
@@ -112,7 +113,7 @@ class Command(BaseCommand):
             )
             return
 
-        if not referral_audience(referral):
+        if not referral_audience(referral, event=EVENT_REFERRAL_DEADLINE):
             self.stderr.write(
                 self.style.WARNING(
                     f"Skipping referral {referral.public_id}: no recipients."

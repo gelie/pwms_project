@@ -2,14 +2,39 @@
 
 Three questions shape this module.
 
-*Who?* :func:`stakeholders` answers it for role-driven work: the officers who run
-the workflow type, anyone a ``Transition`` names as a subscriber
-(``notify_roles``), whoever can act next, and the two people the record itself
-names (``owner`` / ``assigned_to``). :func:`referral_audience` answers it for
-referrals, where the referral is what entitles the committee to know. That
-union feeds the in-app bell; **email is narrower** — :func:`email_audience`
-keeps only active staff who belong to a group affected by the alert, so a
-workflow or referral is not blasted to every member who can merely see it.
+*Who?* An :class:`Audience` answers it, built by :func:`stakeholders` (records:
+creations, transitions, meeting news) or :func:`referral_audience` (referrals).
+Every person in it carries the **reasons** they were chosen, and each reason
+carries its own channels, so the answer to "why did I get this?" is on the row:
+
+=================  ====================================  ==============  ============
+Reason             Who                                   Bell            Email
+=================  ====================================  ==============  ============
+``next-actor``     holders of the roles allowed to act   yes             yes
+                   next *and* able to transition
+``assignee``       ``assigned_to``                       yes             yes
+``referred-group`` members of the referred committee     yes             yes
+``owner``          ``owner``                             yes             yes
+``referrer``       who raised the referral (closings)    yes             yes
+``participant``    a meeting's register, chair, ...      yes             yes
+``officer``        create-role holders of the owning     per type        per type
+                   group (the *oversight* tier)          (default off)   (default on)
+``rule:<id>``      a :class:`NotificationRule`           per rule        per rule
+=================  ====================================  ==============  ============
+
+*Scope* keeps a role from becoming a blast. Each event resolves its audience in
+the groups that event concerns — the **custodian** (the type's owning group) for
+records, the **referred group** for referrals, plus the **host group** for
+meetings — never in "every group that can see the record" unless a rule opts into
+``instance_groups``. Email is further limited to active *staff* who are members
+of those groups, so a member (MP) is told in the bell and never mailed.
+
+Two things then narrow the result: the actor is dropped (nobody needs telling
+what they just did), and a user's :class:`~pwms.models.NotificationPreference`
+mutes a kind — except for people who owe an action on it (see
+:mod:`pwms.notifications.preferences`). Anyone who may not open the record is
+dropped too, with one deliberate exception: a committee a matter was referred to
+is told whether or not it holds an access row yet.
 
 *What?* Messages are rendered from ``templates/emails/notification.txt`` (the
 stored plain-text body) and ``templates/emails/notification.html`` (the HTML
@@ -36,6 +61,7 @@ the queue reschedules it (see :func:`deliver_email`).
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 
 from django.conf import settings
 from django.contrib.contenttypes.models import ContentType
@@ -45,9 +71,34 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 
 from ..models import Meeting, Notification, User
-from ..services.permissions import VIEW, resolve
+from ..models.notifications import (
+    EVENT_CREATED,
+    EVENT_MEETING_ATTENDANCE,
+    EVENT_MEETING_DOCUMENT,
+    EVENT_REFERRAL_CLOSED,
+    EVENT_REFERRAL_CREATED,
+    EVENT_REFERRAL_DEADLINE,
+    EVENT_TRANSITION,
+    NotificationRule,
+)
+from ..services.permissions import TRANSITION, VIEW, resolve
+from .preferences import apply_preferences
 
 logger = logging.getLogger(__name__)
+
+#: Why a person is in an audience (see the module docstring).
+REASON_NEXT_ACTOR = "next-actor"
+REASON_ASSIGNEE = "assignee"
+REASON_REFERRED_GROUP = "referred-group"
+REASON_OWNER = "owner"
+REASON_REFERRER = "referrer"
+REASON_PARTICIPANT = "participant"
+REASON_OFFICER = "officer"
+REASON_RULE_PREFIX = "rule:"
+
+#: Reasons that mean the person owes an action. A personal preference never
+#: silences these: muting "workflow moved" must not hide "it is your turn".
+ACTION_REASONS = frozenset({REASON_NEXT_ACTOR, REASON_ASSIGNEE, REASON_REFERRED_GROUP})
 
 #: Body templates for every alert (see the module docstring).
 EMAIL_TEMPLATE = "emails/notification.txt"
@@ -59,15 +110,175 @@ HTML_EMAIL_TEMPLATE = "emails/notification.html"
 STAFF_EMPLOYEE_TYPES = ("staff", "graduate")
 
 
-# -- recipients -------------------------------------------------------------
+# -- the audience -----------------------------------------------------------
+@dataclass
+class Recipient:
+    """One person to tell, why, and over which channels."""
+
+    user: User
+    reasons: list = field(default_factory=list)
+    in_app: bool = False
+    email: bool = False
+
+    @property
+    def must_act(self):
+        """True when the person owes an action on this alert (never muted)."""
+        return any(reason in ACTION_REASONS for reason in self.reasons)
+
+    @property
+    def delivers(self):
+        return self.in_app or self.email
+
+
+class Audience:
+    """
+    The people an alert goes to, each with the reasons and channels that put them
+    there.
+
+    Built up with :meth:`add`, one call per audience rule. A person selected by
+    several rules appears once, with every reason and the union of the channels.
+    ``groups`` on an ``add`` are the groups the email-eligibility check looks in:
+    a recipient is only mailed when they are active staff *in one of them*.
+    """
+
+    def __init__(self, instance, *, groups=()):
+        self.instance = instance
+        self.groups = {}
+        self._entries = {}
+        for group in groups:
+            self.add_group(group)
+
+    def add_group(self, group):
+        if group is not None:
+            self.groups[group.pk] = group
+
+    def add(
+        self,
+        users,
+        reason,
+        *,
+        in_app=True,
+        email=True,
+        groups=None,
+        check_view=True,
+    ):
+        """
+        Add ``users`` for ``reason``.
+
+        ``check_view`` drops anyone who may not open the record; the referral
+        paths turn it off (see :func:`referral_audience`). ``groups`` defaults to
+        the audience's own groups.
+        """
+        users = [user for user in users if user is not None]
+        if not users or not (in_app or email):
+            return
+        if check_view and self.instance is not None:
+            users = _visible(users, self.instance)
+        else:
+            users = [user for user in users if user.is_active]
+        if not users:
+            return
+
+        emailable = set()
+        if email:
+            eligible_in = self.groups.values() if groups is None else groups
+            emailable = {user.pk for user in staff_recipients(users, eligible_in)}
+
+        for user in users:
+            use_email = user.pk in emailable
+            if not (in_app or use_email):
+                continue
+            entry = self._entries.setdefault(user.pk, Recipient(user))
+            if reason not in entry.reasons:
+                entry.reasons.append(reason)
+            entry.in_app = entry.in_app or in_app
+            entry.email = entry.email or use_email
+
+    @property
+    def recipients(self):
+        return [entry for entry in self._entries.values() if entry.delivers]
+
+    @property
+    def users(self):
+        return [entry.user for entry in self.recipients]
+
+    def __iter__(self):
+        return iter(self.recipients)
+
+    def __len__(self):
+        return len(self.recipients)
+
+    def reasons_for(self, user):
+        entry = self._entries.get(user.pk)
+        return list(entry.reasons) if entry else []
+
+
+# -- scopes: which groups an event concerns ---------------------------------
+def custodian_groups(instance):
+    """
+    The type's owning group — the unit that runs the instrument.
+
+    A type with no group has no custodian, so the record's own access groups
+    stand in: an audience must not silently vanish because the type was seeded
+    before its group existed.
+    """
+    workflow_type = getattr(instance, "workflow_type", None)
+    if workflow_type is not None and workflow_type.group_id is not None:
+        return [workflow_type.group]
+    return instance_groups(instance)
+
+
+def instance_groups(instance):
+    """Every group with an access row on ``instance`` (viewer groups included)."""
+    accesses = getattr(instance, "group_accesses", None)
+    if not callable(accesses):
+        return []
+    return [access.group for access in accesses().select_related("group")]
+
+
+def host_groups(instance):
+    """A meeting's convening group, when it has one."""
+    group = getattr(instance, "host_group", None)
+    return [group] if group is not None else []
+
+
+def scope_groups(scope, instance, *, referral=None):
+    """Resolve a :class:`NotificationRule` scope to concrete groups."""
+    if scope == NotificationRule.SCOPE_CUSTODIAN:
+        return custodian_groups(instance)
+    if scope == NotificationRule.SCOPE_INSTANCE_GROUPS:
+        return instance_groups(instance)
+    if scope == NotificationRule.SCOPE_HOST_GROUP:
+        return host_groups(instance)
+    if scope == NotificationRule.SCOPE_REFERRED_GROUP:
+        return [referral.referred_to] if referral is not None else []
+    return []
+
+
+def event_groups(instance, *, referral=None):
+    """
+    The groups an event is *about*: where its default audience may be mailed.
+
+    The custodian, plus the host group of a meeting or the committee of a
+    referral. Deliberately narrower than "every group with access": a committee
+    that was once given view access does not hear about every later move.
+    """
+    groups = {group.pk: group for group in custodian_groups(instance)}
+    for group in host_groups(instance):
+        groups[group.pk] = group
+    if referral is not None:
+        groups[referral.referred_to_id] = referral.referred_to
+    return list(groups.values())
+
+
+# -- audience building blocks -----------------------------------------------
 def _officers(instance):
     """
     Active members of the workflow type's group who hold one of its create roles.
 
-    These are the people who run this instrument — the audience that exists for
-    *every* workflow type without further configuration, unlike
-    ``Transition.notify_roles`` (which the RBAC seeds leave empty and an
-    administrator fills in per transition).
+    These are the people who run this instrument — the *oversight* tier: they can
+    already see every record in the lists, so by default they get an email and no
+    bell count (``WorkflowType.oversight_channel``).
     """
     workflow_type = instance.workflow_type
     if workflow_type.group_id is None:
@@ -83,34 +294,26 @@ def _officers(instance):
     )
 
 
-def _role_holders(instance, roles):
+def _role_holders(groups, roles):
     """
-    Active holders of ``roles`` within the groups that have access to ``instance``.
+    Active holders of ``roles`` within ``groups``.
 
-    Scoped to the instance's own groups on purpose: ``Role`` is shared across the
-    organisation, so "everyone holding *Committee Secretary*" would be a blast at
-    hundreds of unrelated people. ``Transition.notify_roles`` is documented as
-    *group members* holding those roles, and a group that should hear about the
-    instrument can be attached to its type as a viewer group.
+    Always scoped to named groups: ``Role`` is shared across the organisation, so
+    "everyone holding *Committee Secretary*" would be a blast at hundreds of
+    unrelated people. A ``None`` role means every active member of the groups.
     """
-    roles = list(roles)
-    if not roles:
+    group_ids = [group.pk for group in groups]
+    if not group_ids:
         return []
 
-    group_ids = instance.group_accesses().values_list("group_id", flat=True)
-    return list(
-        User.objects.filter(
-            is_active=True,
-            memberships__is_active=True,
-            memberships__group_id__in=group_ids,
-            memberships__role__in=roles,
-        ).distinct()
-    )
-
-
-def _named(instance):
-    """The people the record names: its owner and whoever owes the next action."""
-    return [user for user in (instance.owner, instance.assigned_to) if user is not None]
+    membership = {
+        "memberships__is_active": True,
+        "memberships__group_id__in": group_ids,
+    }
+    roles = list(roles)
+    if roles:
+        membership["memberships__role__in"] = roles
+    return list(User.objects.filter(is_active=True, **membership).distinct())
 
 
 def _visible(users, instance):
@@ -130,22 +333,6 @@ def _visible(users, instance):
     return list(allowed.values())
 
 
-def stakeholders(instance, *, roles=()):
-    """
-    Everyone who should hear about a change to ``instance``.
-
-    The union of the type's officers, the holders of ``roles`` (a transition's
-    declared subscribers and the roles allowed to act next) and the people named
-    on the record — minus anyone who cannot view it. A :class:`Meeting` adds its
-    attendance register to that union, because the people invited to a sitting are
-    exactly the people who need to hear that it moved.
-    """
-    candidates = _officers(instance) + _role_holders(instance, roles) + _named(instance)
-    if isinstance(instance, Meeting):
-        candidates += instance.notification_audience()
-    return _visible(candidates, instance)
-
-
 def next_actor_roles(instance):
     """Roles entitled to perform a transition available from the current state."""
     roles = {}
@@ -157,14 +344,95 @@ def next_actor_roles(instance):
     return list(roles.values())
 
 
-def referral_audience(referral):
+def _add_next_actors(audience, instance):
     """
-    Who hears about a referral: the referred group's members and the people the
-    record names (owner and assignee).
+    Add whoever owes the next move: holders of an allowed role who can transition.
 
-    The named pair is the same one :func:`stakeholders` uses, so whoever owes the
-    next action hears about referral activity exactly as they do about creations
-    and transitions.
+    Holding the role is not enough — a committee that was referred the record
+    holds roles in its own group but is deliberately given no ``transition`` (see
+    ``sync_referral_access``), so it is not "next" and is not told it is.
+    """
+    roles = next_actor_roles(instance)
+    if not roles:
+        return
+    groups = instance_groups(instance)
+    holders = [
+        user
+        for user in _role_holders(groups, roles)
+        if resolve(user, instance, TRANSITION)
+    ]
+    audience.add(holders, REASON_NEXT_ACTOR, groups=groups)
+
+
+def _applicable_rules(instance, event, transition):
+    """The active rules of the instance's type for ``event`` (and transition)."""
+    rules = NotificationRule.objects.filter(
+        workflow_type_id=instance.workflow_type_id, event=event, is_active=True
+    ).select_related("role")
+    if event == EVENT_TRANSITION and transition is not None:
+        return rules.filter(Q(transition__isnull=True) | Q(transition=transition))
+    return rules.filter(transition__isnull=True)
+
+
+def _add_rules(audience, instance, event, *, transition=None, referral=None):
+    """Add everyone the type's explicit :class:`NotificationRule`\\ s name."""
+    for rule in _applicable_rules(instance, event, transition):
+        groups = scope_groups(rule.scope, instance, referral=referral)
+        holders = _role_holders(groups, [rule.role] if rule.role_id else [])
+        audience.add(
+            holders,
+            f"{REASON_RULE_PREFIX}{rule.pk}",
+            in_app=rule.sends_in_app,
+            email=rule.sends_email,
+            groups=groups,
+            # A referred committee is entitled to know without an access row.
+            check_view=rule.scope != NotificationRule.SCOPE_REFERRED_GROUP,
+        )
+
+
+def stakeholders(instance, *, event=EVENT_CREATED, transition=None):
+    """
+    The audience for a change to a record: who hears about ``event`` on ``instance``.
+
+    Built from the type's declared parts — the people the record names, whoever
+    acts next (transitions), the officers at the type's oversight channel, a
+    meeting's own register — plus every :class:`NotificationRule` that matches the
+    event. Everyone is checked against RBAC: nobody is told about a record they
+    cannot open.
+    """
+    workflow_type = instance.workflow_type
+    audience = Audience(instance, groups=event_groups(instance))
+
+    if workflow_type.notify_named_people:
+        audience.add([instance.owner], REASON_OWNER)
+        audience.add([instance.assigned_to], REASON_ASSIGNEE)
+
+    if event == EVENT_TRANSITION and workflow_type.notify_next_actors:
+        _add_next_actors(audience, instance)
+
+    if isinstance(instance, Meeting):
+        audience.add(instance.notification_audience(), REASON_PARTICIPANT)
+
+    audience.add(
+        _officers(instance),
+        REASON_OFFICER,
+        in_app=workflow_type.oversight_in_app,
+        email=workflow_type.oversight_email,
+        groups=custodian_groups(instance),
+    )
+
+    _add_rules(audience, instance, event, transition=transition)
+    return audience
+
+
+def referral_audience(referral, *, event=EVENT_REFERRAL_CREATED):
+    """
+    Who hears about a referral: the referred committee, the people the record
+    names, and — once it closes — whoever raised it.
+
+    The committee's members are the ones who owe an action, so that reason is never
+    muted. The custodian's officers are *not* in it: a referral is the
+    committee's business, not a blast to everyone who runs the instrument.
 
     Deliberately *not* filtered through :func:`_visible`: a committee may be
     referred a matter it holds no ``WorkflowGroupAccess`` row for — the referral
@@ -173,56 +441,32 @@ def referral_audience(referral):
     the referral already states. Inactive accounts are still skipped: their
     directory logins are closed, so an alert would only be noise.
     """
-    members = referral.referred_to.members.filter(
-        is_active=True, user__is_active=True
-    ).select_related("user")
-    audience = {membership.user.pk: membership.user for membership in members}
-
     workflow = referral.content_object
-    if workflow is not None:
-        for user in _named(workflow):
-            if user.is_active:
-                audience[user.pk] = user
-    return list(audience.values())
+    audience = Audience(workflow, groups=event_groups(workflow, referral=referral))
+    if workflow is None:
+        return audience
 
+    members = [
+        membership.user
+        for membership in referral.referred_to.members.filter(
+            is_active=True, user__is_active=True
+        ).select_related("user")
+    ]
+    audience.add(
+        members,
+        REASON_REFERRED_GROUP,
+        groups=[referral.referred_to],
+        check_view=False,
+    )
 
-def affected_groups(instance):
-    """
-    The groups with a stake in ``instance``: its type's owning group, every group
-    the record grants access to (viewer and referral groups included), and any
-    group the instrument itself names — a bill's responsible committee, a
-    resolution's responsible group, an agreement's referral committees, or a
-    meeting's host group.
+    if workflow.workflow_type.notify_named_people:
+        audience.add([workflow.owner], REASON_OWNER, check_view=False)
+        audience.add([workflow.assigned_to], REASON_ASSIGNEE, check_view=False)
+    if event == EVENT_REFERRAL_CLOSED:
+        audience.add([referral.referred_by], REASON_REFERRER, check_view=False)
 
-    This is the "affected groups" an email audience is drawn from. It is broader
-    than the type's own group on purpose: a committee the matter was referred to
-    has a real interest, and so does a viewer group attached to the type.
-    """
-    if instance is None:
-        return []
-
-    groups = {}
-    workflow_type = getattr(instance, "workflow_type", None)
-    if workflow_type is not None and workflow_type.group_id is not None:
-        groups[workflow_type.group_id] = workflow_type.group
-
-    accesses = getattr(instance, "group_accesses", None)
-    if callable(accesses):
-        for access in accesses().select_related("group"):
-            groups[access.group_id] = access.group
-
-    # Group-valued fields, whichever concrete instrument declares them.
-    for attribute in ("responsible_group", "responsible_committee", "host_group"):
-        group = getattr(instance, attribute, None)
-        if group is not None:
-            groups[group.pk] = group
-
-    referral_committees = getattr(instance, "referral_committees", None)
-    if referral_committees is not None:
-        for group in referral_committees.all():
-            groups[group.pk] = group
-
-    return list(groups.values())
+    _add_rules(audience, workflow, event, referral=referral)
+    return audience
 
 
 def staff_recipients(recipients, groups):
@@ -230,9 +474,9 @@ def staff_recipients(recipients, groups):
     Keep only the recipients who are active staff in one of ``groups``.
 
     Staff means the explicit ``is_staff_member`` flag or an ``employee_type`` of
-    ``staff`` / ``graduate``. Membership must be *active* and in an affected
-    group, which is what stops a record's owner or an invited guest from being
-    emailed merely because they are named. Order is preserved so a caller's
+    ``staff`` / ``graduate``. Membership must be *active* and in one of the groups,
+    which is what stops a member (MP), a record's owner or an invited guest from
+    being emailed merely because they are named. Order is preserved so a caller's
     audience stays deterministic.
     """
     recipients = list(recipients)
@@ -251,20 +495,6 @@ def staff_recipients(recipients, groups):
         .values_list("pk", flat=True)
     )
     return [user for user in recipients if user.pk in staff_ids]
-
-
-def email_audience(instance, recipients, *, extra_groups=()):
-    """
-    The subset of ``recipients`` who should receive the alert by email.
-
-    In-app alerts go to the whole audience; mail is limited to staff of the
-    affected groups (see :func:`affected_groups`). ``extra_groups`` names groups
-    the target itself does not know about — a referral's ``referred_to`` group,
-    for example.
-    """
-    groups = affected_groups(instance)
-    groups.extend(group for group in extra_groups if group is not None)
-    return staff_recipients(recipients, groups)
 
 
 # -- composition & delivery -------------------------------------------------
@@ -430,10 +660,12 @@ def _record(
     instance,
     actor,
     context,
+    reasons=(),
     html_body="",
+    send_in_app=True,
     send_email=True,
 ):
-    """Write the in-app row and, when allowed, the queued email row."""
+    """Write the in-app row and/or the queued email row the recipient is due."""
     content_type = None
     object_id = None
     if instance is not None:
@@ -450,13 +682,16 @@ def _record(
         "context": context,
         "content_type": content_type,
         "object_id": object_id,
+        "reasons": list(reasons),
     }
 
-    rows = [
-        Notification.objects.create(
-            channel="in_app", status="sent", sent_at=timezone.now(), **shared
+    rows = []
+    if send_in_app:
+        rows.append(
+            Notification.objects.create(
+                channel="in_app", status="sent", sent_at=timezone.now(), **shared
+            )
         )
-    ]
 
     if send_email and recipient.email:
         email_row = Notification.objects.create(
@@ -538,36 +773,38 @@ def alert(
     *,
     kind,
     instance,
-    recipients,
+    audience,
     subject,
     message,
     actor=None,
     context=None,
-    email_groups=(),
 ):
     """
-    Record one alert for each recipient and queue any permitted email.
+    Record the alert for everyone in ``audience`` on the channels they are due.
 
-    Every recipient gets the in-app row; only staff of the affected groups are
-    emailed (see :func:`email_audience`). ``email_groups`` adds groups the
-    instance itself does not know about — a referral's ``referred_to`` committee.
+    The :class:`Audience` already says who, why and over which channels (the
+    bell, email, or both); this drops the actor — nobody needs telling about
+    something they just did — applies each person's own mute switches (see
+    :mod:`pwms.notifications.preferences`), writes one row per channel and queues
+    the mail. Each row keeps the ``reasons`` that put that person in the audience.
 
-    Returns the rows written. The actor is dropped from the audience — nobody
-    needs telling about something they just did.
+    Returns the rows written.
     """
-    audience = [user for user in recipients if actor is None or user.pk != actor.pk]
-    if not audience:
+    recipients = [
+        recipient
+        for recipient in audience
+        if actor is None or recipient.user.pk != actor.pk
+    ]
+    recipients = apply_preferences(recipients, kind)
+    if not recipients:
         logger.debug("No recipients for %s alert on %s", kind, instance)
         return []
 
     url = instance.get_absolute_url() if instance is not None else ""
-    emailable = {
-        user.pk
-        for user in email_audience(instance, audience, extra_groups=email_groups)
-    }
 
     rows = []
-    for user in audience:
+    for recipient in recipients:
+        user = recipient.user
         body = render_body(
             recipient=user,
             message=message,
@@ -577,7 +814,7 @@ def alert(
             kind=kind,
         )
         html_body = ""
-        if user.pk in emailable:
+        if recipient.email:
             html_body = render_html_body(
                 recipient=user,
                 message=message,
@@ -593,7 +830,9 @@ def alert(
                 subject=subject,
                 body=body,
                 html_body=html_body,
-                send_email=user.pk in emailable,
+                send_in_app=recipient.in_app,
+                send_email=recipient.email,
+                reasons=recipient.reasons,
                 url=url,
                 instance=instance,
                 actor=actor,
@@ -619,7 +858,7 @@ def notify_workflow_created(instance, actor=None):
     return alert(
         kind="workflow-created",
         instance=instance,
-        recipients=stakeholders(instance),
+        audience=stakeholders(instance, event=EVENT_CREATED),
         subject=subject,
         message=message,
         actor=actor,
@@ -631,8 +870,9 @@ def notify_transition(instance, transition, *, actor=None, comment=""):
     """
     Tell the stakeholders that an instance moved state.
 
-    The audience is the transition's declared subscribers plus the roles allowed
-    to act from the new state — the people whose turn it now is. A meeting
+    The audience is whoever acts next (the people whose turn it now is), the
+    people the record names, the officers at the type's oversight channel and
+    every :class:`NotificationRule` for this transition. A meeting
     transition takes the meeting-specific wording and kind (see
     :func:`notify_meeting_status`) so its alerts read as meeting news rather than
     generic workflow traffic.
@@ -652,11 +892,10 @@ def notify_transition(instance, transition, *, actor=None, comment=""):
     if comment:
         message += f"\n\nComment: {comment}"
 
-    roles = list(transition.notify_roles.all()) + next_actor_roles(instance)
     return alert(
         kind="workflow-transition",
         instance=instance,
-        recipients=stakeholders(instance, roles=roles),
+        audience=stakeholders(instance, event=EVENT_TRANSITION, transition=transition),
         subject=subject,
         message=message,
         actor=actor,
@@ -711,7 +950,7 @@ def notify_meeting_created(meeting, actor=None):
     return alert(
         kind="meeting-created",
         instance=meeting,
-        recipients=stakeholders(meeting),
+        audience=stakeholders(meeting, event=EVENT_CREATED),
         subject=subject,
         message=message,
         actor=actor,
@@ -737,11 +976,10 @@ def notify_meeting_status(meeting, transition, *, actor=None, comment=""):
     if comment:
         message += f"\n\nComment: {comment}"
 
-    roles = list(transition.notify_roles.all()) + next_actor_roles(meeting)
     return alert(
         kind="meeting-status",
         instance=meeting,
-        recipients=stakeholders(meeting, roles=roles),
+        audience=stakeholders(meeting, event=EVENT_TRANSITION, transition=transition),
         subject=subject,
         message=message,
         actor=actor,
@@ -792,7 +1030,7 @@ def notify_meeting_document(meeting, action, attachment, *, actor=None):
     return alert(
         kind=kind,
         instance=meeting,
-        recipients=stakeholders(meeting),
+        audience=stakeholders(meeting, event=EVENT_MEETING_DOCUMENT),
         subject=subject,
         message=message,
         actor=actor,
@@ -830,7 +1068,7 @@ def notify_meeting_attendance(meeting, attendance, *, actor=None, status=""):
     return alert(
         kind="meeting-attendance",
         instance=meeting,
-        recipients=stakeholders(meeting),
+        audience=stakeholders(meeting, event=EVENT_MEETING_ATTENDANCE),
         subject=subject,
         message=message,
         actor=actor,
@@ -854,11 +1092,10 @@ def notify_referral_created(referral, actor=None):
     return alert(
         kind="referral-created",
         instance=workflow,
-        recipients=referral_audience(referral),
+        audience=referral_audience(referral, event=EVENT_REFERRAL_CREATED),
         subject=subject,
         message=message,
         actor=actor,
-        email_groups=[referral.referred_to],
         context={
             "referred_to": referral.referred_to.name,
             "due_date": _iso(referral.due_date),
@@ -898,11 +1135,10 @@ def notify_referral_closed(referral, kind, actor=None):
     return alert(
         kind=kind,
         instance=workflow,
-        recipients=referral_audience(referral),
+        audience=referral_audience(referral, event=EVENT_REFERRAL_CLOSED),
         subject=subject,
         message=message,
         actor=actor,
-        email_groups=[referral.referred_to],
         context={
             "referred_to": referral.referred_to.name,
             "status": referral.status,
@@ -922,11 +1158,10 @@ def notify_referral_deadline(referral, *, subject, message, actor=None):
     return alert(
         kind="referral-deadline",
         instance=referral.content_object,
-        recipients=referral_audience(referral),
+        audience=referral_audience(referral, event=EVENT_REFERRAL_DEADLINE),
         subject=subject,
         message=message,
         actor=actor,
-        email_groups=[referral.referred_to],
         context={"due_date": _iso(referral.due_date)},
     )
 

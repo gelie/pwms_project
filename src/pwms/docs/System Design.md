@@ -88,7 +88,7 @@ pwms_project/                     # repo root (git) — run manage.py from here
     │   ├── geography.py          # Country, City (reference data)
     │   ├── sharepoint.py         # SharePoint sync models
     │   ├── attachments.py        # Attachment, AttachmentVersion
-    │   ├── notifications.py      # Notification (bell + outbound-email log)
+    │   ├── notifications.py      # Notification (bell + outbound-email log), NotificationRule, NotificationPreference
     │   ├── reports.py            # ReportShare
     │   ├── workflows.py          # engine + instances + RBAC + events
     │   ├── meetings.py          # Meeting + MeetingAttendance (the Events workflow)
@@ -99,7 +99,7 @@ pwms_project/                     # repo root (git) — run manage.py from here
     │   ├── auth.py / tokens.py   # bearer auth, signed access + rotating refresh tokens
     │   ├── scopes.py             # users:read / memberships:read / bills:read
     │   └── throttling.py         # per-key rate limit + IP-scoped token throttle
-    ├── notifications/            # audience rules, dispatch, share logging, bell context
+    ├── notifications/            # audience building, preferences, dispatch, share logging, bell context
     ├── reporting/                # builder, exports, instruments, sharing
     ├── membership/
     │   ├── resolver.py          # GroupResolver: Oracle pair -> seeded Group (+ group_aliases.csv)
@@ -115,7 +115,7 @@ pwms_project/                     # repo root (git) — run manage.py from here
     ├── management/commands/      # sync, jobs, diagrams (see Management Commands)
     ├── utils/                    # audit_helpers.py, sharepoint.py, diagrams.py
     ├── migrations/
-    ├── tests*.py                 # tests, tests_api, tests_meetings, tests_notifications, …
+    ├── tests*.py                 # tests, tests_api, tests_meetings, tests_notifications, tests_notification_audience, …
     └── docs/                     # this documentation
 ```
 
@@ -136,6 +136,7 @@ pwms_project/                     # repo root (git) — run manage.py from here
 | `/pwms/instruments/{public_id}/transition/` | confirm (GET) and apply (POST) one state transition | session + RBAC |
 | `/pwms/attachments/…` | SharePoint picker + open / link / upload / detach / version history | session + RBAC |
 | `/pwms/alerts/` , `/pwms/alerts/{public_id}/` | alerts page and open/read state | session |
+| `/pwms/alerts/preferences/` | the user's own bell/email mute switches per alert kind | session |
 | `/pwms/reports/…` | report builder, HTMX preview, export, share | session + RBAC |
 | `/pwms/reports/shared/{token}/` | read-only shared report (token-addressed) | token |
 | `/pwms/meetings/` (`?view=month|week|day` , `&week_start=`) , `/pwms/meetings/calendar/` , `/pwms/meetings/calendar.json` | meeting calendar dashboard (colour-coded month/week/day layouts, configurable week start), its HTMX calendar body, and the JSON feed | session |
@@ -184,11 +185,15 @@ flowchart LR
   **shared** by every instance of that type — they are not duplicated per record.
 - **`State`** — name/slug, flags (`is_initial`, `is_terminal`,
   `allows_referrals`), ordering and colour; unique per workflow type.
-- **`Transition`** — an allowed `from_state → to_state`, with `notify_roles` (the
-  alert audience) and `allowed_roles` (**advisory** — a diagram label that
-  `next_actor_roles()` adds to that audience, *not* an authorisation rule: who may
-  move a record on is the `transition` RBAC capability, see §4); may require a
-  comment; unique per workflow type.
+- **`Transition`** — an allowed `from_state → to_state`, with `allowed_roles`
+  (**advisory** — a diagram label that `next_actor_roles()` uses to say whose turn
+  it is after the move, *not* an authorisation rule: who may move a record on is
+  the `transition` RBAC capability, see §4); may require a comment; unique per
+  workflow type. Who is *alerted* about it is declared with
+  `NotificationRule` rows (`transition` FK), not on the transition itself.
+- **`NotificationRule`** — one explicit alert-audience declaration on a workflow
+  type: `event`, optional `transition`, `scope`, `role`, `channel`, `is_active`.
+  See [§ Alert audiences](#alert-audiences) below.
 
 ### Instances
 
@@ -232,6 +237,69 @@ Helpers on the base provide lifecycle navigation:
 > **Design rule:** Django cannot create a `ForeignKey` to an *abstract* model
 > (`fields.E300`). Cross-cutting tables that must point at *any* workflow subclass
 > therefore use a **GenericForeignKey** (`WorkflowGroupAccess`, `TransitionLog`).
+
+### Alert audiences
+
+Who hears about an event is **declared**, not an accident of RBAC. Everything
+lives in `pwms/notifications/` (`dispatch.py`, `preferences.py`) and three models
+in `models/notifications.py` / `models/workflows.py`.
+
+```mermaid
+flowchart TD
+    E[Event: created / transition / referral / meeting] --> A[Audience builder]
+    A --> N[named people: owner, assignee]
+    A --> X[next actors: allowed role AND can transition]
+    A --> P[meeting register / referred committee]
+    A --> O[officers: oversight channel]
+    A --> R[NotificationRule rows: scope + role + channel]
+    N & X & P & O & R --> V[VIEW check, except the referred committee]
+    V --> D[drop the actor]
+    D --> U[apply user mutes, except action reasons]
+    U --> W[write in_app and/or email rows, each with its reasons]
+```
+
+- **`Audience`** collects `Recipient`s: a user, the **reasons** they were chosen
+  and the channels (`in_app`, `email`) those reasons grant. Someone chosen twice
+  appears once with both reasons and the union of the channels.
+  `stakeholders(instance, event=, transition=)` builds it for records and
+  `referral_audience(referral, event=)` for referrals; `alert(audience=...)`
+  consumes it. The reasons are `next-actor`, `assignee`, `referred-group`,
+  `owner`, `referrer`, `participant`, `officer` and `rule:<id>`.
+- **Scope** is how a shared `Role` avoids becoming a blast. The groups an event
+  concerns (`event_groups()`) are the **custodian** (`WorkflowType.group`) plus a
+  meeting's **host group** or a referral's **referred group** — *not* every group
+  with an access row. Email additionally requires the person to be active staff
+  in one of those groups (`staff_recipients()`); the bell does not.
+  A type with no custodian falls back to the record's own access groups so an
+  audience never silently vanishes.
+- **Next actors** are the holders of a role allowed on a transition available from
+  the new state, **who can also `transition` the record** (`resolve(...,
+  TRANSITION)`). Holding the role is not enough: a referral gives a committee
+  access but never `transition`, so it is not "next".
+- **Oversight**: the type's officers (create roles in the owning group) are told at
+  `WorkflowType.oversight_channel` (default **email only**). `notify_next_actors`
+  and `notify_named_people` are plain booleans on the type.
+- **`NotificationRule`** rows add recipients per type/event. `clean()` rejects an
+  inconsistent rule (a transition on a non-transition event, another type's
+  transition, `referred_group` on a non-referral event, `host_group` on a
+  referral event). `scope=instance_groups` is the explicit wide option.
+- **`NotificationPreference`** is a per-user, per-kind pair of mute switches. It
+  runs *after* the audience is built and can only remove a channel; it is skipped
+  for `Recipient.must_act` (`next-actor`, `assignee`, `referred-group`) and for
+  `MANDATORY_KINDS` (`referral-deadline`). No row means "as the rules say", and a
+  row with both switches on is deleted, so the table holds only exceptions.
+- **VIEW is re-checked** for every audience except the referred committee (the
+  referral is its entitlement; the message states only the referral's own
+  facts).
+
+| Event (rule `event`) | Default audience | Resolved in |
+| --- | --- | --- |
+| `created` (`workflow-created`, `meeting-created`) | owner, assignee, officers (oversight), meeting register | custodian (+ host group) |
+| `transition` (`workflow-transition`, `meeting-status`) | owner, assignee, **next actors**, officers, meeting register | custodian (+ host group) |
+| `referral-created` | referred committee, owner, assignee | referred group |
+| `referral-closed` (`-responded`, `-recalled`, `-expired`) | referred committee, owner, assignee, **referrer** | referred group (+ custodian for the referrer's email) |
+| `referral-deadline` | referred committee, owner, assignee (not mutable) | referred group |
+| `meeting-document`, `meeting-attendance` | owner, assignee, officers, meeting register | custodian + host group |
 
 ---
 
@@ -306,7 +374,7 @@ These mechanisms record history:
 | `auditlog.LogEntry` | every **create / update / delete** of a registered workflow instance | field-level before/after diffs, actor, IP, timestamp |
 | `pwms.TransitionLog` | every **semantic state transition** | `from_state → to_state`, actor, comment, IP, action label |
 | `pwms.WorkflowEvent` | every **domain event** (document attached, ATC published, referral created/responded/...) | append-only, typed registry (`EventType`), JSON payload, actor, origin |
-| `pwms.Notification` | every **in-app alert and outbound email** (alerts and explicit report/record shares) | one row per recipient, with subject, text/HTML body, envelope snapshot, status, attempts and error |
+| `pwms.Notification` | every **in-app alert and outbound email** (alerts and explicit report/record shares) | one row per recipient and channel, with subject, text/HTML body, envelope snapshot, status, attempts, error and the **reasons** the person was told |
 
 - Registration happens in `PwmsConfig.ready()`: all four concrete subclasses
   (`InternationalResolution`, `DelegationReport`, `InternationalAgreement`,
@@ -324,7 +392,9 @@ These mechanisms record history:
   row records retries and the final outcome); explicit share email sends inline
   and records one attempt per addressed recipient, including external addresses
   with no `User` account. `to_email` / `from_email` snapshot the envelope so a
-  later profile or settings change cannot rewrite what was sent.
+  later profile or settings change cannot rewrite what was sent. `reasons`
+  answers "why did I get this?" from the database (the *Why* column in the admin
+  log).
 - `utils/audit_helpers.py` exposes `get_audit_trail_for_instance(instance)` and
   `get_audit_trail_by_public_id(model_class, public_id)` used by the API.
 

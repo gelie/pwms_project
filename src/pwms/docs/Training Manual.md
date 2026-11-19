@@ -132,7 +132,7 @@ will hit.
 | **Attachment** | A link from a record to a document held in SharePoint. The document itself stays in SharePoint. |
 | **Note** | A dated, attributed entry in the record's note log — the running record of decisions, follow-ups and conversations. **Not** the same as the record's own *Notes* field. |
 | **Timeline** | The merged, newest-first history of everything recorded against a record: state changes, events, edits and creations. |
-| **Alert** | An in-app notification, shown on the bell. Staff in the affected groups also receive an email copy; owners, assignees and other named readers hear through the bell. Alerts always link back to the record they concern. |
+| **Alert** | An in-app notification, shown on the bell. Staff in the groups an event concerns may also receive an email copy; owners, assignees and other named readers hear through the bell. Every alert records *why* you were told, and always links back to the record it concerns. |
 
 ### The three IRPD instruments at a glance
 
@@ -871,8 +871,9 @@ Taking a transition does four things, all automatically:
 2. It advances the record to the destination stage.
 3. It writes a history entry naming who moved it, from which stage to which, with
    the comment and the network address.
-4. It raises **alerts** for the people who need to know. Staff in the affected
-   groups also receive an email copy; other named readers hear through the bell.
+4. It raises **alerts** for the people who need to know — above all whoever's
+   turn it is next. Staff in the groups the move concerns also receive an email
+   copy; other named readers hear through the bell.
 
 ### 7.4 When a transition is blocked
 
@@ -1366,6 +1367,9 @@ alerts are visually highlighted, and each line names who raised it.
 press **Mark all read**. That button marks every unread alert as read, not only the
 25 on screen.
 
+The **Preferences** button opens *Alert preferences* (see
+[12.6](#126-choosing-what-you-hear-about)).
+
 ### 12.3 What generates an alert
 
 | Alert kind | Subject line |
@@ -1380,38 +1384,58 @@ press **Mark all read**. That button marks every unread alert as read, not only 
 
 ### 12.4 Who is told
 
-For ordinary workflow activity, PWMS notifies:
+PWMS does not tell "everyone in the group". Every alert goes to people for a
+**named reason**, and the reason decides whether it reaches the bell, your inbox
+or both. The reason is kept on the alert (administrators see it as *Why* in the
+alert log).
 
-- the officers who run the instrument (active members of the owning group holding
-  one of the type's creating roles);
-- the roles the transition names, plus the roles that may act from the new stage —
-  in other words, whose turn it is next;
-- the record's **owner** and the person it is **assigned to**.
+| You are told because… | Bell | Email |
+| --- | --- | --- |
+| **It is your turn** — you hold a role that may act from the new stage *and* you can move the record on | yes | yes |
+| **The work is assigned to you** | yes | yes |
+| **A matter was referred to your committee** | yes | yes |
+| **You own the record** | yes | yes |
+| **You raised the referral**, and it has been answered, recalled or has expired | yes | yes |
+| **You are on a meeting's register** (or chair or minute it) | yes | yes |
+| **You run the instrument** (an *officer* of the type) — oversight | normally no | normally yes |
+| **An administrator added a rule** naming your role | as the rule says | as the rule says |
 
-It then removes **the person who did it** — nobody needs telling about their own
-action — and **anyone who cannot view the record**, because an alert links to the
-record and quotes its stage. A referral notifies the referred committee's active
-members plus the owner and assignee.
+Officers can already see every record in their lists, so by default they are
+**emailed but get no bell count** for each record; an administrator can change
+that per workflow type.
 
-That list is the **in-app** audience. **Email is narrower**: it goes only to
-active staff (`is_staff_member`, or an `employee_type` of staff/graduate) who
-belong to a group affected by the record — the type's owning group, any group the
-record is shared with, and the committee or unit it names (responsible committee,
-host group, referral committee, or the committee a referral was sent to). A named
-owner, assignee or invited guest outside those groups still sees the bell alert,
-but is not emailed.
+PWMS then removes **the person who did it** — nobody needs telling about their
+own action — and **anyone who cannot view the record**, because an alert links to
+the record and quotes its stage. The one exception is a **committee a matter was
+referred to**: the referral itself entitles it to know.
 
-Two consequences for IRPD:
+**Where a role is looked up matters.** Roles such as *Committee Secretary* are
+shared across the whole organisation, so an alert is only ever sent to people in
+the **groups the event concerns**: the owning (custodian) group for a creation or
+a transition, the committee for a referral, the convening group for a meeting. A
+committee that was once referred a record, or has read-only access to it, does
+**not** hear about every later move — and a committee is not told it is "next"
+just because it holds a role: moving a record on is the owning group's job.
+
+**Email is narrower still**: it goes only to active **staff**
+(`is_staff_member`, or an `employee_type` of staff/graduate) who belong to one of
+those groups. Members of Parliament, and owners, assignees or invited guests
+outside those groups, still see the bell alert where a reason gives it to them,
+but are never emailed.
+
+Three consequences for IRPD:
 
 - **Alerts never leak a record.** If someone cannot open it, they are never told
   about it.
-- **Being assigned work does not create an alert for you unless something
-  changes.** Keep the dashboard as your work list; treat the bell as news.
+- **The bell is news and requests, not a copy of the whole type.** Keep the
+  dashboard as your work list.
+- **You can turn things off, but not what you owe.** See 12.6.
 
 ### 12.5 How email behaves
 
-Each alert produces an in-app row, and **staff in the affected groups** also get
-an email where they have an address on file. Mail is multipart — a plain-text
+Each alert produces an in-app row and/or an email row, according to the reason
+you were told, and **staff in the groups the event concerns** get the email where
+they have an address on file. Mail is multipart — a plain-text
 body plus an HTML version — and every send is recorded in the outbound-email log
 (who, which address, what, when, and whether it sent). Email is **queued, not
 sent immediately** for alerts, by a background worker, so a mail problem never
@@ -1428,8 +1452,25 @@ default installation, mail is written to the server console rather than delivere
 confirm with the administrator that email genuinely goes out before training
 anyone to rely on it. The same applies to repeating report shares.
 
+### 12.6 Choosing what you hear about
+
+**Preferences** on the alerts page opens `/pwms/alerts/preferences/`, headed
+**Alert preferences**: one row per kind of alert, with a **Bell** and an **Email**
+tick box. Untick what you do not want and press **Save preferences**.
+
+- Preferences can only **turn things off for you**. They never add an alert that
+  the workflow's rules did not already give you.
+- **You are always told about what you owe an action on** — when it is your turn,
+  when work is assigned to you, or when a matter is referred to your committee —
+  whatever you untick. Muting *Workflow transitioned* must not hide *it is your
+  turn*.
+- **Referral deadline reminders cannot be turned off.** Their row is greyed out
+  and marked *Always sent*.
+- Only the exceptions are stored; ticking everything again clears your settings.
+
 **Check your understanding.** You move a report forward to the next stage. Why do
-you not receive an alert about it, and who does?
+you not receive an alert about it, and who does? Then: you have muted *Workflow
+transitioned* by email — will you still be emailed when it becomes your turn?
 
 ---
 
@@ -1862,7 +1903,7 @@ re-enter?
 
 | Term | Definition |
 | --- | --- |
-| **Alert** | An in-app notification; staff in the affected groups also receive an email copy. Raised when a record is created, moved on, or a referral changes |
+| **Alert** | An in-app notification; staff in the groups the event concerns may also receive an email copy, and each alert records why you were told. Raised when a record is created, moved on, or a referral changes. You can mute some kinds in *Alert preferences* |
 | **Assignee** | The person named in *Assigned to*; may view the record |
 | **ATC** | Announcements, Tablings and Committee Reports — publication of a tabled matter, with reference, date and page |
 | **Attachments tab** | The panel holding a record's SharePoint documents, their versions and their activity |
@@ -2114,8 +2155,8 @@ Answer all nineteen questions. The pass mark is 16.
    the name field exists precisely so the historical record stays accurate.
 8. It validates the move and any preconditions; advances the stage; writes the
    history entry naming who moved it, from where to where, with the comment; and
-   raises in-app alerts — staff in the affected groups also receive an email
-   copy.
+   raises alerts for the people who need to know (above all whoever's turn it is
+   next) — staff in the groups the move concerns also receive an email copy.
 9. **Close – House approved** on the Delegation Report: it requires an **ATC update
    published** event. The message is *"Requires a 'ATC update published' event on
    this workflow."*

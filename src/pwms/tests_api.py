@@ -26,12 +26,16 @@ from .models import (
     AttachmentVersion,
     Bill,
     BillVersion,
+    Building,
     Group,
     GroupMembership,
+    Meeting,
+    MeetingAttendance,
     PublicStatus,
     Role,
     State,
     Transition,
+    Venue,
     WorkflowNote,
     WorkflowReferral,
     WorkflowType,
@@ -969,6 +973,340 @@ class ScopedResourceTests(ApiTestCase):
         self.assertEqual(me.status_code, 200)
         self.assertEqual(me.json()["client_id"], client.client_id)
         self.assertEqual(set(me.json()["scopes"]), {"users:read", "bills:read"})
+
+
+class MeetingResourceTests(ApiTestCase):
+    """The meetings resource: member, group, period and type filters."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.meeting_type = WorkflowType.objects.get(name="Meeting")
+        cls.scheduled = cls.meeting_type.states.get(name="Scheduled")
+        cls.completed = cls.meeting_type.states.get(name="Completed")
+
+        cls.organiser = User.objects.create_user(
+            username="organiser", email="organiser@example.org", password="pw"
+        )
+        cls.member = User.objects.create_user(
+            username="member",
+            email="member@example.org",
+            password="pw",
+            first_name="Naledi",
+            last_name="Khumalo",
+            is_mp=True,
+        )
+        cls.other_member = User.objects.create_user(
+            username="other",
+            email="other@example.org",
+            password="pw",
+            first_name="Sipho",
+            last_name="Ndlovu",
+            is_mp=True,
+        )
+        # A committee member whose imported profile never got the is_mp flag.
+        cls.unflagged = User.objects.create_user(
+            username="unflagged",
+            email="unflagged@example.org",
+            password="pw",
+            first_name="Lerato",
+            last_name="Mahlangu",
+        )
+
+        cls.committee, _ = Group.objects.get_or_create(
+            name="API Health Committee", group_type="committee"
+        )
+        cls.other_committee, _ = Group.objects.get_or_create(
+            name="API Transport Committee", group_type="committee"
+        )
+        cls.role, _ = Role.objects.get_or_create(name="Member")
+        GroupMembership.objects.create(
+            user=cls.member, group=cls.committee, role=cls.role
+        )
+        GroupMembership.objects.create(
+            user=cls.unflagged, group=cls.committee, role=cls.role
+        )
+
+        cls.building = Building.objects.create(name="API Test Building")
+        cls.venue = Venue.objects.create(
+            building=cls.building,
+            name="Committee Room 1",
+            floor="1st",
+            capacity=30,
+        )
+
+        now = timezone.now()
+        cls.past = Meeting.objects.create(
+            workflow_type=cls.meeting_type,
+            current_state=cls.completed,
+            owner=cls.organiser,
+            title="API Health Committee — Annual performance plan",
+            reference_number="NA/API-HEALTH/2026-01-15",
+            meeting_type="committee",
+            start_datetime=now - timedelta(days=30),
+            end_datetime=now - timedelta(days=30) + timedelta(hours=2),
+            host_group=cls.committee,
+            venue=cls.venue,
+            quorum=3,
+            minutes_status="approved",
+        )
+        cls.upcoming = Meeting.objects.create(
+            workflow_type=cls.meeting_type,
+            current_state=cls.scheduled,
+            owner=cls.organiser,
+            title="API Transport Committee — Oversight visit feedback",
+            reference_number="NA/API-TRANSPORT/2026-12-10",
+            meeting_type="committee",
+            start_datetime=now + timedelta(days=20),
+            end_datetime=now + timedelta(days=20) + timedelta(hours=3),
+            host_group=cls.other_committee,
+            attendance_mode="virtual",
+            meeting_link="https://example.org/join",
+        )
+        cls.unrelated = Meeting.objects.create(
+            workflow_type=cls.meeting_type,
+            current_state=cls.scheduled,
+            owner=cls.organiser,
+            title="National Assembly Plenary Sitting",
+            reference_number="NA/PLEN/2026-12-01",
+            meeting_type="plenary",
+            start_datetime=now + timedelta(days=40),
+        )
+
+        MeetingAttendance.objects.create(
+            meeting=cls.past,
+            user=cls.member,
+            source=MeetingAttendance.SOURCE_HOST_GROUP,
+            capacity="member",
+            rsvp_status="accepted",
+            attendance_status="present",
+        )
+        MeetingAttendance.objects.create(
+            meeting=cls.upcoming,
+            user=cls.member,
+            source=MeetingAttendance.SOURCE_INVITEE,
+            capacity="member",
+            rsvp_status="accepted",
+        )
+        MeetingAttendance.objects.create(
+            meeting=cls.unrelated,
+            user=cls.other_member,
+            source=MeetingAttendance.SOURCE_HOST_GROUP,
+            capacity="member",
+        )
+
+    def test_meetings_scope_is_required(self):
+        self.assertEqual(self.client.get("/api/v1/meetings/").status_code, 401)
+
+        token, _ = self.access_token([Scope.USERS_READ])
+        response = self.client.get("/api/v1/meetings/", **self.auth(token))
+        self.assertEqual(response.status_code, 403)
+
+    def test_member_filter_returns_only_that_members_meetings(self):
+        token, _ = self.access_token([Scope.MEETINGS_READ])
+
+        for value in ("member", str(self.member.public_id)):
+            response = self.client.get(
+                f"/api/v1/meetings/?{urlencode({'user': value})}",
+                **self.auth(token),
+            )
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertEqual(payload["count"], 2, value)
+            titles = {row["title"] for row in payload["results"]}
+            self.assertEqual(
+                titles,
+                {self.past.title, self.upcoming.title},
+            )
+
+        first = next(
+            row for row in payload["results"] if row["title"] == self.past.title
+        )
+        self.assertEqual(first["member_attendance"]["attendance_status"], "present")
+        self.assertEqual(first["member_attendance"]["user"]["username"], "member")
+        self.assertEqual(first["attendance_counts"]["present"], 1)
+        self.assertEqual(first["state"]["name"], "Completed")
+        self.assertEqual(first["host_group"]["name"], "API Health Committee")
+        self.assertEqual(first["venue"]["building"]["name"], "API Test Building")
+
+        unknown = self.client.get(
+            f"/api/v1/meetings/?{urlencode({'user': 'nobody'})}",
+            **self.auth(token),
+        )
+        self.assertEqual(unknown.status_code, 404)
+        self.assertIn("No user matches", unknown.json()["detail"])
+
+    def test_period_group_and_state_filters(self):
+        token, _ = self.access_token([Scope.MEETINGS_READ])
+        today = timezone.localdate()
+
+        past_window = {
+            "user": "member",
+            "start": (today - timedelta(days=60)).isoformat(),
+            "end": (today - timedelta(days=1)).isoformat(),
+        }
+        response = self.client.get(
+            f"/api/v1/meetings/?{urlencode(past_window)}", **self.auth(token)
+        )
+        self.assertEqual(response.json()["count"], 1)
+        self.assertEqual(response.json()["results"][0]["title"], self.past.title)
+
+        by_group = self.client.get(
+            f"/api/v1/meetings/?{urlencode({'group': self.committee.public_id})}",
+            **self.auth(token),
+        )
+        self.assertEqual(by_group.json()["count"], 1)
+
+        by_group_name = self.client.get(
+            f"/api/v1/meetings/?{urlencode({'group': self.other_committee.name})}",
+            **self.auth(token),
+        )
+        self.assertEqual(by_group_name.json()["count"], 1)
+
+        completed = self.client.get(
+            f"/api/v1/meetings/?{urlencode({'state': 'completed'})}",
+            **self.auth(token),
+        )
+        self.assertEqual(completed.json()["count"], 1)
+
+        invalid = self.client.get(
+            f"/api/v1/meetings/?{urlencode({'start': 'not-a-date'})}",
+            **self.auth(token),
+        )
+        self.assertEqual(invalid.status_code, 400)
+        backwards = self.client.get(
+            f"/api/v1/meetings/?{urlencode({'start': '2026-12-31', 'end': '2026-01-01'})}",
+            **self.auth(token),
+        )
+        self.assertEqual(backwards.status_code, 400)
+
+    def test_meeting_type_search_and_ordering(self):
+        token, _ = self.access_token([Scope.MEETINGS_READ])
+
+        committees = self.client.get(
+            f"/api/v1/meetings/?{urlencode({'meeting_type': 'committee'})}",
+            **self.auth(token),
+        ).json()
+        self.assertEqual(committees["count"], 2)
+
+        plenaries = self.client.get(
+            f"/api/v1/meetings/?{urlencode({'meeting_type': 'committee,plenary'})}",
+            **self.auth(token),
+        ).json()
+        self.assertEqual(plenaries["count"], 3)
+
+        search = self.client.get(
+            f"/api/v1/meetings/?{urlencode({'search': 'Oversight'})}",
+            **self.auth(token),
+        ).json()
+        self.assertEqual(search["count"], 1)
+        self.assertEqual(search["results"][0]["title"], self.upcoming.title)
+
+        ordered = self.client.get(
+            "/api/v1/meetings/?ordering=start_datetime&limit=3",
+            **self.auth(token),
+        ).json()
+        starts = [row["start_datetime"] for row in ordered["results"]]
+        self.assertEqual(starts, sorted(starts))
+
+    def test_seeded_unflagged_member_is_findable_by_user(self):
+        call_command(
+            "seed_meetings",
+            "--count",
+            "20",
+            "--seed",
+            "9",
+            "--force",
+            stdout=StringIO(),
+        )
+        token, _ = self.access_token([Scope.MEETINGS_READ])
+
+        response = self.client.get(
+            f"/api/v1/meetings/?{urlencode({'user': self.unflagged.username})}",
+            **self.auth(token),
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertGreater(response.json()["count"], 0)
+        # The seeded meeting the coverage pass placed them on is returned with
+        # their own register row, even though the profile has no is_mp flag.
+        self.assertTrue(
+            any(row["member_attendance"] for row in response.json()["results"])
+        )
+
+    def test_search_matches_attendee_names(self):
+        token, _ = self.access_token([Scope.MEETINGS_READ])
+
+        response = self.client.get(
+            f"/api/v1/meetings/?{urlencode({'search': 'Khumalo'})}",
+            **self.auth(token),
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        # The member is on two registers; the join must not duplicate either row.
+        self.assertEqual(payload["count"], 2)
+        self.assertEqual(
+            {row["title"] for row in payload["results"]},
+            {self.past.title, self.upcoming.title},
+        )
+
+        restricted = self.client.get(
+            f"/api/v1/meetings/?{urlencode({'search': 'Khumalo', 'search_fields': 'attendee'})}",
+            **self.auth(token),
+        )
+        self.assertEqual(restricted.json()["count"], 2)
+
+    def test_detail_includes_the_register_and_attendance_counts(self):
+        token, _ = self.access_token([Scope.MEETINGS_READ])
+
+        response = self.client.get(
+            f"/api/v1/meetings/{self.past.public_id}/?user=member",
+            **self.auth(token),
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["reference_number"], self.past.reference_number)
+        self.assertEqual(payload["meeting_type_display"], "Committee Meeting")
+        self.assertEqual(payload["calendar_state"], "closed")
+        self.assertEqual(len(payload["attendances"]), 1)
+        self.assertEqual(payload["attendances"][0]["display_name"], "Naledi Khumalo")
+        self.assertEqual(payload["member_attendance"]["capacity"], "member")
+        self.assertEqual(payload["attendance_counts"]["invited"], 1)
+        self.assertFalse(payload["attendance_counts"]["quorum_met"])
+
+        missing = self.client.get(f"/api/v1/meetings/{uuid4()}/", **self.auth(token))
+        self.assertEqual(missing.status_code, 404)
+
+    def test_nested_user_meetings_route_uses_the_same_filters(self):
+        token, _ = self.access_token([Scope.MEETINGS_READ])
+
+        response = self.client.get(
+            f"/api/v1/users/{self.member.public_id}/meetings/?{urlencode({'group': self.committee.public_id})}",
+            **self.auth(token),
+        )
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["results"][0]["title"], self.past.title)
+        self.assertEqual(
+            payload["results"][0]["member_attendance"]["attendance_status"],
+            "present",
+        )
+
+        missing = self.client.get(
+            f"/api/v1/users/{uuid4()}/meetings/", **self.auth(token)
+        )
+        self.assertEqual(missing.status_code, 404)
+
+    def test_root_lists_meetings_for_the_scope(self):
+        token, _ = self.access_token([Scope.MEETINGS_READ])
+
+        root = self.client.get("/api/v1/", **self.auth(token)).json()
+        self.assertEqual(
+            {resource["name"] for resource in root["resources"]},
+            {"meetings", "search"},
+        )
+
+        me = self.client.get("/api/v1/me/", **self.auth(token)).json()
+        self.assertEqual(set(me["scopes"]), {"meetings:read"})
 
 
 class ThrottleAndUsageLogTests(ApiTestCase):

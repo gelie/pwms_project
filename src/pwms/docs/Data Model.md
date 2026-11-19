@@ -24,7 +24,10 @@ erDiagram
     State ||--o{ Transition : "from_state"
     State ||--o{ Transition : "to_state"
     Transition }o--o{ Role : allowed_roles
-    Transition }o--o{ Role : notify_roles
+    WorkflowType ||--o{ NotificationRule : notification_rules
+    NotificationRule }o--o| Transition : "transition (optional)"
+    NotificationRule }o--o| Role : "role (optional)"
+    User ||--o{ NotificationPreference : notification_preferences
     Transition }o--o{ EventType : required_event_types
     Transition ||--o{ TransitionCondition : conditions
 
@@ -164,9 +167,13 @@ Unique on `(user, group, role, start_date)`; `clean()` validates dates.
 | `create_roles` (M2M to `Role`, related `creatable_workflow_types`) | roles **from that group** allowed to create instances; empty means superusers only |
 | `viewer_groups` (M2M to `Group`, related `viewer_workflow_types`) | read-only stakeholder groups; every new instance is shared with them (a read-only `WorkflowGroupAccess` row) at creation |
 | `owner_can_edit`, `owner_can_transition`, `owner_can_delete`, `owner_can_share`, `owner_can_comment`, `owner_can_manage` | the type's **capability policy** for its owning group — what `materialize_group_access()` grants that group on every new instance. Defaults: edit and transition on, the rest off. Turned into a `WorkflowGroupAccess` defaults dict by `owner_access_defaults()` |
+| `oversight_channel` (`off` / `in_app` / `email` / `both`; default `email`) | how the type's **officers** (create-role holders in the owning group) are told about creations and transitions. Email only by default: they can already see every record in the lists, so no bell count for each one. Properties `oversight_in_app` / `oversight_email` |
+| `notify_next_actors` (bool, default on) | after a transition, alert holders of the roles allowed to act next who can also `transition` the record |
+| `notify_named_people` (bool, default on) | alert the record's `owner` and `assigned_to` |
 | `parent_type` (self-FK, related `child_types`) | optional type hierarchy; declaring child types opts the parent into type-restricted instance links |
 
-Reverse relations: `states`, `transitions`, `child_types`, `%(class)s_instances`.
+Reverse relations: `states`, `transitions`, `child_types`, `notification_rules`, `%(class)s_instances`.
+The three alert fields are migration `0067_notification_rules_and_preferences`.
 
 Type-level hierarchy helpers: `is_root_type`, `get_ancestor_types()`,
 `get_descendant_types()`, `allowed_child_types()` (empty means "unrestricted").
@@ -244,8 +251,8 @@ Uniqueness: `(workflow_type, name)` and `(workflow_type, slug)`.
 | `workflow_type` (FK, related `transitions`) | owning machine |
 | `name`, `slug` | identity (slug unique per type) |
 | `from_state`, `to_state` (FK `State`) | the edge |
-| `allowed_roles` (M2M `Role`) | **advisory** — labels the diagram and, via `next_actor_roles()`, adds these roles to the transition's alert; it does **not** authorise the transition (the RBAC tables do — see Functional Design §4) |
-| `notify_roles` (M2M `Role`) | who gets alerted on it |
+| `allowed_roles` (M2M `Role`) | **advisory** — labels the diagram and, via `next_actor_roles()`, says whose turn it is after the move (those holders are alerted if they can also `transition` the record); it does **not** authorise the transition (the RBAC tables do — see Functional Design §4) |
+| ~~`notify_roles`~~ | **removed in `0067`.** Who is alerted about a transition is now a `NotificationRule` (`event=transition`, `transition=<this>`); the migration converted every existing entry to a rule with `scope=instance_groups` (the reach `notify_roles` had) and reverses back |
 | `required_event_types` (M2M `EventType`) | event guards — blocked until each type has been recorded on the instance |
 | `requires_comment`, `order` | behaviour |
 
@@ -512,7 +519,7 @@ natural key) the seeded BRS machines; migration
 | **Bill** | Introduced *(initial)* → Referred to Committee → Public Participation → Committee Deliberation → Committee Report → House Debate and Voting → NCOP Consideration → Awaiting Presidential Assent → Signed into Law *(terminal)*, with mediation, presidential referral-back and withdrawal branches; each state carries a BRS §12 public status through `State.public_status` |
 
 Each step has a single onward transition; roles are **not** attached to these
-transitions (assign `allowed_roles` / `notify_roles` per environment). The Bill
+transitions (assign `allowed_roles` and `NotificationRule`s per environment). The Bill
 machine is the exception to "a single onward transition" at its branching
 states (NCOP consideration and presidential assent) and its withdrawal edges,
 which require a comment.
@@ -784,13 +791,17 @@ and did it send?" is answerable from the database. Migration `0026_notification`
 | `actor` (FK `User`, `SET_NULL`, nullable) | triggering user; null for system alerts (e.g. deadline reminders) |
 | `content_type` + `object_id` → `content_object` | **GFK** to the workflow instance or the `ReportShare` the mail is about |
 | `context` (JSON) | the variables the message was composed from (share id, schedule, attachment format, …) |
+| `reasons` (JSON list) | **why** this person was told: `next-actor`, `assignee`, `referred-group`, `owner`, `referrer`, `participant`, `officer`, `rule:<id>`. A person selected twice carries both. Empty on shares and on rows written before `0067`. Shown as *Why* in the admin log |
 | `status` | `pending` / `sent` / `failed` |
 | `sent_at`, `read_at`, `error` | delivery outcome and read state |
 | `attempts` | delivery attempts made so far (the queue retries a failure) |
 
-Every alert dispatch writes **two rows per recipient**: an `in_app` row (written
-`sent` immediately) and, when the recipient is staff of an affected group and
-has an email address, an `email` row (`pending` → `sent`/`failed`). Explicit
+Every alert dispatch writes **up to two rows per recipient**, depending on the
+channels their audience reason grants and their own mutes: an `in_app` row
+(written `sent` immediately) and, when the recipient is staff of a group the
+event concerns and has an email address, an `email` row (`pending` →
+`sent`/`failed`). A recipient may therefore have only one of the two (officers
+get email without a bell row by default). Explicit
 sharing writes `email` rows only — one per addressed recipient, including
 external addresses with no `User` account — because a shared report is not a
 bell notification. `is_unread` is true only for an `in_app` row with no
@@ -812,6 +823,45 @@ Indexed on `(recipient, read_at)` (the bell's unread count) and
 undeletable** (`NotificationAdmin`): the rows are evidence, not data entry.
 `ReportShare` is likewise read-only and undeletable, with revoke as the one
 write.
+
+### `NotificationRule(BaseModel)` — `pwms/models/notifications.py`
+
+One explicit audience declaration: *on `event` for this type, tell the holders of
+`role` in the groups `scope` resolves to, over `channel`.* Rules **add** to the
+built-in audiences (named people, next actors, officer oversight). Migration
+`0067_notification_rules_and_preferences`.
+
+| Field | Notes |
+| --- | --- |
+| `workflow_type` (FK, related `notification_rules`) | the type it applies to |
+| `event` | `created`, `transition`, `referral-created`, `referral-closed`, `referral-deadline`, `meeting-document`, `meeting-attendance` (each alert `kind` maps to one: `EVENT_FOR_KIND`) |
+| `transition` (FK, nullable, related `notification_rules`) | only for `event=transition`: limit to this transition; empty means every transition |
+| `scope` | `custodian` (the type's owning group; default), `referred_group` (referral events), `host_group` (meetings), `instance_groups` (every group with access — the explicit wide option) |
+| `role` (FK `Role`, nullable) | holders of this role are told; empty means every active member of the scope |
+| `channel` | `in_app`, `email` or `both` (default). Email still only reaches active staff of the scope |
+| `is_active` | pause a rule without deleting it |
+
+`clean()` rejects: a `transition` on a non-transition event, a transition of a
+different type, `referred_group` on a non-referral event, and `host_group` on a
+referral event. Managed as an inline on the workflow type's admin page, as an
+inline on a transition's page (where `event` and `workflow_type` are filled in
+for you), and in its own admin list.
+
+### `NotificationPreference(BaseModel)` — `pwms/models/notifications.py`
+
+A user's own mute switches for one alert kind. **Exceptions only**: no row means
+"as the rules say", and a row with both switches on is deleted.
+
+| Field | Notes |
+| --- | --- |
+| `user` (FK, related `notification_preferences`) | whose preference |
+| `kind` | one of the alert kinds (shares are excluded) |
+| `in_app_enabled`, `email_enabled` | per-channel switches; both default on |
+
+Unique on `(user, kind)`. A preference can only *narrow* an audience, and is
+ignored for alerts the user owes an action on (`next-actor`, `assignee`,
+`referred-group`) and for `MANDATORY_KINDS` (`referral-deadline`). Edited at
+`/pwms/alerts/preferences/`.
 
 ---
 

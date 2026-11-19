@@ -18,6 +18,7 @@ class Scope(models.TextChoices):
     GROUPS_READ = "groups:read", "Read groups"
     MEMBERSHIPS_READ = "memberships:read", "Read memberships"
     BILLS_READ = "bills:read", "Read bills"
+    MEETINGS_READ = "meetings:read", "Read meetings"
 
 
 #: Every scope the API knows about. Anything else in an ``ApiClient`` row is
@@ -26,5 +27,11 @@ ALL_SCOPES: tuple[str, ...] = tuple(Scope.values)
 
 #: Scopes that only read data. Kept as a guard for future write scopes.
 READ_SCOPES = frozenset(
-    {Scope.USERS_READ, Scope.GROUPS_READ, Scope.MEMBERSHIPS_READ, Scope.BILLS_READ}
+    {
+        Scope.USERS_READ,
+        Scope.GROUPS_READ,
+        Scope.MEMBERSHIPS_READ,
+        Scope.BILLS_READ,
+        Scope.MEETINGS_READ,
+    }
 )

@@ -428,6 +428,11 @@ urlpatterns = [
         name="notifications_read_all",
     ),
     path(
+        "alerts/preferences/",
+        views.notification_preferences,
+        name="notification_preferences",
+    ),
+    path(
         "alerts/<uuid:public_id>/",
         views.notification_open,
         name="notification_open",
