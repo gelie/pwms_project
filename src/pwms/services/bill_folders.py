@@ -232,7 +232,7 @@ def _mirror_folder(item: dict) -> SharepointFolder | None:
 def mirror_drive(drive_id: str) -> SharepointDrive | None:
     """Resolve a Graph drive into the local site/drive mirror rows, or ``None``.
 
-    Shared with the Events document picker's configured workflow-type
+    Shared with the Events document browser's configured workflow-type
     locations: a configured drive need not have been synced by
     ``populate_sites`` first.
     """

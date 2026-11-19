@@ -80,13 +80,18 @@ Derived automatically in `settings.py`:
 
 ### Events document locations
 
-The **Events** tab's document field is a SharePoint picker when the record has a
-location:
+The **Events** tab's document field offers a **Browse SharePoint** browser
+alongside the editable URL. The browser lists the sites the user is an active
+member of, and **Use this document** fills the URL field; a local file can be
+**Upload**ed into the selected folder instead.
 
-- a **bill** uses its own B-number folder under the Bill Folder (`BILL_DRIVE` /
-  `BILL_FOLDER`), created when first needed;
-- every other type uses the folder configured in
-  `WORKFLOW_TYPE_SHAREPOINT_LOCATIONS`, keyed by `WorkflowType.name`:
+- a **bill** opens on its own B-number folder under the Bill Folder (`BILL_DRIVE`
+  / `BILL_FOLDER`), created when first needed. Every upload for that bill files
+  into the same folder, whatever folder the browser is showing;
+- every other type opens on the folder configured in
+  `WORKFLOW_TYPE_SHAREPOINT_LOCATIONS`, keyed by `WorkflowType.name`, when one
+  exists. Without an entry the browser starts from the user's site tree and
+  uploads land in the folder they select:
 
 ```python
 WORKFLOW_TYPE_SHAREPOINT_LOCATIONS = {
@@ -98,9 +103,9 @@ WORKFLOW_TYPE_SHAREPOINT_LOCATIONS = {
 }
 ```
 
-An entry without a `drive_id` leaves the plain URL input in place. A configured
-drive is resolved into the local `SharepointDrive` mirror on first use if
-`populate_sites` has not already synced it.
+A configured drive is resolved into the local `SharepointDrive` mirror on first
+use if `populate_sites` has not already synced it. An entry without a `drive_id`
+still browses the user's sites; it simply has no default folder of its own.
 
 ### Token handling
 

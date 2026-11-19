@@ -1,0 +1,74 @@
+{% comment %}
+The SharePoint browser for an event's document field, swapped into
+``#event-document-browser`` by the "Browse SharePoint" button.
+
+Left: a lazily expanded tree of the user's sites, drives and folders. Right: the
+documents in the selected folder, each with a "Use this document" action, and an
+upload that stores a local file in that folder. A bill's folder opens by default;
+another workflow type opens on its configured folder when there is one.
+
+Context (from ``pwms.views.workflow_event_document_browser`` and
+``workflow_event_document_upload``): event_document_sites,
+event_default_drive/event_default_folder/event_default_label,
+event_document_status, event_document_files[_loaded], event_document_error,
+event_document_drive/folder_id/folder_name/parent_folder_id, event_is_bill,
+event_bill_folder, and the tree/folder/upload URLs.
+{% endcomment %}
+<div class="card"
+     data-event-document-picker
+     data-document-field="{{ event_document_field_id }}">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-medium">{% lucide "folder-open" size=16 %} Browse SharePoint</span>
+    <button type="button"
+            class="btn-close"
+            aria-label="Close"
+            onclick="document.getElementById('event-document-browser').replaceChildren()"></button>
+  </div>
+  <div class="card-body">
+    {% if event_document_status %}
+      <div class="alert alert-{{ event_document_status.level }} py-2 mb-3" role="alert">{{ event_document_status.message }}</div>
+    {% endif %}
+    <div class="row g-3">
+      <div class="col-12 col-lg-5">
+        <p class="small text-body-secondary mb-2">Sites you are a member of</p>
+        <ul class="list-unstyled mb-0" id="event-document-tree">
+          {% for site in event_document_sites %}
+            <li>
+              <div class="d-flex align-items-center gap-1">
+                <button type="button"
+                        class="btn btn-link btn-sm p-0 text-decoration-none"
+                        aria-label="Expand {{ site.name }}"
+                        hx-get="{% url "pwms:workflow_event_document_tree" %}?site_id={{ site.site_id|urlencode }}"
+                        hx-target="#event-site-{{ site.pk }}-children"
+                        hx-swap="innerHTML"
+                        hx-include="#event-content-type, #event-object-id">{% lucide "chevron-right" size=14 %}</button>
+                <span class="fw-medium text-truncate">{{ site.name }}</span>
+              </div>
+              <ul class="list-unstyled ms-3" id="event-site-{{ site.pk }}-children"></ul>
+            </li>
+          {% empty %}
+            <li class="small text-muted">You are not a member of any SharePoint site.</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="col-12 col-lg-7">
+        <div id="event-document-contents" class="border rounded-3 p-3">
+          {% if event_document_files_loaded or event_document_error %}
+            {% include "pwms/partials/event_document_folder_contents.html" %}
+          {% elif event_default_drive %}
+            <p class="small text-body-secondary mb-2">
+              Opening the {{ event_default_label }}…
+            </p>
+            <div hx-get="{% url "pwms:workflow_event_document_folder" %}?drive_id={{ event_default_drive.drive_id|urlencode }}&folder_id={% if event_default_folder %}{{ event_default_folder.folder_id|urlencode }}{% else %}root{% endif %}&folder_name={% if event_default_folder %}{{ event_default_folder.name|urlencode }}{% else %}{{ event_default_drive.name|urlencode }}{% endif %}{% if event_default_folder.parent_folder %}&parent_folder_id={{ event_default_folder.parent_folder.folder_id|urlencode }}{% endif %}"
+                 hx-trigger="load"
+                 hx-target="#event-document-contents"
+                 hx-swap="innerHTML"
+                 hx-include="#event-content-type, #event-object-id"></div>
+          {% else %}
+            <p class="small text-muted mb-0">Select a folder to see its documents.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

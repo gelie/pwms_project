@@ -1,0 +1,44 @@
+{% comment %}
+The Events tab's document field: an editable URL plus a SharePoint browser that
+fills it with a document chosen from the user's sites.
+
+A bill's browser opens on its dedicated B-number folder; every other record
+starts from the sites the user belongs to. Uploading a local file stores it in
+SharePoint and puts its link in the field, so an event can cite a document that
+is not attached to the record itself.
+
+Context (from ``pwms.views._event_document_base_context`` and
+``workflow_event_document_upload``): field, event_document_field_id,
+event_document_browser_open, event_document_status, event_document_sites,
+event_default_drive / event_default_folder / event_default_label,
+event_document_files[_loaded], event_document_drive/folder_id/folder_name/
+parent_folder_id, event_document_error, event_is_bill, event_bill_folder,
+event_filing_configured, and the browser/tree/folder/upload URLs.
+{% endcomment %}
+<div class="col-12 mt-3" id="event-document-field">
+  <label class="form-label" for="{{ field.id_for_label }}">
+    {{ field.label }}
+    {% if field.field.required %}<span class="text-danger" aria-hidden="true">*</span>{% endif %}
+  </label>
+  {{ field }}
+  {% if field.help_text %}<div class="form-text">{{ field.help_text }}</div>{% endif %}
+  {% for error in field.errors %}<div class="invalid-feedback d-block">{{ error }}</div>{% endfor %}
+  <div class="form-text text-success" data-event-document-chosen role="status"></div>
+  <div class="d-flex flex-wrap align-items-center gap-2 mt-2">
+    <button type="button"
+            class="btn btn-sm btn-outline-secondary"
+            hx-get="{% url "pwms:workflow_event_document_browser" %}?content_type={{ event_content_type|urlencode }}&object_id={{ event_object_id|urlencode }}"
+            hx-target="#event-document-browser"
+            hx-swap="innerHTML">
+      {% lucide "folder-open" size=14 %} Browse SharePoint
+    </button>
+    <span class="small text-body-secondary">
+      Source a document from your SharePoint sites, or upload a file.
+    </span>
+  </div>
+  <div id="event-document-browser" class="mt-2">
+    {% if event_document_browser_open %}
+      {% include "pwms/partials/event_document_browser.html" %}
+    {% endif %}
+  </div>
+</div>

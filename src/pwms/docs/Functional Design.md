@@ -553,6 +553,11 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
   - **Events** — the record's append-only domain-event log (`WorkflowEvent`) and
     the form that records one by hand ([§3.3](#33-transitioning)). Add-only:
     there is no edit or delete, since a correction is a new compensating event.
+    The form's document field opens a **SharePoint browser**: a bill starts on
+    its dedicated B-number folder and always files an upload there, while the
+    other types start on their configured folder when set and otherwise on the
+    user's sites. An existing document is taken with *Use this document*, or a
+    local file is uploaded into the selected folder.
   - **Referrals** — raise / respond / withdraw ([§3.4](#34-referrals)) and the
     transitions available from the current state, each row linking into the same
     confirmation page for a reader who may take one.

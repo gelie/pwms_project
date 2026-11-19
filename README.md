@@ -116,7 +116,7 @@ The self-documentation lives in [`pwms/docs/`](src/pwms/docs/):
 | [Meetings Import & Export](src/pwms/docs/Meetings%20Import%20%26%20Export.md) | The CSV/XLSX format the Meetings calendar imports and exports |
 | [Management Commands](src/pwms/docs/Management%20Commands.md) | Every `manage.py` command and its purpose |
 | [Group Overhaul Checklist](src/pwms/docs/Group%20Overhaul%20Checklist.md) | Runbook for moving an existing server onto the seeded group tree and resolver-backed user sync |
-| [SharePoint Sync](src/pwms/docs/SharePoint%20Sync.md) | `populate_sites`, the local `Sharepoint*` tables and document attachments |
+| [SharePoint Sync](src/pwms/docs/SharePoint%20Sync.md) | `populate_sites`, the local `Sharepoint*` tables, document attachments and the Events document browser |
 | [Roadmap & Planned Integrations](src/pwms/docs/Roadmap%20&%20Planned%20Integrations.md) | Email/notification audit log, SharePoint, exports and what remains |
 | [User Manual Introduction](src/pwms/docs/User%20Manual%20Introduction.md) | *Systems Overview* and *The Purpose* in plain language |
 | [Introductory Lesson Plan](src/pwms/docs/Introductory%20Lesson%20Plan.md) | The 90-minute induction session for the IRPD section: outcomes, timed running order, tasks, exit ticket |

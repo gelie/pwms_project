@@ -13,7 +13,7 @@ order, or used as reference while developing.
 6. [Search Lookups](./Search%20Lookups.md) — the HTMX search pickers (users, groups, countries, cities) and the country → city cascade.
 7. [Management Commands](./Management%20Commands.md) — the `manage.py` commands (sync, jobs, diagrams).
 8. [Meetings Import & Export](./Meetings%20Import%20%26%20Export.md) — the CSV/XLSX format the Meetings calendar imports and exports.
-9. [SharePoint Sync](./SharePoint%20Sync.md) — the `populate_sites` command, the local `Sharepoint*` tables, and document attachments/versioning.
+9. [SharePoint Sync](./SharePoint%20Sync.md) — the `populate_sites` command, the local `Sharepoint*` tables, document attachments/versioning and the Events document browser.
 10. [Roadmap & Planned Integrations](./Roadmap%20&%20Planned%20Integrations.md) — email/notification audit log, SharePoint and other plans.
 
 ## Runbooks

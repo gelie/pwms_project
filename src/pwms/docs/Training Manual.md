@@ -783,7 +783,7 @@ Open a record to reach its tabs:
 | **Progress** | The completion ring, the state sequence and the journey so far. |
 | **Related** | What belongs to the record: on a report, the resolutions captured at the engagement (with **Add Resolution**) and the delegates; on the other instruments, the hierarchy (parent and attached records). |
 | **Notes** | The note log, plus the record's own notes text where the instrument has one. |
-| **Events** | The record's event log — facts recorded against it, with a **Record event** form. |
+| **Events** | The record's event log — facts recorded against it, with a **Record event** form and an optional SharePoint document (an existing one or an upload). |
 | **Attachments** | The documents held against the record. |
 | **Referrals** | Referrals raised and received, and the transitions available from the current state. |
 | **Diagram** | A picture of the workflow type. |
@@ -792,7 +792,29 @@ Open a record to reach its tabs:
 The record's current tab is kept in the address bar, so a refresh — or a link you
 send a colleague — returns to the same tab.
 
-### 6.4 Reading the Timeline
+### 6.4 Recording an event
+
+Open a record's **Events** tab and choose **Record event** to add a fact to its
+append-only event log — for example, that a document was received, or that a step
+happened outside PWMS. Choose the event type, add any notes, and optionally cite
+a document:
+
+- paste the document's SharePoint link;
+- choose **Browse SharePoint**, expand a site in *Sites you are a member of*,
+  open a folder, and choose **Use this document**; or
+- with a folder open, choose a file and **Upload** it.
+
+On a **bill**, the browser opens on that bill's own folder and an upload always
+files there, even if you were looking at a different folder. On the other
+workflow types, the browser opens on the type's configured folder when one is
+set, and an upload lands in the folder you have open.
+
+**Record event** adds the entry immediately; the Events tab and the Timeline both
+show it. Events are never edited or deleted — if something was wrong, record a
+new event that corrects it. Some transitions refuse to proceed until a required
+event has been recorded, so this form is also how you supply that evidence.
+
+### 6.5 Reading the Timeline
 
 The **Timeline** tab merges three kinds of history into one newest-first table
 with columns **When**, **Event**, **Detail** and **Actor** (with the network
@@ -800,7 +822,7 @@ address the action came from beneath the actor's name). State changes, recorded
 events and field-level create/update/delete entries appear together. The tab
 shows the 50 most recent entries and says so when there are more.
 
-### 6.5 A weekly check the section should adopt
+### 6.6 A weekly check the section should adopt
 
 1. Open the dashboard; clear anything **Overdue** or **Due soon**.
 2. Open **Awaiting your committees** and chase anything close to its response date.
