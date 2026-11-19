@@ -459,8 +459,9 @@ People are told when something happens or is due, without watching a page:
   process_tasks` delivers it, retrying transient failures and marking a row
   `failed` once the attempts are spent.
 - The **bell** in the site chrome shows the unread count and the newest alerts;
-  the **alerts page** (`/pwms/alerts/`) lists them and marks them read, and links
-  to the **preferences** page.
+  its red brush marks every unread alert read in place, and the **alerts page**
+  (`/pwms/alerts/`) lists them and marks them read, and links to the
+  **preferences** page.
 - `check_referral_deadlines` sends the 24-hour and 1-hour reminders and logs the
   expiry alert (see [Management Commands](./Management%20Commands.md)).
 

@@ -1,0 +1,60 @@
+{% comment %}
+The alert bell: its unread badge and the newest alerts.
+
+Included by ``navbar.html`` for the first paint, and re-rendered on its own by
+``notifications_read_all`` as the HTMX response to the clear button, so the badge
+and the menu update without leaving the page. ``#alerts-wrap`` is the swap
+target.
+
+Context (from the ``pwms.notifications.alerts`` context processor):
+unread_alert_count and recent_alerts.
+{% endcomment %}
+<div id="alerts-wrap" class="dropdown alerts-wrap auth-item d-flex">
+  <button type="button"
+          class="alerts-toggle"
+          data-bs-toggle="dropdown"
+          aria-expanded="false"
+          title="Alerts"
+          aria-label="Alerts{% if unread_alert_count %}: {{ unread_alert_count }} unread{% endif %}">
+    {% lucide "bell" size=20 %}
+    {% if unread_alert_count %}<span class="alerts-badge">{{ unread_alert_count }}</span>{% endif %}
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end alerts-menu">
+    <li class="alerts-menu-title">
+      <span>Alerts</span>
+      {% if unread_alert_count %}
+        <form method="post"
+              action="{% url "pwms:notifications_read_all" %}"
+              class="m-0"
+              hx-post="{% url "pwms:notifications_read_all" %}"
+              hx-target="#alerts-wrap"
+              hx-swap="outerHTML">
+          {% csrf_token %}
+          <button type="submit"
+                  class="alerts-clear"
+                  title="Clear alerts"
+                  aria-label="Clear alerts (mark all as read)">
+            {% lucide "paintbrush" size=16 %}
+          </button>
+        </form>
+      {% endif %}
+    </li>
+    {% for alert in recent_alerts %}
+      <li>
+        <a class="dropdown-item alerts-item{% if alert.is_unread %} alerts-item--unread{% endif %}"
+           href="{% url "pwms:notification_open" alert.public_id %}">
+          <span class="alerts-item-subject">{{ alert.subject }}</span>
+          <span class="alerts-item-meta">{{ alert.get_kind_display }} · {{ alert.created_at|timesince }} ago</span>
+        </a>
+      </li>
+    {% empty %}
+      <li>
+        <span class="dropdown-item-text small text-body-secondary">No alerts yet.</span>
+      </li>
+    {% endfor %}
+    <li><hr class="dropdown-divider"></li>
+    <li>
+      <a class="dropdown-item" href="{% url "pwms:notifications" %}">View all alerts</a>
+    </li>
+  </ul>
+</div>

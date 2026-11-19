@@ -116,8 +116,10 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
 - Dev mail: `EMAIL_BACKEND` is the console backend under `DEBUG` and SMTP
   otherwise (configurable with `EMAIL_BACKEND` / `EMAIL_HOST`);
   `DEFAULT_FROM_EMAIL` and `PWMS_BASE_URL` set the sender and the absolute links.
-- UI: the navbar bell (`templates/navbar.html`, `static/css/style.css`), the
-  alerts page (`templates/pwms/notifications.html`), the preferences page
+- UI: the navbar bell (`templates/navbar.html` plus
+  `templates/pwms/partials/alerts_dropdown.html`, whose clear button swaps the
+  bell in place over HTMX, and `static/css/style.css`), the alerts page
+  (`templates/pwms/notifications.html`), the preferences page
   (`templates/pwms/notification-preferences.html`) and the views/URLs
   `pwms:notifications`, `pwms:notification_open`,
   `pwms:notifications_read_all` and `pwms:notification_preferences`. Body

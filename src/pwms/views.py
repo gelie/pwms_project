@@ -88,6 +88,7 @@ from .notifications import (
     preference_rows,
     save_preferences,
 )
+from .notifications.context import alerts as alert_context
 from .reporting import (
     ATTACHMENT_CHOICES,
     DATE_FIELD_CHOICES,
@@ -2674,6 +2675,14 @@ def notifications_read_all(request):
     updated = request.user.notifications.filter(
         channel="in_app", read_at__isnull=True
     ).update(read_at=timezone.now())
+    if request.headers.get("HX-Request") == "true":
+        # The bell's clear button swaps only the bell, so the menu and badge
+        # update in place rather than sending the reader to the alerts page.
+        return render(
+            request,
+            "pwms/partials/alerts_dropdown.html",
+            alert_context(request),
+        )
     if updated:
         messages.success(request, f"Marked {updated} alert(s) as read.")
     return redirect("pwms:notifications")

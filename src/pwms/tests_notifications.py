@@ -700,6 +700,18 @@ class NotificationViewTests(AlertFixture):
             ).exists()
         )
 
+    def test_mark_all_read_htmx_returns_the_cleared_bell(self):
+        response = self.client.post(
+            reverse("pwms:notifications_read_all"), HTTP_HX_REQUEST="true"
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "pwms/partials/alerts_dropdown.html")
+        self.assertNotContains(response, "alerts-badge")
+        self.assertNotContains(response, "alerts-item--unread")
+        # Nothing is left to clear, so the brush disappears with the badge.
+        self.assertNotContains(response, "Clear alerts")
+
     def test_mark_all_read_rejects_get(self):
         response = self.client.get(reverse("pwms:notifications_read_all"))
 
