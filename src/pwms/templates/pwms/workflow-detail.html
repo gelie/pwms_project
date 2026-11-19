@@ -21,6 +21,7 @@
   <script src="{% static "js/copy-button.js" %}" defer></script>
   <script src="{% static "js/deadline-modal.js" %}" defer></script>
   <script src="{% static "js/assign-modal.js" %}" defer></script>
+  <script src="{% static "js/diagram-lightbox.js" %}" defer></script>
 {% endblock extra_head %}
 
 {% block content %}
@@ -355,6 +356,7 @@
               id="tab-diagram"
               data-bs-toggle="tab"
               data-bs-target="#pane-diagram"
+              data-diagram-lightbox
               type="button"
               role="tab"
               aria-controls="pane-diagram"
@@ -985,9 +987,14 @@
             <code class="workflow-code">manage.py generate_diagrams</code>.
           </p>
           <div class="workflow-diagram">
-            <img src="{{ diagram_url }}"
-                 class="img-fluid"
-                 alt="States and transitions of {{ object.workflow_type.name }}">
+            <button type="button"
+                    class="workflow-diagram-trigger"
+                    data-diagram-lightbox
+                    aria-label="Enlarge the {{ object.workflow_type.name }} state machine diagram">
+              <img src="{{ diagram_url }}"
+                   class="img-fluid"
+                   alt="States and transitions of {{ object.workflow_type.name }}">
+            </button>
           </div>
         {% else %}
           <p class="workflow-muted mb-2">
@@ -1062,4 +1069,21 @@
       </section>-->
     </div>
   </div>
+
+  {% if diagram_available %}
+    {# Full-screen view of the state-machine diagram, opened from the Diagram tab. #}
+    <div class="workflow-diagram-lightbox"
+         id="diagram-lightbox"
+         role="dialog"
+         aria-modal="true"
+         aria-label="{{ object.workflow_type.name }} state machine"
+         hidden>
+      <button type="button"
+              class="workflow-diagram-lightbox-close"
+              data-diagram-lightbox-close
+              aria-label="Close the enlarged diagram">{% lucide "x" size=24 %}</button>
+      <img src="{{ diagram_url }}"
+           alt="States and transitions of {{ object.workflow_type.name }}">
+    </div>
+  {% endif %}
 {% endblock content %}

@@ -1647,6 +1647,88 @@ html.password-toggle-ready .password-toggle {
     margin: 0 auto;
 }
 
+/* Clicking the diagram opens the enlarged copy in .workflow-diagram-lightbox. */
+.workflow-diagram-trigger {
+    display: block;
+    width: 100%;
+    padding: 0;
+    background: none;
+    border: 0;
+    cursor: zoom-in;
+}
+
+.workflow-diagram-trigger:focus-visible {
+    outline: 2px solid var(--bs-primary);
+    outline-offset: 2px;
+}
+
+.workflow-diagram-lightbox {
+    position: fixed;
+    inset: 0;
+    /* Above the page content and the nav bar (999), below Bootstrap's modals. */
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem;
+    /* Transparent enough to keep the page as context, dark enough to push it
+       back so the diagram carries the emphasis. */
+    background-color: rgba(0, 0, 0, 0.35);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+}
+
+.workflow-diagram-lightbox[hidden] {
+    display: none;
+}
+
+.workflow-diagram-lightbox img {
+    /* Scale up to the available width; the height cap keeps a tall diagram on
+       screen, and object-fit preserves its proportions inside that box. */
+    width: 100%;
+    height: auto;
+    max-width: 80%;
+    max-height: calc(100vh - 1.5rem);
+    object-fit: contain;
+    padding: 0.5rem;
+    /* The SVG is drawn on a transparent ground; keep the white paper behind
+       the lines whatever theme the page is in. */
+    background-color: #fff;
+    border-radius: var(--bs-border-radius);
+    box-shadow: var(--bs-box-shadow-lg);
+}
+
+.workflow-diagram-lightbox-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    padding: 0;
+    color: #fff;
+    background-color: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+.workflow-diagram-lightbox-close:hover {
+    background-color: rgba(0, 0, 0, 0.75);
+}
+
+.workflow-diagram-lightbox-close:focus-visible {
+    outline: 2px solid var(--bs-primary);
+    outline-offset: 2px;
+}
+
+/* Keep the page still while the overlay is up. */
+body.diagram-lightbox-open {
+    overflow: hidden;
+}
+
 /* Status badges. The palette is the theme's, so the same class reads correctly
    in light and dark. */
 .badge-state,
