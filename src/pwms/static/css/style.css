@@ -851,6 +851,30 @@ html:not([data-theme]) .theme-toggle .theme-icon-when-auto {
     font-weight: 600;
 }
 
+/* The brush that marks every alert read: red, so the action reads as a clear
+   without tinting the whole bell menu. */
+.alerts-clear {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.2rem;
+    color: var(--bs-danger);
+    background: none;
+    border: 0;
+    border-radius: var(--bs-border-radius-sm);
+    cursor: pointer;
+}
+
+.alerts-clear:hover {
+    color: var(--bs-danger-text-emphasis);
+    background-color: rgba(var(--bs-danger-rgb), 0.1);
+}
+
+.alerts-clear:focus-visible {
+    outline: 2px solid var(--bs-danger);
+    outline-offset: 2px;
+}
+
 /* Subjects are a sentence, not a label, so they wrap. */
 .alerts-item {
     white-space: normal;

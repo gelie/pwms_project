@@ -106,6 +106,7 @@
             <div class="auth-menu">
 
               {% if user.is_authenticated %}
+                {% include "pwms/partials/alerts_dropdown.html" %}
                 <div class="dropdown auth-account auth-item">
                   <button type="button"
                           class="auth-toggle"
@@ -170,47 +171,7 @@
                   </ul>
                 </div>
               {% endif %}
-              {% if user.is_authenticated %}
-                <div class="dropdown alerts-wrap auth-item d-flex">
-                  <button type="button"
-                          class="alerts-toggle"
-                          data-bs-toggle="dropdown"
-                          aria-expanded="false"
-                          title="Alerts"
-                          aria-label="Alerts{% if unread_alert_count %}: {{ unread_alert_count }} unread{% endif %}">
-                    {% lucide "bell" size=20 %}
-                    {% if unread_alert_count %}<span class="alerts-badge">{{ unread_alert_count }}</span>{% endif %}
-                  </button>
-                  <ul class="dropdown-menu dropdown-menu-end alerts-menu">
-                    <li class="alerts-menu-title">
-                      <span>Alerts</span>
-                      {% if unread_alert_count %}
-                        <form method="post" action="{% url "pwms:notifications_read_all" %}">
-                          {% csrf_token %}
-                          <button type="submit" class="btn btn-link btn-sm p-0">Mark all read</button>
-                        </form>
-                      {% endif %}
-                    </li>
-                    {% for alert in recent_alerts %}
-                      <li>
-                        <a class="dropdown-item alerts-item{% if alert.is_unread %} alerts-item--unread{% endif %}"
-                           href="{% url "pwms:notification_open" alert.public_id %}">
-                          <span class="alerts-item-subject">{{ alert.subject }}</span>
-                          <span class="alerts-item-meta">{{ alert.get_kind_display }} · {{ alert.created_at|timesince }} ago</span>
-                        </a>
-                      </li>
-                    {% empty %}
-                      <li>
-                        <span class="dropdown-item-text small text-body-secondary">No alerts yet.</span>
-                      </li>
-                    {% endfor %}
-                    <li><hr class="dropdown-divider"></li>
-                    <li>
-                      <a class="dropdown-item" href="{% url "pwms:notifications" %}">View all alerts</a>
-                    </li>
-                  </ul>
-                </div>
-              {% endif %}
+
               {% comment %}
                 Theme toggle disabled. To re-enable, remove these comment tags and restore
                 the theme.js script include in base.html.

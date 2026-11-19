@@ -1375,8 +1375,9 @@ what.
 ### 12.1 The bell
 
 The bell in the navigation bar shows the number of unread alerts. Open it to see
-the five most recent, each with its subject and *"[kind] · [how long ago]"*. It
-offers **Mark all read** and **View all alerts**.
+the five most recent, each with its subject and *"[kind] · [how long ago]"*. The
+red brush beside **Alerts** marks every unread alert read and clears the badge
+without leaving the page; **View all alerts** opens the full list.
 
 ### 12.2 The alerts page
 
