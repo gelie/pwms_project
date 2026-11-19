@@ -85,6 +85,12 @@
                 "dropdown-item d-flex align-items-center gap-2" +
                 (tab.classList.contains("active") ? " active" : "");
 
+            // Carry page behaviour hung off the tab (the Diagram tab opens the
+            // diagram overlay) onto its dropdown stand-in.
+            if (tab.hasAttribute("data-diagram-lightbox")) {
+                button.setAttribute("data-diagram-lightbox", "");
+            }
+
             var icon = tab.querySelector("svg");
             if (icon) {
                 button.appendChild(icon.cloneNode(true));
