@@ -42,11 +42,11 @@ ALLOWED_HOSTS = [
 SERVER = config("SERVER", default="LOCAL")
 
 if SERVER=='DEV':
-    SECURE_PROXY_SSL_HEADER='("HTTP_X_FORWARDED_PROTO", "https")'
-    CSRF_TRUSTED_ORIGINS='["https://workflows-dev.parliament.gov.za"]'
+    SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https")
+    CSRF_TRUSTED_ORIGINS=["https://workflows-dev.parliament.gov.za"]
 elif SERVER=='PROD':
-    SECURE_PROXY_SSL_HEADER='("HTTP_X_FORWARDED_PROTO", "https")'
-    CSRF_TRUSTED_ORIGINS='["https://workflows.parliament.gov.za"]'
+    SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https")
+    CSRF_TRUSTED_ORIGINS=["https://workflows.parliament.gov.za"]
 else:
     CSRF_TRUSTED_ORIGINS=[]
 
