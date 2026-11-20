@@ -132,7 +132,7 @@ pwms_project/                     # repo root (git) — run manage.py from here
 | `/pwms/login/` , `/pwms/logout/` | session login/logout (web) | – |
 | `/pwms/workflows/…` | list / detail / create / update / delete per instrument (incl. bill versions) | session + RBAC |
 | `/pwms/workflows/bills/tracker/` | demo Bill status tracker: every bill with its public-status stepper, a review queue for inbound posts, and the inbound webhook feed, polled every 3s | session |
-| `/pwms/workflows/bills/tracker/{update_id}/review/` , `…/approve/` | the review popup (HTMX) and the POST that approves an inbound update | session |
+| `/pwms/workflows/bills/tracker/{update_id}/review/` , `…/approve/` , `…/reject/` | the review popup (HTMX) and the POSTs that approve or reject an inbound update (a rejection is posted back to the API) | session |
 | `/pwms/instruments/{public_id}/document/` | one instrument as a formal PDF/HTML document | session + RBAC |
 | `/pwms/instruments/{public_id}/diagram.svg` | the workflow type's generated state-machine diagram | session + RBAC |
 | `/pwms/instruments/{public_id}/transition/` | confirm (GET) and apply (POST) one state transition | session + RBAC |
@@ -154,6 +154,7 @@ pwms_project/                     # repo root (git) — run manage.py from here
 | `/api/v1/{users,groups,memberships,bills}/` | read-only resource lists, filtered and paginated; `search`/`search_fields` match multiple fields | bearer token + scope |
 | `/api/v1/{users,groups,memberships,bills}/{public_id}/` | read-only resource detail | bearer token + scope |
 | `/api/v1/bill-updates/` | testing receiver for outbound Bill updates (`NEW` / `EDITS` / `STATUS_CHANGE`) | shared webhook token |
+| `/api/v1/bill-updates/rejections/` | rejection callback from the consuming API; stamps the original message and logs the decision | shared webhook token |
 | `/api/v1/search/` | cross-resource search over users, groups, memberships and bills (scoped, paginated groups) | bearer token + any read scope |
 | `/api/v1/docs` , `/api/v1/openapi.json` | Swagger UI + OpenAPI document | public (docs) |
 
@@ -451,8 +452,9 @@ See [API Reference](./API%20Reference.md).
 ## 7. Background jobs & commands
 
 `pwms/tasks.py` registers the queued jobs `django-background-tasks` runs (alert
-email delivery, Bill update webhook posts and the scheduled-report drain), served
-by `manage.py process_tasks`. Separately, Django management commands cover data
+email delivery, Bill update webhook posts and rejection callbacks, and the
+scheduled-report drain), served by `manage.py process_tasks`. Separately, Django
+management commands cover data
 synchronisation (legacy Oracle), SharePoint/GeoNames import, committee scraping,
 referral-deadline checks, workflow-definition export/import and membership
 validation. They import `pwms.models` directly; see

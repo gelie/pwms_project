@@ -19,7 +19,9 @@
         Every bill, with its public status progression. Incoming
         <code>NEW</code>, <code>STATUS_CHANGE</code> and <code>EDITS</code>
         posts wait for review: open the changes, then approve to apply them to
-        the row. The list refreshes on its own every {{ poll_seconds }}s.
+        the row, or reject them. A rejection is posted back to the sender's API
+        so both sides keep the decision. The list refreshes every
+        {{ poll_seconds }}s.
       </p>
     </div>
     <span class="badge text-bg-secondary">Refreshing every {{ poll_seconds }}s</span>

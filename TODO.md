@@ -24,7 +24,11 @@ reports 97 findings (26 auto-fixable), `views.py` 4 819 lines,
       every 3 seconds. Inbound `NEW` / `STATUS_CHANGE` / `EDITS` posts wait for
       review: the popup diffs them against the last accepted snapshot and
       **Approve and apply** adopts it (recording reviewer and time) without
-      touching the source bill.
+      touching the source bill. **Reject** records the reason locally and posts
+      a `REJECTION` message back to the sender's API (the same configurable URL,
+      token and queued task), which stamps the original update with the decision
+      — a bi-directional exchange that works unchanged when the two sides are
+      separate deployments.
 - [x] **CI exists.** `.github/workflows/ci.yml` runs three gates — `ruff check` +
       `ruff format --check`, `makemigrations --check --dry-run` then `migrate`,
       and the full suite under `coverage`. The earlier "no CI at all" note is

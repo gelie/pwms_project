@@ -27,11 +27,16 @@ class BillUpdateLog(BaseModel):
     EVENT_NEW = "NEW"
     EVENT_EDITS = "EDITS"
     EVENT_STATUS_CHANGE = "STATUS_CHANGE"
+    #: A receiver's decision sent back to the sender (bi-directional exchange).
+    EVENT_REJECTION = "REJECTION"
     EVENT_CHOICES = [
         (EVENT_NEW, _("New bill")),
         (EVENT_EDITS, _("Bill edited")),
         (EVENT_STATUS_CHANGE, _("Status changed")),
+        (EVENT_REJECTION, _("Rejected")),
     ]
+    #: The events that carry a Bill update and therefore wait for review.
+    UPDATE_EVENTS = (EVENT_NEW, EVENT_EDITS, EVENT_STATUS_CHANGE)
 
     DIRECTION_OUTBOUND = "outbound"
     DIRECTION_INBOUND = "inbound"
@@ -113,6 +118,12 @@ class BillUpdateLog(BaseModel):
         related_name="reviewed_bill_update_logs",
         help_text="Who approved the inbound update.",
     )
+    # A rejection travels back to the sender as its own message; these fields
+    # also stamp the original outbound row once the callback arrives, so the
+    # sender's log answers "was this update accepted?" without joining sides.
+    rejection_reason = models.TextField(blank=True)
+    rejected_at = models.DateTimeField(null=True, blank=True)
+    rejected_by_name = models.CharField(max_length=255, blank=True)
     attempts = models.PositiveSmallIntegerField(default=0)
     completed_at = models.DateTimeField(null=True, blank=True)
 

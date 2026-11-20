@@ -15,12 +15,14 @@ The API is intentionally narrow. Five resource families are available:
 | Search | `GET /api/v1/search/` | — | any of the users/groups/memberships/bills scopes |
 
 There are no write endpoints for these resource families: `POST`, `PUT`,
-`PATCH` and `DELETE` return `405 Method Not Allowed`. The one exception is the
-**Bill update receiver** at `POST /api/v1/bill-updates/` (§6). It exists only so
-PWMS can test its own outbound Bill notifications before the partner system
-exists; it is authenticated with a shared secret, not an application token, and
-is not part of the partner contract. Ninja's interactive docs are served at
-`/api/v1/docs` and the raw OpenAPI document at `/api/v1/openapi.json`.
+`PATCH` and `DELETE` return `405 Method Not Allowed`. The exceptions are the
+**Bill update receiver** at `POST /api/v1/bill-updates/` and its bi-directional
+**rejection callback** at `POST /api/v1/bill-updates/rejections/` (§6). They
+exist only so PWMS can test its own outbound Bill notifications before the
+partner system exists; they are authenticated with a shared secret, not an
+application token, and are not part of the partner read contract. Ninja's
+interactive docs are served at `/api/v1/docs` and the raw OpenAPI document at
+`/api/v1/openapi.json`.
 
 > For printable walkthroughs for partner applications, see the
 > [Bills API User Guide (PDF)](./Bills%20API%20User%20Guide.pdf) and the
@@ -550,6 +552,51 @@ caller's own log records what was acknowledged.
 
 `update_id` is the idempotency key: posting the same update again returns the
 original receipt with `"duplicate": true` and writes nothing.
+
+### Rejection callback (bi-directional)
+
+When a reviewer rejects an update from the tracker, the receiving side posts the
+decision back to the sender's API:
+
+```
+POST /api/v1/bill-updates/rejections/
+Authorization: Bearer <BILL_UPDATE_WEBHOOK_TOKEN>
+Content-Type: application/json
+```
+
+```json
+{
+  "rejection_id": "9b7c1a52-0f8e-4a1e-9f7d-3c2b1a0e9d88",
+  "update_id": "4c1f0e3a-9f6e-4a1e-8f0c-2d5b7a9e1c33",
+  "event": "STATUS_CHANGE",
+  "occurred_at": "2026-11-20T12:41:00+02:00",
+  "bill": {"public_id": "01a1f8ee-…", "bill_number": "B 7-2026", "title": "Webhook bill"},
+  "reason": "The committee stage is missing.",
+  "rejected_at": "2026-11-20T12:41:00+02:00",
+  "rejected_by": {"username": "jdoe", "display_name": "J Doe"}
+}
+```
+
+`rejection_id` is the rejection message's own idempotency key; `update_id`
+identifies the update being rejected. The endpoint logs an inbound `REJECTION`
+`BillUpdateLog` row (even when the original update is no longer present) and
+stamps the sender's original outbound row with `rejection_reason`,
+`rejected_at` and `rejected_by_name`, so its log answers *was this accepted?*
+without joining the two sides. It returns:
+
+```json
+{
+  "rejection_id": "9b7c1a52-0f8e-4a1e-9f7d-3c2b1a0e9d88",
+  "update_id": "4c1f0e3a-9f6e-4a1e-8f0c-2d5b7a9e1c33",
+  "received_at": "2026-11-20T12:41:01+02:00",
+  "duplicate": false
+}
+```
+
+The callback is queued (`pwms.tasks.post_bill_update`) and posted to
+`BILL_UPDATE_REJECTION_ENDPOINT_URL` (blank derives this project's route), using
+the same shared token and retry policy as outbound updates. In a split
+deployment only that URL and token change.
 
 Both halves of the exchange are logged in `BillUpdateLog`: the outbound attempt
 (target URL, HTTP status, response excerpt, attempts and error) and the inbound

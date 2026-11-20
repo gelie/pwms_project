@@ -30,6 +30,7 @@ from .models import (
 from .services.bill_updates import (
     EVENT_EDITS,
     EVENT_NEW,
+    EVENT_REJECTION,
     EVENT_STATUS_CHANGE,
     BillUpdateDeliveryError,
     deliver_update,
@@ -40,6 +41,7 @@ from .services.bill_updates import (
 User = get_user_model()
 
 WEBHOOK_URL = "/api/v1/bill-updates/"
+REJECTION_URL = "/api/v1/bill-updates/rejections/"
 TASK_NAME = "pwms.tasks.post_bill_update"
 TOKEN = "test-webhook-token"
 
@@ -543,6 +545,119 @@ class BillUpdateEndpointTests(TestCase):
     BILL_UPDATE_WEBHOOK_TOKEN=TOKEN,
     PWMS_BASE_URL="http://testserver",
 )
+class BillUpdateRejectionEndpointTests(TestCase):
+    """The sender's API: logging a rejection posted back by the receiver."""
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.bill, cls.user = _bill_and_user()
+        cls.original = queue_bill_update(cls.bill, EVENT_NEW, actor=cls.user)
+
+    def _payload(self, **overrides):
+        payload = {
+            "rejection_id": str(uuid4()),
+            "update_id": str(self.original.update_id),
+            "event": EVENT_NEW,
+            "occurred_at": timezone.now().isoformat(),
+            "bill": {
+                "public_id": str(self.bill.public_id),
+                "bill_number": self.bill.bill_number,
+                "title": self.bill.title,
+            },
+            "reason": "The committee stage is missing.",
+            "rejected_at": timezone.now().isoformat(),
+            "rejected_by": {
+                "username": "reviewer",
+                "display_name": "Reviewer",
+            },
+        }
+        payload.update(overrides)
+        return payload
+
+    def _post(self, payload, token=TOKEN):
+        headers = {"HTTP_AUTHORIZATION": f"Bearer {token}"} if token else {}
+        return self.client.post(
+            REJECTION_URL,
+            data=json.dumps(payload),
+            content_type="application/json",
+            **headers,
+        )
+
+    def test_authentication_is_required(self):
+        response = self._post(self._payload(), token=None)
+        self.assertEqual(response.status_code, 401)
+        self.assertFalse(BillUpdateLog.objects.filter(event=EVENT_REJECTION).exists())
+
+    def test_a_rejection_is_logged_and_stamps_the_original_message(self):
+        payload = self._payload()
+
+        response = self._post(payload)
+
+        self.assertEqual(response.status_code, 200, response.content)
+        receipt = response.json()
+        self.assertEqual(receipt["rejection_id"], payload["rejection_id"])
+        self.assertEqual(receipt["update_id"], payload["update_id"])
+        self.assertFalse(receipt["duplicate"])
+
+        logged = BillUpdateLog.objects.get(
+            update_id=payload["rejection_id"],
+            direction=BillUpdateLog.DIRECTION_INBOUND,
+        )
+        self.assertEqual(logged.event, EVENT_REJECTION)
+        self.assertEqual(logged.status, BillUpdateLog.STATUS_RECEIVED)
+        self.assertEqual(logged.bill, self.bill)
+        self.assertEqual(logged.rejection_reason, "The committee stage is missing.")
+        self.assertEqual(logged.rejected_by_name, "Reviewer")
+        self.assertEqual(logged.target_url, REJECTION_URL)
+
+        original = BillUpdateLog.objects.get(pk=self.original.pk)
+        self.assertEqual(original.status, BillUpdateLog.STATUS_PENDING)
+        self.assertEqual(original.rejection_reason, "The committee stage is missing.")
+        self.assertEqual(original.rejected_by_name, "Reviewer")
+        self.assertIsNotNone(original.rejected_at)
+
+    def test_a_retried_rejection_is_idempotent(self):
+        payload = self._payload()
+
+        first = self._post(payload)
+        second = self._post(payload)
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertTrue(second.json()["duplicate"])
+        self.assertEqual(
+            BillUpdateLog.objects.filter(
+                direction=BillUpdateLog.DIRECTION_INBOUND,
+                event=EVENT_REJECTION,
+            ).count(),
+            1,
+        )
+
+    def test_a_rejection_for_an_unknown_update_is_still_logged(self):
+        payload = self._payload(update_id=str(uuid4()))
+
+        response = self._post(payload)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            BillUpdateLog.objects.filter(
+                update_id=payload["rejection_id"],
+                direction=BillUpdateLog.DIRECTION_INBOUND,
+            ).exists()
+        )
+
+    def test_an_unknown_event_is_a_validation_error(self):
+        response = self._post(self._payload(event=EVENT_REJECTION))
+        self.assertEqual(response.status_code, 422)
+        self.assertFalse(BillUpdateLog.objects.filter(event=EVENT_REJECTION).exists())
+
+
+@override_settings(
+    BILL_UPDATE_WEBHOOK_ENABLED=True,
+    BILL_UPDATE_ENDPOINT_URL="",
+    BILL_UPDATE_WEBHOOK_TOKEN=TOKEN,
+    PWMS_BASE_URL="http://testserver",
+)
 class BillTrackerPageTests(TestCase):
     """The tracker page: the list, the stepper and the webhook activity feed."""
 
@@ -583,9 +698,9 @@ class BillTrackerPageTests(TestCase):
         row = self._row(response, bill_number)
         return {step["name"]: step["status"] for step in row["steps"]}
 
-    def _post_to_receiver(self, payload):
+    def _post_to_receiver(self, payload, url=WEBHOOK_URL):
         return self.client.post(
-            WEBHOOK_URL,
+            url,
             data=json.dumps(payload),
             content_type="application/json",
             HTTP_AUTHORIZATION=f"Bearer {TOKEN}",
@@ -618,6 +733,10 @@ class BillTrackerPageTests(TestCase):
             reverse("pwms:bill_update_approve", args=[outbound.update_id])
         )
         self.assertEqual(approve.status_code, 302)
+        reject = self.client.post(
+            reverse("pwms:bill_update_reject", args=[outbound.update_id])
+        )
+        self.assertEqual(reject.status_code, 302)
         inbound = BillUpdateLog.objects.get(direction=BillUpdateLog.DIRECTION_INBOUND)
         self.assertEqual(inbound.status, BillUpdateLog.STATUS_RECEIVED)
 
@@ -768,6 +887,74 @@ class BillTrackerPageTests(TestCase):
         page = self.client.get(reverse("pwms:bill_tracker"))
         self.assertEqual(self._row(page)["title"], "Edited title")
         self.assertIsNone(self._row(page)["pending"])
+
+    def test_rejecting_an_update_records_it_and_queues_the_callback(self):
+        outbound = queue_bill_update(self.bill, EVENT_NEW, actor=self.user)
+        self._post_to_receiver(outbound.payload)
+        inbound = BillUpdateLog.objects.get(
+            direction=BillUpdateLog.DIRECTION_INBOUND, update_id=outbound.update_id
+        )
+
+        response = self.client.post(
+            reverse("pwms:bill_update_reject", args=[outbound.update_id]),
+            {"reason": "Wrong B-number."},
+        )
+        self.assertEqual(response.status_code, 302)
+
+        inbound.refresh_from_db()
+        self.assertEqual(inbound.status, BillUpdateLog.STATUS_REJECTED)
+        self.assertEqual(inbound.rejection_reason, "Wrong B-number.")
+        self.assertEqual(inbound.reviewed_by, self.user)
+        self.assertIsNotNone(inbound.rejected_at)
+
+        # The decision leaves as its own message, queued like any outbound post.
+        callback = BillUpdateLog.objects.get(
+            direction=BillUpdateLog.DIRECTION_OUTBOUND, event=EVENT_REJECTION
+        )
+        self.assertEqual(callback.status, BillUpdateLog.STATUS_PENDING)
+        self.assertEqual(callback.payload["update_id"], str(outbound.update_id))
+        self.assertEqual(callback.payload["reason"], "Wrong B-number.")
+        self.assertEqual(callback.payload["rejection_id"], str(callback.update_id))
+        self.assertIn("/bill-updates/rejections/", callback.target_url)
+        self.assertTrue(Task.objects.filter(task_name=TASK_NAME).exists())
+
+        page = self.client.get(reverse("pwms:bill_tracker"))
+        self.assertContains(page, "Rejected new bill")
+        self.assertContains(page, "Wrong B-number.")
+        self.assertNotContains(page, "Review New bill")
+
+    def test_the_rejection_callback_is_logged_by_the_api(self):
+        outbound = queue_bill_update(self.bill, EVENT_NEW, actor=self.user)
+        self._post_to_receiver(outbound.payload)
+        self.client.post(
+            reverse("pwms:bill_update_reject", args=[outbound.update_id]),
+            {"reason": "Duplicate of B 6-2026."},
+        )
+
+        callback = BillUpdateLog.objects.get(
+            direction=BillUpdateLog.DIRECTION_OUTBOUND, event=EVENT_REJECTION
+        )
+        received = self._post_to_receiver(callback.payload, url=REJECTION_URL)
+        self.assertEqual(received.status_code, 200, received.content)
+        self.assertFalse(received.json()["duplicate"])
+
+        # The sender's original message now carries the decision.
+        outbound.refresh_from_db()
+        self.assertEqual(outbound.rejection_reason, "Duplicate of B 6-2026.")
+        self.assertEqual(outbound.rejected_by_name, "tracker-admin")
+        self.assertIsNotNone(outbound.rejected_at)
+
+        # And the callback itself is a logged inbound message.
+        logged = BillUpdateLog.objects.get(
+            direction=BillUpdateLog.DIRECTION_INBOUND,
+            event=EVENT_REJECTION,
+        )
+        self.assertEqual(logged.update_id, callback.update_id)
+        self.assertEqual(logged.bill, self.bill)
+        self.assertEqual(logged.rejection_reason, "Duplicate of B 6-2026.")
+
+        page = self.client.get(reverse("pwms:bill_tracker"))
+        self.assertContains(page, "Logged")
 
     def test_approving_out_of_order_is_refused(self):
         first = queue_bill_update(self.bill, EVENT_NEW, actor=self.user)

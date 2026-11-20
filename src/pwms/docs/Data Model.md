@@ -841,14 +841,15 @@ who approved it. Migration `0068_billupdatelog`; review fields in `0069`.
 | `update_id` (UUID) | idempotency key shared by the outbound post and its inbound receipt; unique per direction |
 | `bill` (FK `Bill`, `SET_NULL`, nullable) | the bill, when it still exists |
 | `bill_public_id`, `bill_number` | snapshots so the log stays readable after the bill is deleted |
-| `event` | `NEW`, `EDITS` or `STATUS_CHANGE` |
+| `event` | `NEW`, `EDITS`, `STATUS_CHANGE` for updates, or `REJECTION` for a decision posted back by the consuming API |
 | `direction` | `outbound` (we posted) or `inbound` (we received) |
 | `status` | `pending` / `sent` / `failed` on the outbound row; `received` (awaiting review) / `approved` / `rejected` on the inbound row |
 | `payload` (JSON) | the exact body sent or received |
 | `target_url` | endpoint posted to, or the path received at |
 | `http_status`, `response_body`, `error` | outcome of the post (body truncated for diagnosis) and why it failed |
 | `actor` (FK `User`, `SET_NULL`, nullable) | who made the change that produced the update |
-| `reviewed_at`, `reviewed_by` (FK `User`, `SET_NULL`) | inbound only: when and by whom the update was approved on the receiving side |
+| `reviewed_at`, `reviewed_by` (FK `User`, `SET_NULL`) | inbound only: when and by whom the update was approved or rejected on the receiving side |
+| `rejection_reason`, `rejected_at`, `rejected_by_name` | the rejection decision: reason, time and the rejecting side's user name. The inbound update row records the local decision; the original outbound row is stamped when the rejection callback arrives, so the sender's log shows the outcome |
 | `attempts`, `completed_at` | delivery attempts so far, and when the row reached a final state |
 
 The outbound row is queued by `pwms.services.bill_updates.queue_bill_update()`
@@ -857,6 +858,14 @@ inside the transaction that saved the bill, so a rolled-back edit queues nothing
 stays `pending` with the reason in `error` and raises so the queue retries; once
 `MAX_ATTEMPTS` is spent the row is `failed` and `error` is why it was given up
 on. `payload` is what the receiver is told, not a live view of the bill.
+
+Rejections travel the other way as their own message: `queue_bill_update_rejection()`
+writes an outbound `REJECTION` row with a fresh `update_id` (its idempotency
+key) and the rejected `update_id` in its payload, then queues the same worker
+task to post it to the sender's rejection endpoint. The callback's inbound
+`REJECTION` row and the stamp on the original outbound row together record the
+round trip; the tracker's review queue ignores `REJECTION` messages
+(`BillUpdateLog.UPDATE_EVENTS`).
 
 Read-only and undeletable in the admin (`BillUpdateLogAdmin`): the rows are the
 audit trail for what was sent, when, whether it arrived, and whether the

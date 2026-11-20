@@ -133,6 +133,12 @@ BILL_UPDATE_WEBHOOK_TOKEN = config("BILL_UPDATE_WEBHOOK_TOKEN", default="")
 BILL_UPDATE_WEBHOOK_TIMEOUT = config(
     "BILL_UPDATE_WEBHOOK_TIMEOUT", default=10, cast=int
 )
+# The receiver posts its rejection decision back to the sender's API. Blank
+# derives the testing endpoint in this project; point it at the partner's
+# rejection route in a split deployment.
+BILL_UPDATE_REJECTION_ENDPOINT_URL = config(
+    "BILL_UPDATE_REJECTION_ENDPOINT_URL", default=""
+)
 
 ROOT_URLCONF = "pwms.root_urls"
 
