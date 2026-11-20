@@ -6,24 +6,20 @@ All commands live in `pwms/management/commands/` and run as:
 .venv/bin/python manage.py <command> --help
 ```
 
-> ⚠️ **Legacy note.** PWMS was migrated from an earlier app named `workflows`.
-> Several commands still `import … from workflows.models` — that module no
-> longer exists in this project, so **those commands fail until repointed** to
-> `pwms.models` (e.g. `Group`, `Role`, `WorkflowType`, `State`, `Transition`).
-> They are marked **legacy** below. Two of them (`notify_deadlines`,
-> `send_overdue_alerts`) import `workflows.tasks` *inside a function body*, so
-> the command still loads and only fails when that code path runs. When they are
-> repointed, route their mail through `pwms.notifications` so it inherits the
-> staff-only email audience and the `Notification` outbound-email log.
+> **Current status.** Every command in this package loads and runs against the
+> current `pwms` models. The earlier `workflows` app is gone: the commands that
+> targeted it were either repointed
+> (`export_workflow_type`, `import_workflow_type`, `import_states`,
+> `validate_memberships`) or retired (`update_event_statuses`,
+> `check_delegation_expirations`, `notify_deadlines`, `send_overdue_alerts`).
+> `fix_missing_group_access` remains only as a deprecated alias that delegates to
+> `sync_type_group_access`.
 >
-> The reworked Oracle sync suite (`sync_roles_oracle`, `sync_users_oracle`),
-> `seed_structure`, `seed_executive`, `audit_group_mapping`,
-> `scrape_parliament_committees`,
-> `generate_diagrams`, `populate_sites`, `load_places`, `import_groups`,
-> `import_bill_versions`, `import_meetings`, `check_referral_deadlines`,
-> `send_scheduled_report_shares`, `sync_type_group_access` and
-> `show_workflow_hierarchy` import `pwms.models` directly and run cleanly; the
-> `legacy` / `pending repoint` statuses below apply to the rest.
+> Workflow deadline / overdue email is **not** part of the current event-based
+> notification model: overdue records remain visible on the dashboard, and
+> referral deadlines are handled by `check_referral_deadlines`. Reintroducing
+> proactive deadline mail would be a new `NotificationRule` event, not a repoint
+> of the retired commands.
 
 ## Synchronisation (Oracle ERP)
 
@@ -277,10 +273,35 @@ yet.
 
 | Command | Purpose | Status |
 | --- | --- | --- |
-| `export_workflow_type` | export a `WorkflowType` (states + transitions) to JSON | legacy |
-| `import_workflow_type` | upsert a `WorkflowType` from a JSON backup | legacy |
-| `import_states` | import workflow states from CSV for a workflow type | legacy |
+| `export_workflow_type` | export a `WorkflowType` (states, transitions and current RBAC/audience fields) to JSON | ✅ live — format 2 |
+| `import_workflow_type` | upsert a `WorkflowType` from JSON; accepts format 1 and 2 | ✅ live |
+| `import_states` | import workflow states from CSV for a workflow type, mapping each state's `public_status` | ✅ live |
 | `generate_diagrams` | render workflow-type diagrams (states/transitions) | ✅ live |
+
+### Definition backups and state CSVs
+
+`export_workflow_type` writes a natural-key JSON backup (format 2) containing
+the type's owning group, create roles, viewer groups, parent type, owner
+capability policy (`owner_can_*`), oversight and notification settings; every
+state's slug, name, `public_status`, flags, order and colour; and every
+transition's states, allowed roles, required event types, comment rule and
+order. `import_workflow_type` upserts from that file — referenced groups,
+roles, public statuses, event types and parent types must already exist — and
+still accepts a format-1 file, defaulting states without a public status to
+`New` (or keeping the one an existing state already has) and ignoring the
+obsolete `notify_roles_slugs`. Both directions support `--dry-run` on import.
+
+`import_states` reads a CSV for one workflow type, upserting on
+`(workflow type, name)`:
+
+```csv
+name,description,is_initial,is_terminal,allows_referrals,order,color,public_status
+Draft,Being prepared,true,false,true,0,,New
+```
+
+`public_status` may be a `PublicStatus` slug or name; without it, the row uses
+`--default-public-status` (default `New`). A blank colour gets the standard
+colour for the state's role.
 
 ### Diagram generation
 
@@ -399,12 +420,15 @@ previous batch (re-run it after upgrading to pick up the coverage pass).
 
 | Command | Purpose | Status |
 | --- | --- | --- |
-| `check_delegation_expirations` | detect expiring delegations/memberships | pending repoint |
 | `check_referral_deadlines` | warn when a referral deadline is approaching, and expire referrals past it | ✅ live — see below |
 | `send_scheduled_report_shares` | email due scheduled report shares and advance their schedules | ✅ live — see below |
-| `notify_deadlines` | dispatch deadline notifications (optionally scoped by workflow id) | pending repoint |
-| `send_overdue_alerts` | send overdue-workflow alerts / emails | pending repoint |
-| `update_event_statuses` | recompute/refresh statuses of events or instances | pending repoint |
+
+`check_delegation_expirations`, `notify_deadlines`, `send_overdue_alerts` and
+`update_event_statuses` were retired: their models (`UserDelegation`, `Event`)
+and `workflows.tasks` no longer exist. Overdue records are surfaced on the
+dashboard, and referral deadlines are the live deadline workflow. Workflow
+deadline/overdue mail would need a new notification event (see the note at the
+top of this page).
 
 ### Referral deadline reminders
 
@@ -457,13 +481,13 @@ share takes it out of the queue immediately.
 
 | Command | Purpose | Status |
 | --- | --- | --- |
-| `fix_missing_group_access` | create `WorkflowGroupAccess` for instances missing it — **superseded by `sync_type_group_access`** | legacy |
+| `fix_missing_group_access` | deprecated alias that delegates to `sync_type_group_access` | deprecated |
 | `sync_type_group_access` | backfill `WorkflowGroupAccess` (owning group + viewer groups) from each instance's `WorkflowType` | ✅ live |
 | `audit_workflow_access` | explain why a user can (or cannot) create or open a workflow type, and flag create roles no active member of the group holds | ✅ live — see below |
 | `show_workflow_hierarchy` | print the parent/child tree of workflow instances | ✅ live — see below |
 | `seed_demo_data` | empty the four workflow registers and reseed them with presentation-ready mock records | ✅ live — see below |
 | `rotate_api_secret` | issue a new secret for a registered PWMS API client and print it once | ✅ live — see below |
-| `validate_memberships` | integrity-check group memberships | pending repoint |
+| `validate_memberships` | integrity-check `GroupMembership`, group and user data | ✅ live — see below |
 
 ### PWMS API client secrets
 
@@ -503,6 +527,27 @@ to preview either behaviour.
 | `--workflow-type NAME_OR_SLUG` | restrict the backfill to one workflow type |
 | `--update-existing` | also re-apply the type's `owner_can_*` policy to the owning group's existing row, instead of only creating missing rows |
 | `--dry-run` | report what would be created or changed without writing anything |
+
+### Membership validation
+
+`validate_memberships` checks the current `GroupMembership`, `Group` and `User`
+rows rather than the removed `workflows.membership` validators. It reports
+memberships whose end date has passed while still active, inactive rows with no
+end date, an end before the start, active rows that start in the future, active
+rows on an inactive group or user, several active rows for the same
+user/group/role, non-container groups with no active members, and active users
+with no membership. Errors fail the command; warnings do not unless `--strict`
+is given.
+
+| Option | Effect |
+| --- | --- |
+| `--report-file PATH` | write the full report as JSON |
+| `--fix-duplicates` | keep the newest active row in each duplicated user/group/role set and end the older ones (setting `end_date` to today) |
+| `--strict` | treat warnings as a failed validation too |
+
+```bash
+python manage.py validate_memberships --report-file=/tmp/memberships.json
+```
 
 ### Access diagnostics
 

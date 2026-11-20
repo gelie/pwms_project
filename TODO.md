@@ -110,7 +110,7 @@ reports 97 findings (26 auto-fixable), `views.py` 4 819 lines,
       register, status and document alerts, CSV/XLSX import & export, and REST
       endpoints (list/detail, "my meetings by membership", attendance, minutes).
       The legacy `update_event_statuses` command (which imported the removed
-      `workflows.models.Event`) is superseded by it and can be retired.
+      `workflows.models.Event`) has been retired.
 - [ ] **Motions and Questions instruments** — named as "planned", not started.
 - [ ] **Web UI gaps** — Share / Comment / Manage are RBAC-gated but still
       admin-side (the API exposes view/edit/delete and the workflow actions, not
@@ -150,9 +150,10 @@ reports 97 findings (26 auto-fixable), `views.py` 4 819 lines,
 - [ ] **Oracle sync coverage** — `sync_users_oracle` resolves Oracle org pairs
       onto the curated tree through `group_aliases.csv` and leaves unresolved
       pairs untouched; `seed_structure` / `audit_group_mapping` keep that table
-      current. Membership collision handling is still "not implemented yet"
-      (`validate_memberships.py`), and identity reconciliation is a known soft
-      spot.
+      current. `validate_memberships` now checks the current `GroupMembership`
+      rows and can end duplicate active rows with `--fix-duplicates`; group-name
+      collisions are prevented by the `(name, parent)` constraint. Identity
+      reconciliation remains a known soft spot.
 
 ---
 

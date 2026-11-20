@@ -445,10 +445,10 @@ See [API Reference](./API%20Reference.md).
 email delivery and the scheduled-report drain), served by
 `manage.py process_tasks`. Separately, Django management commands cover data
 synchronisation (legacy Oracle), SharePoint/GeoNames import, committee scraping,
-referral-deadline checks and diagram generation. Several commands **still import
-the legacy `workflows.models`** (the old app this codebase was migrated from) and
-will only work after being repointed to `pwms.models`. See
-[Management Commands](./Management%20Commands.md) for the per-command status.
+referral-deadline checks, workflow-definition export/import and membership
+validation. They import `pwms.models` directly; see
+[Management Commands](./Management%20Commands.md) for the per-command status and
+the list of retired deadline/overdue jobs.
 
 ---
 
@@ -456,12 +456,13 @@ will only work after being repointed to `pwms.models`. See
 
 - **`Role` vs `UserRole`:** the role model is `Role` (`pwms.Role`). Historically
   renamed; keep references consistent.
-- **Stale imports:** many `management/commands/*` reference the legacy
-  `workflows.models` app that no longer exists. They fail only when invoked.
+- **Retired jobs:** the delegate-expiration, overdue-workflow and event-status
+  commands went with their old models; overdue records are surfaced on the
+  dashboard, and workflow deadline mail would need a new notification event.
 - **Concrete-only audits:** because auditing/RBAC hang off the abstract base,
   a new workflow type (Motion, Question, …) must (a) subclass
   `AbstractLegislativeWorkflow`, (b) be registered with `auditlog` in
   `PwmsConfig.ready()`, and (c) get an `*AuditHistoryView` subclass for the API.
-  The four shipped instruments each follow this.
+  The shipped instruments each follow this.
 - **Dev DB reset:** full destructive reset recipe is in
   [Technical Stack → Database reset](./Technical%20Stack.md#database-reset-development).
