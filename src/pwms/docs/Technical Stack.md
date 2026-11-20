@@ -118,8 +118,9 @@
   and `PWMS_BASE_URL`, the PWMS API settings
   (`EXTERNAL_API_*`), the Bill update webhook settings
   (`BILL_UPDATE_WEBHOOK_ENABLED`, `BILL_UPDATE_ENDPOINT_URL`,
-  `BILL_UPDATE_WEBHOOK_TOKEN`, `BILL_UPDATE_WEBHOOK_TIMEOUT`) plus
-  `REDIS_URL` / cache settings — see above.
+  `BILL_UPDATE_WEBHOOK_TOKEN`, `BILL_UPDATE_WEBHOOK_TIMEOUT`,
+  `BILL_UPDATE_REJECTION_ENDPOINT_URL`) plus `REDIS_URL` / cache settings
+  — see above.
 
 > The app is enabled via a single `AppConfig` (`pwms.apps.PwmsConfig`) whose
 > `ready()` registers the concrete workflow model with `auditlog`. It is the only

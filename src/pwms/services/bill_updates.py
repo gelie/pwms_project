@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 EVENT_NEW = BillUpdateLog.EVENT_NEW
 EVENT_EDITS = BillUpdateLog.EVENT_EDITS
 EVENT_STATUS_CHANGE = BillUpdateLog.EVENT_STATUS_CHANGE
+EVENT_REJECTION = BillUpdateLog.EVENT_REJECTION
 
 #: ``BillUpdateLog.response_body`` is for diagnosis, not storage.
 RESPONSE_BODY_LIMIT = 2000
@@ -73,6 +74,25 @@ def endpoint_url():
     if not base:
         return ""
     return f"{base}/{prefix}/bill-updates/"
+
+
+def rejection_endpoint_url():
+    """Where a rejection is posted back, or ``""`` when none is configured.
+
+    The receiving side talks to the sender's API in the same way the sender
+    talks to it: one configurable URL, one shared token, one queued task.
+    """
+    configured = (
+        getattr(settings, "BILL_UPDATE_REJECTION_ENDPOINT_URL", "") or ""
+    ).strip()
+    if configured:
+        return configured
+
+    base = (getattr(settings, "PWMS_BASE_URL", "") or "").rstrip("/")
+    prefix = (getattr(settings, "EXTERNAL_API_PREFIX", "/api/v1/") or "").strip("/")
+    if not base:
+        return ""
+    return f"{base}/{prefix}/bill-updates/rejections/"
 
 
 def bill_snapshot(bill):
@@ -201,6 +221,70 @@ def queue_bill_update(
         log.pk, verbose_name=f"Bill update: {event} {bill.bill_number}"
     )
     return log
+
+
+def build_rejection_payload(log, reason, *, rejection_id, actor=None, rejected_at=None):
+    """The JSON body a receiver posts back when it rejects an update.
+
+    The bill snapshot travels with the decision so the sender can log it even if
+    it no longer holds the original message. ``update_id`` identifies the
+    rejected message; ``rejection_id`` identifies this rejection message and is
+    its idempotency key.
+    """
+    decided_at = rejected_at or timezone.now()
+    return {
+        "rejection_id": str(rejection_id),
+        "update_id": str(log.update_id),
+        "event": log.event,
+        "occurred_at": decided_at.isoformat(),
+        "bill": log.payload.get("bill") or {},
+        "reason": reason,
+        "rejected_at": decided_at.isoformat(),
+        "rejected_by": _user_ref(actor),
+    }
+
+
+def queue_bill_update_rejection(log, reason, actor=None):
+    """Record a rejection and queue its post back to the sender's API.
+
+    ``log`` is the inbound update being rejected. Returns the outbound
+    ``REJECTION`` row, or ``None`` when the exchange is disabled or has no
+    target. The rejection is its own message (its own ``update_id``), so it does
+    not collide with the update it refers to.
+    """
+    if not getattr(settings, "BILL_UPDATE_WEBHOOK_ENABLED", False):
+        return None
+    target = rejection_endpoint_url()
+    if not target:
+        logger.warning("No Bill update rejection endpoint URL; not queueing.")
+        return None
+
+    rejection_id = uuid.uuid4()
+    rejection = BillUpdateLog.objects.create(
+        update_id=rejection_id,
+        bill=log.bill,
+        bill_public_id=log.bill_public_id,
+        bill_number=log.bill_number,
+        event=EVENT_REJECTION,
+        direction=BillUpdateLog.DIRECTION_OUTBOUND,
+        status=BillUpdateLog.STATUS_PENDING,
+        payload=build_rejection_payload(
+            log, reason, rejection_id=rejection_id, actor=actor
+        ),
+        target_url=target,
+        actor=actor,
+        rejection_reason=reason,
+        rejected_at=timezone.now(),
+        rejected_by_name=getattr(actor, "display_name", "") if actor else "",
+    )
+
+    from ..tasks import queue_bill_update_post
+
+    queue_bill_update_post(
+        rejection.pk,
+        verbose_name=f"Bill update rejection: {log.bill_number}",
+    )
+    return rejection
 
 
 def _max_attempts():

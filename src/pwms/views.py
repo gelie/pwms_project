@@ -117,6 +117,7 @@ from .services.bill_updates import (
     EVENT_NEW,
     EVENT_STATUS_CHANGE,
     queue_bill_update,
+    queue_bill_update_rejection,
 )
 from .services.history import TIMELINE_PREVIEW_LIMIT, instance_timeline
 from .services.meetings_io import (
@@ -1943,6 +1944,7 @@ def _bill_tracker_context():
         for log in (
             BillUpdateLog.objects.filter(
                 direction=BillUpdateLog.DIRECTION_INBOUND,
+                event__in=BillUpdateLog.UPDATE_EVENTS,
                 bill_id__in=[bill.pk for bill in bills],
             )
             .select_related("reviewed_by")
@@ -1969,6 +1971,13 @@ def _bill_tracker_context():
         pending = [log for log in logs if log.status == BillUpdateLog.STATUS_RECEIVED]
         accepted = approved[-1] if approved else None
         accepted_snapshot = (accepted.payload.get("bill") or {}) if accepted else None
+        decisions = [
+            log
+            for log in logs
+            if log.status
+            in (BillUpdateLog.STATUS_APPROVED, BillUpdateLog.STATUS_REJECTED)
+        ]
+        last_decision = decisions[-1] if decisions else None
 
         # Displayed fields come from the accepted snapshot once one exists; a
         # bill with nothing accepted yet falls back to the live record.
@@ -2053,6 +2062,7 @@ def _bill_tracker_context():
                 "accepted_at": (
                     (accepted.reviewed_at or accepted.created_at) if accepted else None
                 ),
+                "last_decision": last_decision,
                 "pending": pending[0] if pending else None,
                 "pending_count": len(pending),
                 "pending_event_display": (
@@ -2067,7 +2077,10 @@ def _bill_tracker_context():
             {
                 "log": log,
                 # Inbound rows have no local actor; the posted body names one.
-                "actor_name": (log.payload.get("actor") or {}).get("username", ""),
+                "actor_name": (
+                    (log.payload.get("actor") or {}).get("username")
+                    or (log.payload.get("rejected_by") or {}).get("username", "")
+                ),
             }
             for log in inbound
         ],
@@ -2081,7 +2094,20 @@ def _inbound_update_or_404(update_id):
         BillUpdateLog.objects.select_related("bill"),
         update_id=update_id,
         direction=BillUpdateLog.DIRECTION_INBOUND,
+        # A rejection callback is inbound too, but it is not reviewable.
+        event__in=BillUpdateLog.UPDATE_EVENTS,
     )
+
+
+def _has_earlier_pending_update(log):
+    """True when this bill has an older undecided update waiting."""
+    return BillUpdateLog.objects.filter(
+        direction=BillUpdateLog.DIRECTION_INBOUND,
+        bill_id=log.bill_id,
+        status=BillUpdateLog.STATUS_RECEIVED,
+        event__in=BillUpdateLog.UPDATE_EVENTS,
+        created_at__lt=log.created_at,
+    ).exists()
 
 
 def _review_baseline(log):
@@ -2118,7 +2144,7 @@ def bill_update_review(request, update_id):
             "diff_rows": _review_diff(baseline, incoming) if baseline else [],
             "summary_rows": [] if baseline else _review_summary(incoming),
             "actor_name": actor.get("display_name") or actor.get("username", ""),
-            "can_approve": log.status == BillUpdateLog.STATUS_RECEIVED,
+            "can_decide": log.status == BillUpdateLog.STATUS_RECEIVED,
         },
     )
 
@@ -2130,13 +2156,7 @@ def bill_update_approve(request, update_id):
     if log.status == BillUpdateLog.STATUS_RECEIVED:
         # The review queue is chronological: accepting a later post would make
         # the accepted history disagree with the order events happened in.
-        earlier_pending = BillUpdateLog.objects.filter(
-            direction=BillUpdateLog.DIRECTION_INBOUND,
-            bill_id=log.bill_id,
-            status=BillUpdateLog.STATUS_RECEIVED,
-            created_at__lt=log.created_at,
-        ).exists()
-        if earlier_pending:
+        if _has_earlier_pending_update(log):
             messages.error(
                 request,
                 "Review the earlier update for this bill first.",
@@ -2150,6 +2170,49 @@ def bill_update_approve(request, update_id):
         messages.success(
             request,
             f"Approved {log.get_event_display()} for {log.bill_number or 'the bill'}.",
+        )
+    return redirect("pwms:bill_tracker")
+
+
+@require_POST
+def bill_update_reject(request, update_id):
+    """
+    Reject one inbound update and post the decision back to the sender's API.
+
+    The local row records the decision immediately (status, reason, reviewer and
+    time); the callback is queued so the sender's log is updated without
+    holding up the request, exactly as outbound updates are delivered.
+    """
+    log = _inbound_update_or_404(update_id)
+    if log.status == BillUpdateLog.STATUS_RECEIVED:
+        if _has_earlier_pending_update(log):
+            messages.error(
+                request,
+                "Review the earlier update for this bill first.",
+            )
+            return redirect("pwms:bill_tracker")
+
+        reason = request.POST.get("reason", "").strip()[:500]
+        decided_at = timezone.now()
+        log.status = BillUpdateLog.STATUS_REJECTED
+        log.rejection_reason = reason
+        log.rejected_at = decided_at
+        log.reviewed_at = decided_at
+        log.reviewed_by = request.user
+        log.save(
+            update_fields=[
+                "status",
+                "rejection_reason",
+                "rejected_at",
+                "reviewed_at",
+                "reviewed_by",
+                "updated_at",
+            ]
+        )
+        queue_bill_update_rejection(log, reason, actor=request.user)
+        messages.success(
+            request,
+            f"Rejected {log.get_event_display()} for {log.bill_number or 'the bill'}.",
         )
     return redirect("pwms:bill_tracker")
 

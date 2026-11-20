@@ -85,6 +85,9 @@
               {% if row.pending %}
                 <span class="badge text-bg-warning">Incoming {{ row.pending_event_display|lower }}</span>
                 awaiting review
+              {% elif row.last_decision and row.last_decision.status == "rejected" %}
+                <span class="badge text-bg-danger">Rejected {{ row.last_decision.get_event_display|lower }}</span>
+                {% if row.last_decision.rejection_reason %}— {{ row.last_decision.rejection_reason }}{% endif %}
               {% elif row.accepted_event %}
                 Accepted {{ row.accepted_event.get_event_display|lower }}
                 {{ row.accepted_at|timesince }} ago
@@ -132,7 +135,7 @@
             </td>
             <td>
               <span class="badge {% if entry.log.status == "approved" %}text-bg-success{% elif entry.log.status == "received" %}text-bg-warning{% else %}text-bg-danger{% endif %}">
-                {{ entry.log.get_status_display }}
+                {% if entry.log.event == "REJECTION" %}Logged{% else %}{{ entry.log.get_status_display }}{% endif %}
               </span>
             </td>
             <td>{{ entry.log.bill_number|default:"—" }}</td>
@@ -141,6 +144,11 @@
                 {{ entry.log.payload.status_change.to_state|default:"—" }}
                 {% if entry.log.payload.status_change.comment %}
                   <span class="d-block small text-muted">{{ entry.log.payload.status_change.comment }}</span>
+                {% endif %}
+              {% elif entry.log.event == "REJECTION" %}
+                Rejected {{ entry.log.payload.event|default:"update"|lower }}
+                {% if entry.log.rejection_reason %}
+                  <span class="d-block small text-muted">{{ entry.log.rejection_reason }}</span>
                 {% endif %}
               {% else %}
                 {{ entry.log.payload.bill.title|default:"—" }}

@@ -382,6 +382,31 @@ class BillUpdateReceiptOut(Schema):
     public_status: str = ""
 
 
+class BillUpdateRejectionIn(Schema):
+    """A consuming API's rejection of one update, posted back to the sender."""
+
+    model_config = ConfigDict(extra="allow")
+
+    #: Idempotency key for this rejection message.
+    rejection_id: UUID
+    #: The update being rejected.
+    update_id: UUID
+    #: The rejected update's event.
+    event: Literal["NEW", "EDITS", "STATUS_CHANGE"]
+    occurred_at: datetime | None = None
+    bill: BillUpdateBillIn | None = None
+    reason: str = ""
+    rejected_at: datetime | None = None
+    rejected_by: BillUpdateUserIn | None = None
+
+
+class BillUpdateRejectionReceiptOut(Schema):
+    rejection_id: UUID
+    update_id: UUID
+    received_at: datetime
+    duplicate: bool = False
+
+
 # ---------------------------------------------------------------------------
 # Meetings
 # ---------------------------------------------------------------------------

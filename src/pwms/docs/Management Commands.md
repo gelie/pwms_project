@@ -664,7 +664,7 @@ Three jobs run through `django-background-tasks` rather than inline, so
 | Task | Queued by | What it does |
 | --- | --- | --- |
 | `pwms.tasks.deliver_notification_email` | `pwms.notifications.dispatch.queue_email()`, inside the transaction that wrote the alert row | delivers one alert email, retrying a transient failure (`MAX_ATTEMPTS` + backoff) |
-| `pwms.tasks.post_bill_update` | `pwms.services.bill_updates.queue_bill_update()`, inside the transaction that saved the Bill | posts one `BillUpdateLog` row to the webhook, retrying a transient failure (`MAX_ATTEMPTS` + backoff) |
+| `pwms.tasks.post_bill_update` | `pwms.services.bill_updates.queue_bill_update()` / `queue_bill_update_rejection()`, inside the transaction that recorded the message | posts one `BillUpdateLog` row (an update or a rejection callback) to the API, retrying a transient failure (`MAX_ATTEMPTS` + backoff) |
 | `pwms.tasks.deliver_scheduled_report_shares` | `send_scheduled_report_shares --queue`, once | repeating drain for scheduled report shares |
 
 Explicit report and record shares send **inline** rather than through the queue

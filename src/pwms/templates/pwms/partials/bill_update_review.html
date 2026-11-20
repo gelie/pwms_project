@@ -12,15 +12,19 @@
   <p class="small text-muted mb-3">
     Received {{ log.created_at|timesince }} ago
     {% if actor_name %}from {{ actor_name }}{% endif %}.
-    {% if can_approve %}
-      Approving adopts this snapshot on the tracker; the source bill is not changed.
+    {% if can_decide %}
+      Approving adopts this snapshot on the tracker; rejecting posts the decision
+      back to the sender's API. The source bill is not changed either way.
     {% endif %}
   </p>
 
-  {% if not can_approve %}
+  {% if not can_decide %}
     <div class="alert alert-secondary mb-0">
       This update was already {{ log.get_status_display|lower }}
       {% if log.reviewed_by %}by {{ log.reviewed_by }}{% endif %}.
+      {% if log.rejection_reason %}
+        <div class="small mt-1">Reason: {{ log.rejection_reason }}</div>
+      {% endif %}
     </div>
   {% else %}
     {% if status_change %}
@@ -86,9 +90,23 @@
   {% endif %}
 </div>
 <div class="modal-footer">
-  {% if can_approve %}
+  {% if can_decide %}
     <form method="post"
-          action="{% url "pwms:bill_update_approve" log.update_id %}">
+          action="{% url "pwms:bill_update_reject" log.update_id %}"
+          class="d-flex flex-wrap align-items-center gap-2 me-auto">
+      {% csrf_token %}
+      <label class="visually-hidden" for="bill-reject-reason">Rejection reason</label>
+      <input class="form-control form-control-sm"
+             id="bill-reject-reason"
+             name="reason"
+             maxlength="500"
+             placeholder="Reason (optional)"
+             style="max-width: 18rem">
+      <button type="submit" class="btn btn-outline-danger">Reject</button>
+    </form>
+    <form method="post"
+          action="{% url "pwms:bill_update_approve" log.update_id %}"
+          class="d-flex flex-wrap align-items-center gap-2">
       {% csrf_token %}
       <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
         Cancel

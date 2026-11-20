@@ -161,6 +161,11 @@ urlpatterns = [
         views.bill_update_approve,
         name="bill_update_approve",
     ),
+    path(
+        "workflows/bills/tracker/<uuid:update_id>/reject/",
+        views.bill_update_reject,
+        name="bill_update_reject",
+    ),
     path("workflows/bills/new/", views.bill_create, name="bill_create"),
     # The HTMX hint under the form's B-number field: which SharePoint folder the
     # typed number will file into (before a bill even exists to retry from).
