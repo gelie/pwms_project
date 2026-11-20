@@ -115,8 +115,11 @@
   `User.set_idno`), the optional LDAP set (`AUTH_LDAP_SERVER_URI`,
   `AUTH_LDAP_BIND_DN`, `AUTH_LDAP_BIND_PASSWORD`, `AUTH_LDAP_BASE_DN`,
   `AUTH_LDAP_START_TLS`), the optional alerting pair `DEFAULT_FROM_EMAIL`
-  and `PWMS_BASE_URL`, and the PWMS API settings
-  (`EXTERNAL_API_*`) plus `REDIS_URL` / cache settings — see above.
+  and `PWMS_BASE_URL`, the PWMS API settings
+  (`EXTERNAL_API_*`), the Bill update webhook settings
+  (`BILL_UPDATE_WEBHOOK_ENABLED`, `BILL_UPDATE_ENDPOINT_URL`,
+  `BILL_UPDATE_WEBHOOK_TOKEN`, `BILL_UPDATE_WEBHOOK_TIMEOUT`) plus
+  `REDIS_URL` / cache settings — see above.
 
 > The app is enabled via a single `AppConfig` (`pwms.apps.PwmsConfig`) whose
 > `ready()` registers the concrete workflow model with `auditlog`. It is the only

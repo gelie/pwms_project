@@ -64,6 +64,8 @@ erDiagram
     Notification }o--o| User : "actor (SET_NULL)"
     Notification }o--o| AbstractLegislativeWorkflow : "GFK content"
     Notification }o--o| ReportShare : "GFK content (shares)"
+    BillUpdateLog }o--o| AbstractLegislativeWorkflow : "bill (SET_NULL)"
+    BillUpdateLog }o--o| User : "actor (SET_NULL)"
     Attachment }o--|| AbstractLegislativeWorkflow : "GFK content"
     Attachment ||--o{ AttachmentVersion : versions
 ```
@@ -823,6 +825,43 @@ Indexed on `(recipient, read_at)` (the bell's unread count) and
 undeletable** (`NotificationAdmin`): the rows are evidence, not data entry.
 `ReportShare` is likewise read-only and undeletable, with revoke as the one
 write.
+
+### `BillUpdateLog(BaseModel)` — `pwms/models/bill_updates.py`
+
+One row per side of the Bill update webhook exchange. Every Bill create, edit
+and status change writes a **`direction=outbound`, `status=pending`** row and
+queues its delivery; the worker then records the outcome on that same row. The
+testing receiver writes a **`direction=inbound`, `status=received`** row (or
+`rejected` when the bill is unknown); a reviewer then marks it **`approved`**
+from the tracker, which adopts its snapshot as the accepted version and records
+who approved it. Migration `0068_billupdatelog`; review fields in `0069`.
+
+| Field | Notes |
+| --- | --- |
+| `update_id` (UUID) | idempotency key shared by the outbound post and its inbound receipt; unique per direction |
+| `bill` (FK `Bill`, `SET_NULL`, nullable) | the bill, when it still exists |
+| `bill_public_id`, `bill_number` | snapshots so the log stays readable after the bill is deleted |
+| `event` | `NEW`, `EDITS` or `STATUS_CHANGE` |
+| `direction` | `outbound` (we posted) or `inbound` (we received) |
+| `status` | `pending` / `sent` / `failed` on the outbound row; `received` (awaiting review) / `approved` / `rejected` on the inbound row |
+| `payload` (JSON) | the exact body sent or received |
+| `target_url` | endpoint posted to, or the path received at |
+| `http_status`, `response_body`, `error` | outcome of the post (body truncated for diagnosis) and why it failed |
+| `actor` (FK `User`, `SET_NULL`, nullable) | who made the change that produced the update |
+| `reviewed_at`, `reviewed_by` (FK `User`, `SET_NULL`) | inbound only: when and by whom the update was approved on the receiving side |
+| `attempts`, `completed_at` | delivery attempts so far, and when the row reached a final state |
+
+The outbound row is queued by `pwms.services.bill_updates.queue_bill_update()`
+inside the transaction that saved the bill, so a rolled-back edit queues nothing.
+`deliver_update()` runs in the worker (`pwms.tasks.post_bill_update`): a failure
+stays `pending` with the reason in `error` and raises so the queue retries; once
+`MAX_ATTEMPTS` is spent the row is `failed` and `error` is why it was given up
+on. `payload` is what the receiver is told, not a live view of the bill.
+
+Read-only and undeletable in the admin (`BillUpdateLogAdmin`): the rows are the
+audit trail for what was sent, when, whether it arrived, and whether the
+receiving side accepted it. Indexed on `(bill, -created_at)` and
+`(event, direction, status)`.
 
 ### `NotificationRule(BaseModel)` — `pwms/models/notifications.py`
 

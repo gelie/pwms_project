@@ -117,6 +117,23 @@ EXTERNAL_API_DEFAULT_RATE_LIMIT_PER_MINUTE = config(
 )
 EXTERNAL_API_MAX_PAGE_SIZE = config("EXTERNAL_API_MAX_PAGE_SIZE", default=100, cast=int)
 
+# Bill update webhook
+#
+# Every Bill create / edit / status change is posted to a webhook (see
+# ``pwms.services.bill_updates``) after the change is saved. The default target
+# is the testing receiver this project mounts at ``/api/v1/bill-updates/``; set
+# ``BILL_UPDATE_ENDPOINT_URL`` to the partner system's URL when it is ready and
+# the log shape does not change. The bearer token authenticates the post to the
+# receiver — leave it blank and the receiver rejects every post.
+BILL_UPDATE_WEBHOOK_ENABLED = config(
+    "BILL_UPDATE_WEBHOOK_ENABLED", default=True, cast=bool
+)
+BILL_UPDATE_ENDPOINT_URL = config("BILL_UPDATE_ENDPOINT_URL", default="")
+BILL_UPDATE_WEBHOOK_TOKEN = config("BILL_UPDATE_WEBHOOK_TOKEN", default="")
+BILL_UPDATE_WEBHOOK_TIMEOUT = config(
+    "BILL_UPDATE_WEBHOOK_TIMEOUT", default=10, cast=int
+)
+
 ROOT_URLCONF = "pwms.root_urls"
 
 TEMPLATES = [

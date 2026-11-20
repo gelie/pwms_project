@@ -1,0 +1,155 @@
+{% comment %}
+  The live part of the Bill status tracker. Rendered inside the page and, on an
+  HTMX poll, on its own; keep it self-contained so both renders agree.
+
+  A row shows the last **approved** snapshot. Inbound posts wait in a review
+  queue (oldest first) and only move the row when approved, so the receiving
+  side adopts changes deliberately. Before anything is approved, the row falls
+  back to the live PWMS record.
+
+  The stepper follows the citizen-facing public statuses: the four committee
+  internal stages collapse onto "Under Parliamentary Consideration". A step is
+  done when an accepted snapshot has published that status, current for the
+  accepted status now, and todo otherwise.
+{% endcomment %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <span class="text-muted">{{ rows|length }} bill{{ rows|length|pluralize }}</span>
+  <span class="small text-muted">
+    {% if last_received %}
+      Last webhook received {{ last_received|timesince }} ago
+    {% else %}
+      No webhook update received yet
+    {% endif %}
+  </span>
+</div>
+
+{% if rows %}
+  <div class="vstack gap-3">
+    {% for row in rows %}
+      <section class="card shadow-sm">
+        <div class="card-body">
+          <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+            <div>
+              <h2 class="h5 mb-1">
+                <a href="{% url "pwms:bill_detail" row.bill.public_id %}">{{ row.bill.bill_number }}</a>
+                <span class="text-muted">— {{ row.title }}</span>
+              </h2>
+              <div class="small text-muted">
+                {{ row.bill_type_label }} ·
+                {{ row.house_label }} ·
+                Sponsor: {{ row.sponsor }}
+              </div>
+            </div>
+            <div class="text-end">
+              {% if row.public_status %}
+                <span class="badge badge-state-color"
+                      style="--state-color: {{ row.current_color }}">{{ row.public_status }}</span>
+              {% endif %}
+              {% if row.internal_stage %}
+                <div class="small text-muted mt-1">Internal stage: {{ row.internal_stage }}</div>
+              {% endif %}
+              {% if row.pending %}
+                <div class="mt-2">
+                  <button type="button"
+                          class="btn btn-sm btn-warning"
+                          hx-get="{% url "pwms:bill_update_review" row.pending.update_id %}"
+                          hx-target="#bill-review-modal-body"
+                          hx-swap="innerHTML"
+                          data-bs-toggle="modal"
+                          data-bs-target="#bill-review-modal">
+                    {% lucide "eye" size=15 %}
+                    Review {{ row.pending_event_display }}
+                    {% if row.pending_count > 1 %}({{ row.pending_count }}){% endif %}
+                  </button>
+                </div>
+              {% endif %}
+            </div>
+          </div>
+
+          <ol class="bill-stepper"
+              aria-label="Public status of {{ row.bill.bill_number }}">
+            {% for step in row.steps %}
+              <li class="bill-stepper__step bill-stepper__step--{{ step.status }}"
+                  {% if step.status == "current" %}aria-current="step"{% endif %}
+                  style="--state-color: {{ step.color }}">
+                <span class="bill-stepper__dot">
+                  {% if step.status == "done" %}✓{% else %}{{ forloop.counter }}{% endif %}
+                </span>
+                <span class="bill-stepper__label">{{ step.name }}</span>
+              </li>
+            {% endfor %}
+          </ol>
+
+          <div class="d-flex flex-wrap justify-content-between gap-2 small text-muted mt-3">
+            <span>
+              {% if row.pending %}
+                <span class="badge text-bg-warning">Incoming {{ row.pending_event_display|lower }}</span>
+                awaiting review
+              {% elif row.accepted_event %}
+                Accepted {{ row.accepted_event.get_event_display|lower }}
+                {{ row.accepted_at|timesince }} ago
+                {% if row.accepted_event.reviewed_by %}by {{ row.accepted_event.reviewed_by }}{% endif %}
+              {% else %}
+                No webhook update recorded for this bill yet.
+              {% endif %}
+            </span>
+            <span>Source updated {{ row.bill.updated_at|timesince }} ago</span>
+          </div>
+        </div>
+      </section>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="alert alert-info">
+    No bills yet.
+    <a href="{% url "pwms:bill_create" %}">Create one</a> to see the tracker.
+  </div>
+{% endif %}
+
+{% if recent %}
+  <h2 class="h6 mt-4">Recent webhook activity</h2>
+  <div class="table-responsive">
+    <table class="table table-sm align-middle">
+      <caption class="visually-hidden">
+        Updates received by the Bill update webhook
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Received</th>
+          <th scope="col">Event</th>
+          <th scope="col">Approval</th>
+          <th scope="col">Bill</th>
+          <th scope="col">Detail</th>
+          <th scope="col">Actor</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in recent %}
+          <tr>
+            <td>{{ entry.log.created_at|date:"H:i:s" }}</td>
+            <td>
+              <span class="badge text-bg-secondary">{{ entry.log.get_event_display }}</span>
+            </td>
+            <td>
+              <span class="badge {% if entry.log.status == "approved" %}text-bg-success{% elif entry.log.status == "received" %}text-bg-warning{% else %}text-bg-danger{% endif %}">
+                {{ entry.log.get_status_display }}
+              </span>
+            </td>
+            <td>{{ entry.log.bill_number|default:"—" }}</td>
+            <td>
+              {% if entry.log.event == "STATUS_CHANGE" %}
+                {{ entry.log.payload.status_change.to_state|default:"—" }}
+                {% if entry.log.payload.status_change.comment %}
+                  <span class="d-block small text-muted">{{ entry.log.payload.status_change.comment }}</span>
+                {% endif %}
+              {% else %}
+                {{ entry.log.payload.bill.title|default:"—" }}
+              {% endif %}
+            </td>
+            <td>{{ entry.actor_name|default:"—" }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}

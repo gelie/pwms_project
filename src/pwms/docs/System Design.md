@@ -131,6 +131,8 @@ pwms_project/                     # repo root (git) — run manage.py from here
 | `/pwms/dashboard/` | dashboard (figures scoped to the user) | session |
 | `/pwms/login/` , `/pwms/logout/` | session login/logout (web) | – |
 | `/pwms/workflows/…` | list / detail / create / update / delete per instrument (incl. bill versions) | session + RBAC |
+| `/pwms/workflows/bills/tracker/` | demo Bill status tracker: every bill with its public-status stepper, a review queue for inbound posts, and the inbound webhook feed, polled every 3s | session |
+| `/pwms/workflows/bills/tracker/{update_id}/review/` , `…/approve/` | the review popup (HTMX) and the POST that approves an inbound update | session |
 | `/pwms/instruments/{public_id}/document/` | one instrument as a formal PDF/HTML document | session + RBAC |
 | `/pwms/instruments/{public_id}/diagram.svg` | the workflow type's generated state-machine diagram | session + RBAC |
 | `/pwms/instruments/{public_id}/transition/` | confirm (GET) and apply (POST) one state transition | session + RBAC |
@@ -151,6 +153,7 @@ pwms_project/                     # repo root (git) — run manage.py from here
 | `/api/v1/auth/token/` (`refresh/`, `revoke/`) | obtain / rotate / revoke a token pair | – (IP-throttled) |
 | `/api/v1/{users,groups,memberships,bills}/` | read-only resource lists, filtered and paginated; `search`/`search_fields` match multiple fields | bearer token + scope |
 | `/api/v1/{users,groups,memberships,bills}/{public_id}/` | read-only resource detail | bearer token + scope |
+| `/api/v1/bill-updates/` | testing receiver for outbound Bill updates (`NEW` / `EDITS` / `STATUS_CHANGE`) | shared webhook token |
 | `/api/v1/search/` | cross-resource search over users, groups, memberships and bills (scoped, paginated groups) | bearer token + any read scope |
 | `/api/v1/docs` , `/api/v1/openapi.json` | Swagger UI + OpenAPI document | public (docs) |
 
@@ -375,6 +378,7 @@ These mechanisms record history:
 | `pwms.TransitionLog` | every **semantic state transition** | `from_state → to_state`, actor, comment, IP, action label |
 | `pwms.WorkflowEvent` | every **domain event** (document attached, ATC published, referral created/responded/...) | append-only, typed registry (`EventType`), JSON payload, actor, origin |
 | `pwms.Notification` | every **in-app alert and outbound email** (alerts and explicit report/record shares) | one row per recipient and channel, with subject, text/HTML body, envelope snapshot, status, attempts, error and the **reasons** the person was told |
+| `pwms.BillUpdateLog` | every **Bill update posted to the webhook**, and every receipt | one row per outbound attempt (payload, target, HTTP status, attempts, error) plus one per inbound receipt, approval or rejection, keyed by the `update_id` idempotency key |
 
 - Registration happens in `PwmsConfig.ready()`: all four concrete subclasses
   (`InternationalResolution`, `DelegationReport`, `InternationalAgreement`,
@@ -425,6 +429,11 @@ sequenceDiagram
   interactive users: app registrations, scopes, tokens, usage logs and
   throttling live in that app, and the endpoints are read-only for **users**,
   **groups**, **memberships** and **bills**.
+- One endpoint is a write: `POST /api/v1/bill-updates/` is the **testing
+  receiver** for PWMS's own outbound Bill updates (see
+  [Bill update webhook](./API%20Reference.md#6-bill-update-webhook-testing-receiver)).
+  It authenticates with the shared `BILL_UPDATE_WEBHOOK_TOKEN`, not an app
+  token, and never mutates the Bill.
 - Credentials are an application `client_id`/`client_secret`, exchanged for a
   **60-minute signed access token** and a **24-hour, single-use refresh token**.
   Access tokens are re-validated against the client's active flag and current
@@ -442,8 +451,8 @@ See [API Reference](./API%20Reference.md).
 ## 7. Background jobs & commands
 
 `pwms/tasks.py` registers the queued jobs `django-background-tasks` runs (alert
-email delivery and the scheduled-report drain), served by
-`manage.py process_tasks`. Separately, Django management commands cover data
+email delivery, Bill update webhook posts and the scheduled-report drain), served
+by `manage.py process_tasks`. Separately, Django management commands cover data
 synchronisation (legacy Oracle), SharePoint/GeoNames import, committee scraping,
 referral-deadline checks, workflow-definition export/import and membership
 validation. They import `pwms.models` directly; see

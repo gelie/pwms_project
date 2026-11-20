@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Bill status tracker{% endblock title %}
+{% block content %}
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:workflows" %}">Workflows</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:bills" %}">Bills</a>
+      </li>
+      <li class="breadcrumb-item active" aria-current="page">Status tracker</li>
+    </ol>
+  </nav>
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <h1 class="mb-1">Bill status tracker</h1>
+      <p class="text-muted mb-0">
+        Every bill, with its public status progression. Incoming
+        <code>NEW</code>, <code>STATUS_CHANGE</code> and <code>EDITS</code>
+        posts wait for review: open the changes, then approve to apply them to
+        the row. The list refreshes on its own every {{ poll_seconds }}s.
+      </p>
+    </div>
+    <span class="badge text-bg-secondary">Refreshing every {{ poll_seconds }}s</span>
+  </div>
+
+  <div id="bill-tracker"
+       hx-get="{% url "pwms:bill_tracker" %}"
+       hx-trigger="every {{ poll_seconds }}s"
+       hx-swap="innerHTML"
+       hx-indicator="#bill-tracker-refreshing">
+    {% include "pwms/partials/bill_tracker_body.html" %}
+  </div>
+  <p id="bill-tracker-refreshing"
+     class="htmx-indicator small text-muted mb-0">Refreshing…</p>
+
+  <div class="modal fade"
+       id="bill-review-modal"
+       tabindex="-1"
+       aria-labelledby="bill-review-modal-title"
+       aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content" id="bill-review-modal-body">
+        <div class="modal-body text-muted">Loading the incoming changes…</div>
+      </div>
+    </div>
+  </div>
+{% endblock content %}

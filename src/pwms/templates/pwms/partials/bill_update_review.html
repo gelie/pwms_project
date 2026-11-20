@@ -1,0 +1,105 @@
+<div class="modal-header">
+  <h5 class="modal-title" id="bill-review-modal-title">
+    Review {{ log.get_event_display }}
+    {% if log.bill_number %}— {{ log.bill_number }}{% endif %}
+  </h5>
+  <button type="button"
+          class="btn-close"
+          data-bs-dismiss="modal"
+          aria-label="Close"></button>
+</div>
+<div class="modal-body">
+  <p class="small text-muted mb-3">
+    Received {{ log.created_at|timesince }} ago
+    {% if actor_name %}from {{ actor_name }}{% endif %}.
+    {% if can_approve %}
+      Approving adopts this snapshot on the tracker; the source bill is not changed.
+    {% endif %}
+  </p>
+
+  {% if not can_approve %}
+    <div class="alert alert-secondary mb-0">
+      This update was already {{ log.get_status_display|lower }}
+      {% if log.reviewed_by %}by {{ log.reviewed_by }}{% endif %}.
+    </div>
+  {% else %}
+    {% if status_change %}
+      <div class="alert alert-warning">
+        <div class="fw-semibold mb-1">Status change</div>
+        {{ status_change.from_state|default:"—" }}
+        <span aria-hidden="true">→</span>
+        <strong>{{ status_change.to_state|default:"—" }}</strong>
+        {% if status_change.transition %}
+          <span class="text-muted">({{ status_change.transition }})</span>
+        {% endif %}
+        {% if status_change.comment %}
+          <div class="small mt-1">“{{ status_change.comment }}”</div>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% if diff_rows %}
+      <table class="table table-sm align-middle">
+        <caption class="visually-hidden">Fields changed by this update</caption>
+        <thead>
+          <tr>
+            <th scope="col">Field</th>
+            <th scope="col">Accepted</th>
+            <th scope="col">Incoming</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in diff_rows %}
+            <tr>
+              <th scope="row" class="fw-normal text-muted">{{ row.label }}</th>
+              <td class="text-muted text-decoration-line-through">{{ row.old }}</td>
+              <td class="table-warning fw-semibold">{{ row.new }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% elif summary_rows %}
+      <div class="alert alert-info">
+        No earlier accepted snapshot for this bill, so the whole incoming record
+        is shown. Approving adopts it as the accepted version.
+      </div>
+      <table class="table table-sm align-middle">
+        <caption class="visually-hidden">The incoming record</caption>
+        <thead>
+          <tr>
+            <th scope="col">Field</th>
+            <th scope="col">Incoming</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in summary_rows %}
+            <tr>
+              <th scope="row" class="fw-normal text-muted">{{ row.label }}</th>
+              <td>{{ row.value }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="text-muted mb-0">This update carries no field changes.</p>
+    {% endif %}
+  {% endif %}
+</div>
+<div class="modal-footer">
+  {% if can_approve %}
+    <form method="post"
+          action="{% url "pwms:bill_update_approve" log.update_id %}">
+      {% csrf_token %}
+      <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+        Cancel
+      </button>
+      <button type="submit" class="btn btn-success">
+        {% lucide "check" size=16 %} Approve and apply
+      </button>
+    </form>
+  {% else %}
+    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+      Close
+    </button>
+  {% endif %}
+</div>

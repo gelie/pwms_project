@@ -12,6 +12,7 @@ from .models import (
     Attachment,
     AttachmentVersion,
     Bill,
+    BillUpdateLog,
     BillVersion,
     Building,
     City,
@@ -1259,6 +1260,45 @@ class NotificationAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         # The log is evidence. Deleting a row would erase who was told what.
+        return False
+
+
+@admin.register(BillUpdateLog)
+class BillUpdateLogAdmin(admin.ModelAdmin):
+    """Read-only view of every Bill update posted, and every receipt.
+
+    These rows are the audit trail for the webhook exchange — what was sent,
+    when, and what HTTP status came back — so nothing is editable and rows
+    cannot be deleted. The Bill FK is ``SET_NULL``, so a row outlives the bill
+    and the snapshot fields keep it readable.
+    """
+
+    list_display = (
+        "created_at",
+        "event",
+        "direction",
+        "status",
+        "bill_number",
+        "http_status",
+        "attempts",
+        "reviewed_by",
+    )
+    list_filter = ("direction", "event", "status")
+    search_fields = ("bill_number", "bill_public_id", "update_id", "target_url")
+    raw_id_fields = ("bill", "actor", "reviewed_by")
+    date_hierarchy = "created_at"
+    ordering = ("-created_at",)
+
+    def get_readonly_fields(self, request, obj=None):
+        """The log is evidence, not data entry: nothing here is editable."""
+        return [field.name for field in self.model._meta.fields]
+
+    def has_add_permission(self, request):
+        # Written by the webhook exchange, never typed in.
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        # Deleting a row would erase what was sent and whether it arrived.
         return False
 
 

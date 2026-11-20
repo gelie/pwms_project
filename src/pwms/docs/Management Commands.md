@@ -658,12 +658,13 @@ python manage.py build_uat_workbook
 
 ## Background tasks (the queue worker)
 
-Two jobs run through `django-background-tasks` rather than inline, so
+Three jobs run through `django-background-tasks` rather than inline, so
 **`manage.py process_tasks` has to be running** for them to happen:
 
 | Task | Queued by | What it does |
 | --- | --- | --- |
 | `pwms.tasks.deliver_notification_email` | `pwms.notifications.dispatch.queue_email()`, inside the transaction that wrote the alert row | delivers one alert email, retrying a transient failure (`MAX_ATTEMPTS` + backoff) |
+| `pwms.tasks.post_bill_update` | `pwms.services.bill_updates.queue_bill_update()`, inside the transaction that saved the Bill | posts one `BillUpdateLog` row to the webhook, retrying a transient failure (`MAX_ATTEMPTS` + backoff) |
 | `pwms.tasks.deliver_scheduled_report_shares` | `send_scheduled_report_shares --queue`, once | repeating drain for scheduled report shares |
 
 Explicit report and record shares send **inline** rather than through the queue

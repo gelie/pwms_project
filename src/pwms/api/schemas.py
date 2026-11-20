@@ -12,6 +12,7 @@ Output schemas use ``from_attributes`` so Ninja validates ORM objects directly.
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Any, Literal
 from uuid import UUID
 
 from ninja import Schema
@@ -310,6 +311,75 @@ class BillPage(Schema):
     next: str | None = None
     previous: str | None = None
     results: list[BillOut]
+
+
+# ---------------------------------------------------------------------------
+# Bill update webhook (testing receiver)
+# ---------------------------------------------------------------------------
+#
+# The sender posts a snapshot of the bill plus the event that caused it. Fields
+# are defaulted and unknown keys are allowed, so a future external sender can
+# add detail without breaking the receiver; the exact body is kept in the log.
+
+
+class BillUpdateUserIn(Schema):
+    model_config = ConfigDict(extra="allow")
+
+    public_id: UUID | None = None
+    username: str = ""
+    display_name: str = ""
+
+
+class BillUpdateCommitteeIn(Schema):
+    model_config = ConfigDict(extra="allow")
+
+    public_id: UUID | None = None
+    name: str = ""
+
+
+class BillUpdateBillIn(Schema):
+    model_config = ConfigDict(extra="allow")
+
+    public_id: UUID | None = None
+    bill_number: str = ""
+    title: str = ""
+    short_title: str = ""
+    description: str = ""
+    bill_type: str = ""
+    house_of_origin: str = ""
+    sponsor: BillUpdateUserIn | None = None
+    sponsor_name: str = ""
+    introduced_date: date | None = None
+    responsible_committee: BillUpdateCommitteeIn | None = None
+    current_state: str = ""
+    public_status: str = ""
+    owner: BillUpdateUserIn | None = None
+    assigned_to: BillUpdateUserIn | None = None
+    deadline: datetime | None = None
+    priority: str = ""
+    is_overdue: bool = False
+    identifier: str = ""
+    url: str = ""
+
+
+class BillUpdateIn(Schema):
+    model_config = ConfigDict(extra="allow")
+
+    update_id: UUID
+    event: Literal["NEW", "EDITS", "STATUS_CHANGE"]
+    occurred_at: datetime | None = None
+    bill: BillUpdateBillIn
+    actor: BillUpdateUserIn | None = None
+    status_change: dict[str, Any] | None = None
+
+
+class BillUpdateReceiptOut(Schema):
+    update_id: UUID
+    event: str
+    received_at: datetime
+    duplicate: bool = False
+    #: The public status the sender reported, echoed back for the caller's log.
+    public_status: str = ""
 
 
 # ---------------------------------------------------------------------------

@@ -34,6 +34,10 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
   sync (`populate_sites`) into local mirror tables
 - External Django-Ninja API (scoped app keys, access/refresh tokens, usage logs,
   per-key throttling) + OpenAPI (Swagger), admin, migrations, tests
+- Outbound Bill update webhook (`NEW` / `EDITS` / `STATUS_CHANGE`) with a durable
+  `BillUpdateLog` audit trail, queued after the save and retried by the worker;
+  until the partner API exists it posts to the in-project testing receiver at
+  `POST /api/v1/bill-updates/`
 
 ---
 

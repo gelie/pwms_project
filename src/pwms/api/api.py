@@ -12,6 +12,7 @@ from uuid import UUID
 from django.conf import settings
 from django.contrib.auth.hashers import check_password, make_password
 from django.contrib.contenttypes.models import ContentType
+from django.db import IntegrityError
 from django.db.models import DateField, OuterRef, Prefetch, Q, Subquery
 from django.db.models.functions import Coalesce, TruncDate
 from django.shortcuts import get_object_or_404
@@ -23,6 +24,7 @@ from ninja.errors import HttpError
 from ..models import (
     Attachment,
     Bill,
+    BillUpdateLog,
     BillVersion,
     Group,
     GroupMembership,
@@ -38,6 +40,8 @@ from .models import ApiClient
 from .schemas import (
     BillOut,
     BillPage,
+    BillUpdateIn,
+    BillUpdateReceiptOut,
     ClientInfoOut,
     ErrorOut,
     GroupOut,
@@ -75,6 +79,7 @@ from .tokens import (
     refresh_token_ttl,
     revoke_refresh_token,
 )
+from .webhook_auth import webhook_auth
 
 # Used to spend the same PBKDF2 work when an unknown client_id is presented, so
 # response timing does not reveal whether a client id exists.
@@ -105,6 +110,9 @@ groups_router = Router(tags=["Groups"])
 memberships_router = Router(tags=["Memberships"])
 bills_router = Router(tags=["Bills"])
 meetings_router = Router(tags=["Meetings"])
+# Authenticated with one shared secret (see ``webhook_auth``), not a client
+# access token: the sender is this application itself.
+bill_updates_router = Router(tags=["Bill updates"], auth=webhook_auth)
 
 
 # ---------------------------------------------------------------------------
@@ -755,6 +763,92 @@ def get_bill(request, public_id: UUID):
 
 
 # ---------------------------------------------------------------------------
+# Bill update webhook (testing receiver)
+# ---------------------------------------------------------------------------
+
+
+def _receipt(log, *, duplicate=False):
+    return {
+        "update_id": log.update_id,
+        "event": log.event,
+        "received_at": log.created_at,
+        "duplicate": duplicate,
+        "public_status": (log.payload.get("bill") or {}).get("public_status", ""),
+    }
+
+
+@bill_updates_router.post(
+    "/",
+    response={200: BillUpdateReceiptOut, 404: ErrorOut},
+    summary="Receive a Bill update (testing stand-in for the external API)",
+)
+def receive_bill_update(request, payload: BillUpdateIn):
+    """
+    Accept one ``NEW`` / ``EDITS`` / ``STATUS_CHANGE`` update and keep it.
+
+    This is the testing stand-in for the partner system's endpoint. It never
+    mutates the Bill: it checks that the referenced bill still exists, stores
+    the exact body as an inbound ``BillUpdateLog`` row and returns a receipt.
+    Idempotent on ``update_id`` — a retried outbound post returns the original
+    receipt instead of writing a second row.
+    """
+    existing = BillUpdateLog.objects.filter(
+        update_id=payload.update_id, direction=BillUpdateLog.DIRECTION_INBOUND
+    ).first()
+    if existing is not None:
+        return 200, _receipt(existing, duplicate=True)
+
+    body = payload.model_dump(mode="json")
+    bill = None
+    if payload.bill.public_id is not None:
+        bill = Bill.objects.filter(public_id=payload.bill.public_id).first()
+
+    if bill is None:
+        # Rejections are evidence too: keep why the post was refused.
+        try:
+            BillUpdateLog.objects.create(
+                update_id=payload.update_id,
+                bill_public_id=payload.bill.public_id,
+                bill_number=payload.bill.bill_number,
+                event=payload.event,
+                direction=BillUpdateLog.DIRECTION_INBOUND,
+                status=BillUpdateLog.STATUS_REJECTED,
+                payload=body,
+                target_url=request.path[:2048],
+                error="Unknown bill public_id.",
+            )
+        except IntegrityError:
+            existing = BillUpdateLog.objects.filter(
+                update_id=payload.update_id,
+                direction=BillUpdateLog.DIRECTION_INBOUND,
+            ).first()
+            return 200, _receipt(existing, duplicate=True)
+        raise HttpError(404, "Unknown bill for this update.")
+
+    try:
+        log = BillUpdateLog.objects.create(
+            update_id=payload.update_id,
+            bill=bill,
+            bill_public_id=bill.public_id,
+            bill_number=bill.bill_number,
+            event=payload.event,
+            direction=BillUpdateLog.DIRECTION_INBOUND,
+            status=BillUpdateLog.STATUS_RECEIVED,
+            payload=body,
+            target_url=request.path[:2048],
+        )
+    except IntegrityError:
+        # A concurrent retry won the race; answer with its receipt.
+        existing = BillUpdateLog.objects.filter(
+            update_id=payload.update_id,
+            direction=BillUpdateLog.DIRECTION_INBOUND,
+        ).first()
+        return 200, _receipt(existing, duplicate=True)
+
+    return 200, _receipt(log)
+
+
+# ---------------------------------------------------------------------------
 # Meetings
 # ---------------------------------------------------------------------------
 
@@ -985,4 +1079,5 @@ api.add_router("/users", users_router)
 api.add_router("/groups", groups_router)
 api.add_router("/memberships", memberships_router)
 api.add_router("/bills", bills_router)
+api.add_router("/bill-updates", bill_updates_router)
 api.add_router("/meetings", meetings_router)

@@ -11,6 +11,20 @@ reports 97 findings (26 auto-fixable), `views.py` 4 819 lines,
 
 ## Recently done
 
+- [x] **Bill update webhook + audit log.** Every Bill create, edit and status
+      change records an outbound `BillUpdateLog` row and queues
+      `pwms.tasks.post_bill_update`, which posts the snapshot to
+      `BILL_UPDATE_ENDPOINT_URL` (default: the in-project testing receiver at
+      `POST /api/v1/bill-updates/`, authenticated with
+      `BILL_UPDATE_WEBHOOK_TOKEN`). Failures retry under `MAX_ATTEMPTS` and stay
+      readable in the read-only admin log; the receiver is idempotent on
+      `update_id`. Swap the URL for the partner API later — the log shape does
+      not change. A demo page at `/pwms/workflows/bills/tracker/` lists every
+      bill with a public-status stepper and a feed of inbound posts, polling
+      every 3 seconds. Inbound `NEW` / `STATUS_CHANGE` / `EDITS` posts wait for
+      review: the popup diffs them against the last accepted snapshot and
+      **Approve and apply** adopts it (recording reviewer and time) without
+      touching the source bill.
 - [x] **CI exists.** `.github/workflows/ci.yml` runs three gates — `ruff check` +
       `ruff format --check`, `makemigrations --check --dry-run` then `migrate`,
       and the full suite under `coverage`. The earlier "no CI at all" note is

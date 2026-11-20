@@ -11,6 +11,8 @@
   </nav>
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
     <h1 class="mb-0">Bills</h1>
+    <a class="btn btn-outline-secondary"
+       href="{% url "pwms:bill_tracker" %}">{% lucide "activity" size=18 %} Live tracker</a>
     <a class="btn btn-primary"
        href="{% url "pwms:bill_create" %}">{% lucide "plus" size=18 %} New Bill</a>
   </div>
