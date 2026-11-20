@@ -14,8 +14,12 @@ The API is intentionally narrow. Five resource families are available:
 | Meetings | `GET /api/v1/meetings/` | `GET /api/v1/meetings/{public_id}/` | `meetings:read` |
 | Search | `GET /api/v1/search/` | — | any of the users/groups/memberships/bills scopes |
 
-There are no write endpoints: `POST`, `PUT`, `PATCH` and `DELETE` return
-`405 Method Not Allowed`. Ninja's interactive docs are served at
+There are no write endpoints for these resource families: `POST`, `PUT`,
+`PATCH` and `DELETE` return `405 Method Not Allowed`. The one exception is the
+**Bill update receiver** at `POST /api/v1/bill-updates/` (§6). It exists only so
+PWMS can test its own outbound Bill notifications before the partner system
+exists; it is authenticated with a shared secret, not an application token, and
+is not part of the partner contract. Ninja's interactive docs are served at
 `/api/v1/docs` and the raw OpenAPI document at `/api/v1/openapi.json`.
 
 > For printable walkthroughs for partner applications, see the
@@ -463,3 +467,118 @@ Each request under `/api/v1/` writes an **API usage log** row:
 Usage logs are read-only in the admin (**API → API usage logs**) and can be
 filtered by client, status and throttle flag. They are an operational audit
 trail, separate from the domain `auditlog` history.
+
+---
+
+## 6. Bill update webhook (testing receiver)
+
+Every Bill create, edit and status change is posted — in the background, after
+the change is saved — to `BILL_UPDATE_ENDPOINT_URL`. Until the partner system
+exists that setting is blank, and PWMS posts to its own receiver:
+
+```
+POST /api/v1/bill-updates/
+Authorization: Bearer <BILL_UPDATE_WEBHOOK_TOKEN>
+Content-Type: application/json
+```
+
+The receiver is **closed** while `BILL_UPDATE_WEBHOOK_TOKEN` is blank: every post
+is rejected with `401`. Set the same value in the worker's environment so it can
+authenticate.
+
+Body (the sender builds exactly this):
+
+```json
+{
+  "update_id": "4c1f0e3a-9f6e-4a1e-8f0c-2d5b7a9e1c33",
+  "event": "STATUS_CHANGE",
+  "occurred_at": "2026-11-20T12:30:00+02:00",
+  "bill": {
+    "public_id": "01a1f8ee-5c5b-770f-8d43-8e132515cde3",
+    "bill_number": "B 7-2026",
+    "title": "Webhook bill",
+    "short_title": "Webhook",
+    "description": "",
+    "bill_type": "section-75",
+    "house_of_origin": "na",
+    "sponsor": null,
+    "sponsor_name": "",
+    "introduced_date": null,
+    "responsible_committee": null,
+    "current_state": "Introduced in the House",
+    "public_status": "Introduced",
+    "owner": {"public_id": "…", "username": "jdoe", "display_name": "J Doe"},
+    "assigned_to": null,
+    "deadline": null,
+    "priority": "medium",
+    "is_overdue": false,
+    "identifier": "B 7-2026",
+    "url": "http://localhost:8000/pwms/workflows/bills/01a1f8ee-…/"
+  },
+  "actor": {"public_id": "…", "username": "jdoe", "display_name": "J Doe"},
+  "status_change": {
+    "from_state": "Introduced in the House",
+    "to_state": "Referred to committee",
+    "transition": "Refer",
+    "comment": "Please review.",
+    "ip_address": "10.0.0.9"
+  }
+}
+```
+
+`event` is `NEW`, `EDITS` or `STATUS_CHANGE`; `status_change` is present only
+for the last. `occurred_at`, `actor` and the nested references are optional on
+receive, and unknown keys are preserved in the log, so a future sender can add
+detail without breaking the receiver.
+
+The receiver **never mutates the Bill**. It checks that `bill.public_id` still
+exists (`404` with a rejected log row otherwise), stores the exact body as an
+inbound `BillUpdateLog` row and returns:
+
+```json
+{
+  "update_id": "4c1f0e3a-9f6e-4a1e-8f0c-2d5b7a9e1c33",
+  "event": "STATUS_CHANGE",
+  "received_at": "2026-11-20T12:30:01+02:00",
+  "duplicate": false,
+  "public_status": "Under Parliamentary Consideration"
+}
+```
+
+`public_status` echoes the citizen-facing status the sender reported, so the
+caller's own log records what was acknowledged.
+
+`update_id` is the idempotency key: posting the same update again returns the
+original receipt with `"duplicate": true` and writes nothing.
+
+Both halves of the exchange are logged in `BillUpdateLog`: the outbound attempt
+(target URL, HTTP status, response excerpt, attempts and error) and the inbound
+receipt or rejection. The table is read-only in the admin (**PWMS → Bill update
+logs**). Swapping `BILL_UPDATE_ENDPOINT_URL` for the real API changes the target,
+not the log.
+
+To watch the exchange end to end, open
+`/pwms/workflows/bills/tracker/` (also linked from the Bills list as **Live
+tracker**). It shows every bill with a horizontal stepper of its **public
+status** — the citizen-facing status its internal state publishes (BRS §12), so
+the four committee stages collapse onto *Under Parliamentary Consideration* —
+marking the statuses the bill has visited, the one it is in now, and those still
+ahead, with the internal stage name beside the badge. Below it is a feed of the
+most recent inbound posts and the last `NEW` / `EDITS` / `STATUS_CHANGE` received
+for each bill. It polls the same view every three seconds, so a bill created in
+PWMS appears once its `NEW` post is received and a status change advances the
+stepper; `EDITS` only refreshes the details. The page adds no bill state of its
+own: it renders the `Bill` table the API publishes and the inbound
+`BillUpdateLog` rows, and approving only marks the log row (the source bill is
+never changed).
+
+Inbound posts wait for **review** before they reach the row: a bill with
+unapproved changes shows a **Review** button, which opens a popup listing the
+incoming post's field changes against the last accepted snapshot (or the whole
+record, when nothing has been accepted yet). **Approve and apply** marks the
+`BillUpdateLog` row `approved`, records the reviewer and time, and adopts that
+snapshot on the tracker — so a `STATUS_CHANGE` moves the stepper and an `EDITS`
+updates the displayed fields only after approval. `NEW` records follow the same
+step. The source `Bill` is never changed by the receiver or the approval; the
+tracker is the receiving side's accepted copy. Approvals are visible in the
+admin log via `reviewed_by` / `reviewed_at`.

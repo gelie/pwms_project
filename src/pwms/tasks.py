@@ -8,11 +8,14 @@ place that knows the queue exists: the work itself lives in the modules that own
 it, so the same code runs from a request, a management command, a test or the
 worker.
 
-Two jobs are queued here:
+Three jobs are queued here:
 
 * **alert email** — one task per ``Notification`` email row, queued by
   ``pwms.notifications.dispatch`` inside the transaction that wrote the alert
   (see :func:`queue_notification_email`);
+* **bill update webhook** — one task per outbound ``BillUpdateLog`` row, queued
+  by ``pwms.services.bill_updates`` inside the transaction that saved the bill
+  (see :func:`queue_bill_update_post`);
 * **scheduled report shares** — one repeating drain queued once with
   ``manage.py send_scheduled_report_shares --queue`` (see
   :func:`queue_scheduled_report_shares`).
@@ -56,6 +59,31 @@ def queue_notification_email(notification_id, *, verbose_name=""):
         notification_id,
         schedule=0,
         verbose_name=(verbose_name or "Alert email")[:VERBOSE_NAME_LIMIT],
+    )
+
+
+# -- bill update webhook -----------------------------------------------------
+@background(schedule=0)
+def post_bill_update(log_id):
+    """
+    Deliver one queued Bill update.
+
+    ``deliver_update`` raises a retryable failure, which is how the queue learns
+    to run this task again; once the attempts are spent the row is already
+    marked ``failed``, so the last run returns quietly.
+    """
+    # Imported lazily: that module imports this one to queue the task.
+    from .services.bill_updates import deliver_update
+
+    return deliver_update(log_id)
+
+
+def queue_bill_update_post(log_id, *, verbose_name=""):
+    """Queue one Bill update post and return the queued :class:`Task`."""
+    return post_bill_update(
+        log_id,
+        schedule=0,
+        verbose_name=(verbose_name or "Bill update")[:VERBOSE_NAME_LIMIT],
     )
 
 

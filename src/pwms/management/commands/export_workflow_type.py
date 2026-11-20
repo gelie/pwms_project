@@ -6,6 +6,11 @@ The export uses natural keys (slugs/names) rather than database primary keys so
 that the file can be imported into another environment or after objects have
 been recreated. The matching import command is ``import_workflow_type``.
 
+The payload carries everything the current ``pwms`` definition models hold:
+the type's owning group, create roles and viewer groups, its owner-capability
+policy, alert audience settings and parent type; each state's public status;
+and each transition's allowed roles and required event types.
+
 Usage:
     python manage.py export_workflow_type --workflow-type Petition
     python manage.py export_workflow_type --workflow-type Petition --output /tmp/petition.json
@@ -19,9 +24,11 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db.models import Q
 from django.utils import timezone
 
-from workflows.models import WorkflowType
+from pwms.models import WorkflowType
 
-FORMAT_VERSION = 1
+#: Bumped from the pre-``pwms`` format: the payload now names the public status,
+#: required event types, viewer groups, owner capabilities and audience settings.
+FORMAT_VERSION = 2
 
 
 class Command(BaseCommand):
@@ -69,9 +76,7 @@ class Command(BaseCommand):
 
     def _get_workflow_type(self, ref: str) -> WorkflowType:
         try:
-            return WorkflowType.objects.get(
-                Q(name__iexact=ref) | Q(slug__iexact=ref)
-            )
+            return WorkflowType.objects.get(Q(name__iexact=ref) | Q(slug__iexact=ref))
         except WorkflowType.DoesNotExist:
             raise CommandError(f"WorkflowType '{ref}' not found.")
         except WorkflowType.MultipleObjectsReturned:
@@ -80,12 +85,16 @@ class Command(BaseCommand):
             )
 
     def _build_payload(self, workflow_type: WorkflowType) -> dict:
-        states = list(workflow_type.states.all().order_by("order", "name"))
+        states = list(
+            workflow_type.states.select_related("public_status").order_by(
+                "order", "name"
+            )
+        )
         transitions = list(
             workflow_type.transitions.all()
             .order_by("order", "name")
             .select_related("from_state", "to_state")
-            .prefetch_related("allowed_roles", "notify_roles")
+            .prefetch_related("allowed_roles", "required_event_types")
         )
 
         return {
@@ -100,12 +109,30 @@ class Command(BaseCommand):
                     workflow_type.group.slug if workflow_type.group_id else None
                 ),
                 "create_roles_slugs": self._roles_slugs(workflow_type.create_roles),
-                "notify_roles_slugs": self._roles_slugs(workflow_type.notify_roles),
+                "viewer_groups_slugs": sorted(
+                    workflow_type.viewer_groups.values_list("slug", flat=True)
+                ),
+                "parent_type_slug": (
+                    workflow_type.parent_type.slug
+                    if workflow_type.parent_type_id
+                    else None
+                ),
+                "owner_can_edit": workflow_type.owner_can_edit,
+                "owner_can_transition": workflow_type.owner_can_transition,
+                "owner_can_delete": workflow_type.owner_can_delete,
+                "owner_can_share": workflow_type.owner_can_share,
+                "owner_can_comment": workflow_type.owner_can_comment,
+                "owner_can_manage": workflow_type.owner_can_manage,
+                "oversight_channel": workflow_type.oversight_channel,
+                "notify_next_actors": workflow_type.notify_next_actors,
+                "notify_named_people": workflow_type.notify_named_people,
             },
             "states": [
                 {
                     "slug": state.slug,
                     "name": state.name,
+                    "public_status_slug": state.public_status.slug,
+                    "public_status_name": state.public_status.name,
                     "description": state.description,
                     "is_initial": state.is_initial,
                     "is_terminal": state.is_terminal,
@@ -124,8 +151,10 @@ class Command(BaseCommand):
                     "allowed_roles_slugs": self._roles_slugs(
                         transition.allowed_roles
                     ),
-                    "notify_roles_slugs": self._roles_slugs(
-                        transition.notify_roles
+                    "required_event_type_slugs": sorted(
+                        transition.required_event_types.values_list(
+                            "slug", flat=True
+                        )
                     ),
                     "requires_comment": transition.requires_comment,
                     "order": transition.order,
@@ -137,7 +166,7 @@ class Command(BaseCommand):
     @staticmethod
     def _roles_slugs(roles) -> list[str]:
         """Return a stable, sorted list of role slugs for a related manager."""
-        return sorted(role.slug for role in roles.all())
+        return sorted(roles.values_list("slug", flat=True))
 
     @staticmethod
     def _resolve_output_path(output: str, slug: str) -> Path:

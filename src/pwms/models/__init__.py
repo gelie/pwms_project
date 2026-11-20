@@ -1,5 +1,6 @@
 from .attachments import Attachment, AttachmentVersion
 from .base import BaseModel
+from .bill_updates import BillUpdateLog
 from .geography import City, Country
 from .groups import Group
 from .meetings import Meeting, MeetingAttendance
@@ -46,6 +47,7 @@ __all__ = [
     "AttachmentVersion",
     "BaseModel",
     "Bill",
+    "BillUpdateLog",
     "BillVersion",
     "Building",
     "City",

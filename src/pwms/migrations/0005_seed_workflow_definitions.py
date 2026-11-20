@@ -195,7 +195,7 @@ def seed_workflow_definitions(apps, schema_editor):
         name=REPORT_TYPE_NAME,
         slug="delegation-report",
         description=(
-            "Delegation report lifecycle (BRS BR02): Awaiting PGIR approval → "
+            "Delegation report lifecycle: Awaiting PGIR approval → "
             "Submitted for tabling → Tabled and referred to Committee → "
             "Closed – House approved."
         ),

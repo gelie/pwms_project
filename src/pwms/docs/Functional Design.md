@@ -614,8 +614,13 @@ Details: [Roadmap § Exports & reporting](./Roadmap%20&%20Planned%20Integrations
   admin; `reset_site_members` clears it in bulk.
 - **Committee scraping** (Parliament website) to import committee members.
 - **Notification / deadline jobs** — referral deadline reminders and expiry
-  (email delivered) and the scheduled report-share drain; delegate expirations,
-  overdue alerts and event-status jobs still to be repointed to `pwms.models`.
+  (email delivered) and the scheduled report-share drain. The old delegate
+  expiration, overdue-workflow and event-status jobs were retired with their
+  models; overdue records are shown on the dashboard, and proactive workflow
+  deadline mail would be a new notification-rule event rather than a repoint.
+- **Workflow definition tooling** — export/import a type as JSON (format 2),
+  import states from CSV with public-status mapping, generate diagrams, and
+  validate membership integrity against the current `GroupMembership` data.
 - **Workflow tooling** — state import, workflow-type import/export, the meeting
   CSV/XLSX import (`import_meetings`), diagrams.
 - **Maintenance** — validate memberships, group-access backfill, bill versions,

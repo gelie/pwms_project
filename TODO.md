@@ -11,6 +11,20 @@ reports 97 findings (26 auto-fixable), `views.py` 4 819 lines,
 
 ## Recently done
 
+- [x] **Bill update webhook + audit log.** Every Bill create, edit and status
+      change records an outbound `BillUpdateLog` row and queues
+      `pwms.tasks.post_bill_update`, which posts the snapshot to
+      `BILL_UPDATE_ENDPOINT_URL` (default: the in-project testing receiver at
+      `POST /api/v1/bill-updates/`, authenticated with
+      `BILL_UPDATE_WEBHOOK_TOKEN`). Failures retry under `MAX_ATTEMPTS` and stay
+      readable in the read-only admin log; the receiver is idempotent on
+      `update_id`. Swap the URL for the partner API later — the log shape does
+      not change. A demo page at `/pwms/workflows/bills/tracker/` lists every
+      bill with a public-status stepper and a feed of inbound posts, polling
+      every 3 seconds. Inbound `NEW` / `STATUS_CHANGE` / `EDITS` posts wait for
+      review: the popup diffs them against the last accepted snapshot and
+      **Approve and apply** adopts it (recording reviewer and time) without
+      touching the source bill.
 - [x] **CI exists.** `.github/workflows/ci.yml` runs three gates — `ruff check` +
       `ruff format --check`, `makemigrations --check --dry-run` then `migrate`,
       and the full suite under `coverage`. The earlier "no CI at all" note is
@@ -110,7 +124,7 @@ reports 97 findings (26 auto-fixable), `views.py` 4 819 lines,
       register, status and document alerts, CSV/XLSX import & export, and REST
       endpoints (list/detail, "my meetings by membership", attendance, minutes).
       The legacy `update_event_statuses` command (which imported the removed
-      `workflows.models.Event`) is superseded by it and can be retired.
+      `workflows.models.Event`) has been retired.
 - [ ] **Motions and Questions instruments** — named as "planned", not started.
 - [ ] **Web UI gaps** — Share / Comment / Manage are RBAC-gated but still
       admin-side (the API exposes view/edit/delete and the workflow actions, not
@@ -150,9 +164,10 @@ reports 97 findings (26 auto-fixable), `views.py` 4 819 lines,
 - [ ] **Oracle sync coverage** — `sync_users_oracle` resolves Oracle org pairs
       onto the curated tree through `group_aliases.csv` and leaves unresolved
       pairs untouched; `seed_structure` / `audit_group_mapping` keep that table
-      current. Membership collision handling is still "not implemented yet"
-      (`validate_memberships.py`), and identity reconciliation is a known soft
-      spot.
+      current. `validate_memberships` now checks the current `GroupMembership`
+      rows and can end duplicate active rows with `--fix-duplicates`; group-name
+      collisions are prevented by the `(name, parent)` constraint. Identity
+      reconciliation remains a known soft spot.
 
 ---
 

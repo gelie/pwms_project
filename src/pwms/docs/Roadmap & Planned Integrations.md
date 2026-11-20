@@ -34,6 +34,10 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
   sync (`populate_sites`) into local mirror tables
 - External Django-Ninja API (scoped app keys, access/refresh tokens, usage logs,
   per-key throttling) + OpenAPI (Swagger), admin, migrations, tests
+- Outbound Bill update webhook (`NEW` / `EDITS` / `STATUS_CHANGE`) with a durable
+  `BillUpdateLog` audit trail, queued after the save and retried by the worker;
+  until the partner API exists it posts to the in-project testing receiver at
+  `POST /api/v1/bill-updates/`
 
 ---
 
@@ -141,10 +145,10 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
 > a transition is the named people, whoever acts next, and the type's officers by
 > email. Add rules per type to widen it.
 >
-> Known gap: `export_workflow_type` / `import_workflow_type` still import the
-> retired `workflows` app and do not carry notification rules; they need
-> repointing to `pwms.models` (see [Management Commands](./Management%20Commands.md))
-> before rules can round-trip through them.
+> Known gap: `export_workflow_type` / `import_workflow_type` now target
+> `pwms.models` and carry the type's group, roles, capabilities and audience
+> settings, but not its `NotificationRule` rows; rules still need a payload
+> section before they can round-trip.
 
 **Acceptance:** the people a record names, whoever acts next and any role a
 `NotificationRule` names receive the alert on the channels declared; officers get
@@ -451,7 +455,7 @@ free-text filters, a configurable **week start**, a *Next up* strip and a JSON
 feed (`meeting_calendar_json`). Meetings can also be **imported and exported** as
 CSV/XLSX (the web *Import* page, or `manage.py import_meetings`) — see
 [Meetings Import & Export](./Meetings%20Import%20%26%20Export.md). The legacy
-`update_event_statuses` command is superseded by it and can be retired.
+`update_event_statuses` command has been retired.
 
 ---
 

@@ -148,6 +148,19 @@ urlpatterns = [
     ),
     # Bills
     path("workflows/bills/", views.bills, name="bills"),
+    # Demo page that watches the Bill update webhook: every bill with its
+    # lifecycle stepper, re-read on an HTMX poll.
+    path("workflows/bills/tracker/", views.bill_tracker, name="bill_tracker"),
+    path(
+        "workflows/bills/tracker/<uuid:update_id>/review/",
+        views.bill_update_review,
+        name="bill_update_review",
+    ),
+    path(
+        "workflows/bills/tracker/<uuid:update_id>/approve/",
+        views.bill_update_approve,
+        name="bill_update_approve",
+    ),
     path("workflows/bills/new/", views.bill_create, name="bill_create"),
     # The HTMX hint under the form's B-number field: which SharePoint folder the
     # typed number will file into (before a bill even exists to retry from).
