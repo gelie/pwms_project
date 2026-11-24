@@ -19,6 +19,6 @@ flowchart TD
     s0 -.->|"Postpone meeting"| s3
     s3 -->|"Reschedule meeting"| s0
     s0 -.->|"Cancel meeting"| s4
-    s1 -.->|"Cancel meeting (in progress)"| s4
+    s1 -.->|"Cancel meeting (in<br/>progress)"| s4
     s3 -.->|"Cancel meeting (postponed)"| s4
 ```

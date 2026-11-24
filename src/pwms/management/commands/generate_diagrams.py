@@ -1,5 +1,7 @@
 import os
+import textwrap
 from html import escape as escape_html
+from itertools import pairwise
 
 import graphviz
 from django.conf import settings
@@ -230,7 +232,11 @@ class Command(BaseCommand):
         show_legend: bool = True,
     ) -> graphviz.Digraph:
         """Create a print-ready graphviz Digraph for a workflow type."""
-        states = list(workflow_type.states.all())
+        states = list(
+            workflow_type.states.select_related("public_status").order_by(
+                "order", "name"
+            )
+        )
         transitions = list(workflow_type.transitions.all())
 
         initial_states = [s for s in states if s.is_initial]
@@ -247,12 +253,14 @@ class Command(BaseCommand):
         # === GLOBAL PAGE + TYPOGRAPHY ===
         dot.attr(
             rankdir="TB",
-            ranksep="0.75",
-            nodesep="0.45",
+            ranksep="0.85",
+            nodesep="0.55",
             bgcolor="white",
             pad="0.5",
             compound="true",  # Better cluster support
-            splines="spline",
+            # Polyline routing keeps the long withdrawal/loop edges from
+            # sweeping across the whole page the way spline routing does.
+            splines="line",
         )
 
         # Global node styling: thin borders in the node's own colour read far
@@ -296,6 +304,12 @@ class Command(BaseCommand):
             for state in states:
                 self._add_state_node(dot, state, include_descriptions)
 
+        # Failed endings (Withdrawn, Lapsed, …) share one rank so a state with
+        # no incoming edges (Lapsed often has none) does not float up beside
+        # the initial state.
+        if not cluster_states:
+            self._add_failed_terminal_ranks(dot, terminal_states)
+
         # Anchor the header above the entry point so it stays on top.
         anchor = initial_states[0] if initial_states else states[0]
         dot.edge("header", anchor.name, style="invis")
@@ -306,7 +320,7 @@ class Command(BaseCommand):
 
         # Add legend + provenance caption
         if show_legend:
-            self._add_legend(dot, initial_states, regular_states, terminal_states)
+            self._add_legend(dot, workflow_type, states)
         self._add_footer(dot, workflow_type, states, transitions)
 
         return dot
@@ -411,25 +425,15 @@ class Command(BaseCommand):
                 for state in group_states:
                     self._add_state_node(cluster, state, include_descriptions)
 
-    def _add_legend(self, dot, initial_states, regular_states, terminal_states):
-        """Add a legend that mirrors the workflow's own role colours.
+    def _add_legend(self, dot, workflow_type, states):
+        """Add a legend that mirrors the colours the nodes actually carry.
 
-        Colours come from the states actually in this workflow rather than the
-        palette defaults, because ``State.color`` is curated per workflow (for
-        example the amber-to-dark-green progression used by Delegation Report).
-        The legend therefore always matches the nodes it explains.
+        Most workflow types group their states into initial / in progress /
+        terminal roles, so the three role colours explain the diagram. The Bill
+        workflow instead carries a curated colour per public stage (Introduced,
+        Portfolio Committee, National Assembly, …), so its legend lists those
+        stages — one swatch per distinct node colour, in workflow order.
         """
-
-        def representative(states, role):
-            for state in states:
-                # Red marks a failed ending, so it never stands for "Closed".
-                if (
-                    state.color
-                    and state.color.lower() not in DEFAULT_STATE_COLORS
-                    and state.color.lower() != state_colors.UNSUCCESSFUL
-                ):
-                    return state.color
-            return PALETTE[role]["fill"]
 
         def swatch(color: str) -> str:
             return f'<TD WIDTH="14" HEIGHT="11" BGCOLOR="{color}"></TD>'
@@ -437,14 +441,52 @@ class Command(BaseCommand):
         def item(text: str) -> str:
             return (
                 '<TD ALIGN="LEFT">'
-                f'<FONT POINT-SIZE="9" COLOR="{PALETTE["muted"]}">{text}</FONT></TD>'
+                f'<FONT POINT-SIZE="9" COLOR="{PALETTE["muted"]}">'
+                f"{escape_html(text)}</FONT></TD>"
             )
 
-        entries = (
-            (representative(initial_states, "initial"), "Initial"),
-            (representative(regular_states, "regular"), "In progress"),
-            (representative(terminal_states, "terminal"), "Terminal"),
-        )
+        if self._is_bill_workflow(workflow_type):
+            entries = self._bill_stage_legend_entries(states)
+            heading = "Public stages"
+        else:
+            initial_states = [s for s in states if s.is_initial]
+            regular_states = [
+                s for s in states if not s.is_initial and not s.is_terminal
+            ]
+            terminal_states = [s for s in states if s.is_terminal]
+
+            def representative(group_states, role):
+                for state in group_states:
+                    # Red marks a failed ending, so it never stands for "Closed".
+                    if (
+                        state.color
+                        and state.color.lower() not in DEFAULT_STATE_COLORS
+                        and state.color.lower() != state_colors.UNSUCCESSFUL
+                    ):
+                        return state.color
+                return PALETTE[role]["fill"]
+
+            entries = (
+                (representative(initial_states, "initial"), "Initial"),
+                (representative(regular_states, "regular"), "In progress"),
+                (representative(terminal_states, "terminal"), "Terminal"),
+            )
+            heading = "Legend"
+
+        # Four entries (swatch + label) per row keeps eight public stages from
+        # turning the legend into a wide ribbon; the three-role legend still
+        # fits on a single row.
+        entries_per_row = 4
+        cells_per_row = entries_per_row * 2
+        rows = []
+        for start in range(0, len(entries), entries_per_row):
+            row = [
+                f"{swatch(color)}{item(text)}"
+                for color, text in entries[start : start + entries_per_row]
+            ]
+            row += ["<TD></TD><TD></TD>"] * (entries_per_row - len(row))
+            rows.append("<TR>" + "".join(row) + "</TR>\n")
+        rows_html = "".join(rows)
 
         # Cells are kept on single lines because Graphviz renders the leading
         # indentation inside a <TD> as literal non-breaking spaces.
@@ -453,16 +495,13 @@ class Command(BaseCommand):
             f'<TABLE BORDER="1" COLOR="{PALETTE["rule"]}" '
             f'BGCOLOR="{PALETTE["surface"]}" CELLBORDER="0" CELLSPACING="8" '
             'CELLPADDING="4">\n'
-            '<TR><TD COLSPAN="7" ALIGN="LEFT">'
-            f'<FONT POINT-SIZE="9" COLOR="{PALETTE["muted"]}"><B>Legend</B></FONT>'
-            "</TD></TR>\n"
-            "<TR>"
-            f"{swatch(entries[0][0])}{item(entries[0][1])}"
-            f"{swatch(entries[1][0])}{item(entries[1][1])}"
-            f"{swatch(entries[2][0])}{item(entries[2][1])}"
-            f'<TD ALIGN="LEFT"><FONT POINT-SIZE="9" COLOR="{PALETTE["comment"]}">'
-            "- - - requires comment</FONT></TD>"
-            "</TR>\n"
+            f'<TR><TD COLSPAN="{cells_per_row}" ALIGN="LEFT">'
+            f'<FONT POINT-SIZE="9" COLOR="{PALETTE["muted"]}">'
+            f"<B>{heading}</B></FONT></TD></TR>\n"
+            f"{rows_html}"
+            f'<TR><TD COLSPAN="{cells_per_row}" ALIGN="LEFT">'
+            f'<FONT POINT-SIZE="9" COLOR="{PALETTE["comment"]}">'
+            "- - - requires comment</FONT></TD></TR>\n"
             "</TABLE>\n"
             ">"
         )
@@ -480,6 +519,88 @@ class Command(BaseCommand):
                 color="transparent",
                 penwidth="0",
                 margin="0",
+            )
+
+    @staticmethod
+    def _is_bill_workflow(workflow_type) -> bool:
+        """Whether this type is the Bill machine (the one with stage colours)."""
+        name = (workflow_type.name or "").strip().casefold()
+        slug = (workflow_type.slug or "").strip().casefold()
+        return (
+            name == "bill"
+            or name.startswith(("bill (", "bill("))
+            or slug == "bill"
+            or slug.startswith("bill-")
+        )
+
+    @staticmethod
+    def _bill_stage_legend_entries(states):
+        """One ``(colour, public stage)`` entry per distinct node colour.
+
+        Several internal Bill states can share a public stage and colour — the
+        four committee states all publish as *Portfolio Committee*, for example
+        — so duplicates are collapsed and the stage first in workflow order
+        gives the label.
+        """
+        entries = []
+        seen = set()
+        for state in sorted(states, key=lambda item: (item.order, item.name)):
+            color = state.color
+            if not color or color.lower() in DEFAULT_STATE_COLORS:
+                if state.is_initial:
+                    color = PALETTE["initial"]["fill"]
+                elif state.is_terminal:
+                    color = PALETTE["terminal"]["fill"]
+                else:
+                    color = PALETTE["regular"]["fill"]
+
+            key = color.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+
+            status = getattr(state, "public_status", None)
+            entries.append((color, status.name if status is not None else state.name))
+        return entries
+
+    @staticmethod
+    def _wrap_label(text: str, width: int) -> str:
+        """Wrap plain label text into Graphviz/Mermaid line breaks."""
+        if not text:
+            return ""
+        return "\\n".join(
+            textwrap.wrap(text, width=width, break_long_words=False) or [text]
+        )
+
+    @staticmethod
+    def _add_failed_terminal_ranks(dot, terminal_states):
+        """Place failed endings (Withdrawn, Lapsed, Cancelled) on one rank.
+
+        A failed ending with no incoming transitions (Lapsed is often declared
+        but never used) has no rank of its own and would otherwise float beside
+        the initial state. Rank=same ties them together, and the invisible
+        chain keeps them adjacent rather than spread across the page.
+        """
+        failed = [
+            state
+            for state in terminal_states
+            if state_colors.is_unsuccessful_name(state.name)
+        ]
+        if len(failed) < 2:
+            return
+
+        with dot.subgraph() as same_rank:
+            same_rank.attr(rank="same")
+            for state in failed:
+                same_rank.node(state.name)
+
+        for left, right in pairwise(failed):
+            dot.edge(
+                left.name,
+                right.name,
+                style="invis",
+                constraint="false",
+                weight="20",
             )
 
     def _add_footer(self, dot, workflow_type, states, transitions):
@@ -520,12 +641,12 @@ class Command(BaseCommand):
             border = PALETTE[role]["border"]
             text = PALETTE[role]["text"]
 
-        label = state.name
+        label = self._wrap_label(str(state.name), 22)
         if include_descriptions and state.description:
             desc = " ".join(state.description.split())
             if len(desc) > 80:
                 desc = desc[:77] + "..."
-            label = f"{label}\\n\\n{desc}"
+            label = f"{label}\\n\\n{self._wrap_label(desc, 32)}"
 
         if role == "initial":
             shape, style, peripheries = "ellipse", "filled", "1"
@@ -588,15 +709,22 @@ class Command(BaseCommand):
         show_roles: bool = False,
         include_descriptions: bool = False,
     ):
-        """Add a transition edge; commenting guards render as amber dashes."""
-        label = transition.name
+        """Add a transition edge; commenting guards render as amber dashes.
+
+        Edges into an unsuccessful ending (Withdrawn, Lapsed, Cancelled) are
+        drawn in a lighter tone so the main lifecycle path stands out; the
+        amber dashes of a comment guard still take precedence.
+        """
+        source = transition.from_state
+        target = transition.to_state
+        label = self._wrap_label(str(transition.name), 26)
 
         if include_descriptions and transition.requires_comment:
             label += "\\n(comment required)"
 
         if show_roles and transition.allowed_roles.exists():
             roles = ", ".join(role.name for role in transition.allowed_roles.all())
-            label += f"\\n[{roles}]"
+            label += f"\\n[{self._wrap_label(roles, 30)}]"
 
         edge_attrs = {
             "label": label,
@@ -614,8 +742,16 @@ class Command(BaseCommand):
                     "fontcolor": PALETTE["comment"],
                 }
             )
+        elif target.is_terminal and state_colors.is_unsuccessful_name(str(target.name)):
+            edge_attrs.update(
+                {
+                    "color": PALETTE["muted"],
+                    "fontcolor": PALETTE["muted"],
+                    "penwidth": "1.0",
+                }
+            )
 
-        dot.edge(transition.from_state.name, transition.to_state.name, **edge_attrs)
+        dot.edge(source.name, target.name, **edge_attrs)
 
     # -- Mermaid export ----------------------------------------------------
     @staticmethod
@@ -667,12 +803,12 @@ class Command(BaseCommand):
             else:
                 shape, css_class = '["{}"]', "regular"
 
-            label = self._mermaid_escape(state.name)
+            label = self._mermaid_escape(self._wrap_label(str(state.name), 22))
             if include_descriptions and state.description:
                 desc = " ".join(state.description.split())
                 if len(desc) > 80:
                     desc = desc[:77] + "..."
-                label += f"<br/>{self._mermaid_escape(desc)}"
+                label += f"<br/>{self._mermaid_escape(self._wrap_label(desc, 32))}"
 
             lines.append(
                 f"    {state_ids[state.pk]}{shape.format(label)}:::{css_class}"
@@ -684,12 +820,12 @@ class Command(BaseCommand):
             if source is None or target is None:
                 continue
 
-            label = self._mermaid_escape(transition.name)
+            label = self._mermaid_escape(self._wrap_label(str(transition.name), 26))
             if include_descriptions and transition.requires_comment:
                 label += "<br/>(comment required)"
             if show_roles and transition.allowed_roles.exists():
                 roles = ", ".join(role.name for role in transition.allowed_roles.all())
-                label += f"<br/>[{self._mermaid_escape(roles)}]"
+                label += f"<br/>[{self._mermaid_escape(self._wrap_label(roles, 30))}]"
 
             arrow = "-.->" if transition.requires_comment else "-->"
             lines.append(f'    {source} {arrow}|"{label}"| {target}')

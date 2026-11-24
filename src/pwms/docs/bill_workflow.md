@@ -14,31 +14,39 @@ flowchart TD
     s2["Public Participation"]:::regular
     s3["Committee Deliberation"]:::regular
     s4["Committee Report"]:::regular
-    s5["House Debate and Voting"]:::regular
-    s6["NCOP Consideration"]:::regular
-    s7["Mediation / Reconsideration"]:::regular
-    s8["Awaiting Presidential Assent"]:::regular
-    s9["Referred Back / Constitutional Review"]:::regular
-    s10[["Signed into Law"]]:::terminal
-    s11[["Withdrawn"]]:::terminal
+    s5["House Debate and<br/>Voting"]:::regular
+    s6["Referred to Select<br/>Committee"]:::regular
+    s7["NCOP Consideration"]:::regular
+    s8["Mediation /<br/>Reconsideration"]:::regular
+    s9["Awaiting Presidential<br/>Assent"]:::regular
+    s10["Referred Back /<br/>Constitutional Review"]:::regular
+    s11[["Signed into Law"]]:::terminal
+    s12[["Withdrawn"]]:::terminal
+    s13[["Lapsed"]]:::terminal
+    s8 -->|"Lapsed"| s13
+    s8 -->|"Return to NCOP"| s7
+    s7 -->|"Send Amendments to NA"| s5
+    s5 -->|"Send for Assent"| s9
+    s6 -->|"Send to NCOP for debate &amp;<br/>voting"| s7
+    s1 -->|"Start Committee<br/>Consideration"| s3
+    s3 -->|"Withdraw bill (committee<br/>deliberation)"| s12
+    s1 -->|"Withdraw bill (referred to<br/>committee)"| s12
+    s6 -->|"Withdraw Bill (SC)"| s12
     s0 -->|"Refer to committee"| s1
     s1 -->|"Open public participation"| s2
-    s2 -->|"Start committee deliberation"| s3
+    s2 -->|"Start committee<br/>deliberation"| s3
     s3 -->|"Adopt committee report"| s4
-    s4 -->|"Table for House debate"| s5
+    s4 -->|"Send to the NA"| s5
+    s0 -->|"Withdraw bill"| s12
     s5 -->|"Pass to NCOP"| s6
-    s6 -->|"NCOP agrees – refer for assent"| s8
-    s6 -->|"NCOP disagrees – refer to mediation"| s7
-    s7 -->|"Return to House"| s5
-    s7 -->|"Mediation resolved – refer for assent"| s8
-    s8 -->|"Assent – signed into law"| s10
-    s8 -->|"Referred back by President"| s9
-    s9 -->|"Reconsider and amend"| s5
-    s9 -->|"Constitutional concerns resolved – assent"| s10
-    s0 -.->|"Withdraw bill"| s11
-    s1 -.->|"Withdraw bill (referred to committee)"| s11
-    s2 -.->|"Withdraw bill (public participation)"| s11
-    s3 -.->|"Withdraw bill (committee deliberation)"| s11
-    s4 -.->|"Withdraw bill (committee report)"| s11
-    s5 -.->|"Withdraw bill (House debate)"| s11
+    s7 -->|"NCOP agrees – refer for<br/>assent"| s9
+    s7 -->|"NCOP disagrees – refer to<br/>mediation"| s8
+    s8 -->|"Return to NA"| s5
+    s9 -->|"Assent – signed into law"| s11
+    s9 -->|"Referred back by President"| s10
+    s10 -->|"Reconsider and amend"| s1
+    s10 -->|"Constitutional concerns<br/>resolved – assent"| s11
+    s2 -->|"Withdraw bill (public<br/>participation)"| s12
+    s4 -->|"Withdraw bill (committee<br/>report)"| s12
+    s5 -->|"Withdraw bill (House<br/>debate)"| s12
 ```
