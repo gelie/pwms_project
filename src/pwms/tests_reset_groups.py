@@ -6,6 +6,7 @@ is not group data intact (users, roles, workflow types) while resolving the two
 ``PROTECT`` references that would otherwise block the delete.
 """
 
+from datetime import timedelta
 from io import StringIO
 from unittest.mock import patch
 
@@ -14,9 +15,11 @@ from django.contrib.contenttypes.models import ContentType
 from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
+from django.utils import timezone
 
 from .models import (
     Bill,
+    DutyDelegation,
     Group,
     GroupMembership,
     Role,
@@ -37,6 +40,13 @@ class ResetGroupsTests(TestCase):
         )
         cls.membership = GroupMembership.objects.create(
             user=cls.user, group=cls.group, role=cls.role
+        )
+        cls.delegate = User.objects.create_user(username="rg-delegate", password="pw")
+        cls.delegation = DutyDelegation.objects.create(
+            group=cls.group,
+            delegator=cls.user,
+            delegate=cls.delegate,
+            end_date=timezone.localdate() + timedelta(days=7),
         )
         cls.workflow_type = WorkflowType.objects.create(
             name="RG Workflow", group=cls.group
@@ -66,6 +76,7 @@ class ResetGroupsTests(TestCase):
         self.assertTrue(Group.objects.filter(pk=self.group.pk).exists())
         self.assertTrue(Group.objects.filter(pk=self.child.pk).exists())
         self.assertTrue(GroupMembership.objects.filter(pk=self.membership.pk).exists())
+        self.assertTrue(DutyDelegation.objects.filter(pk=self.delegation.pk).exists())
         self.assertTrue(WorkflowReferral.objects.exists())
         self.assertEqual(
             WorkflowType.objects.get(pk=self.workflow_type.pk).group_id,
@@ -84,6 +95,7 @@ class ResetGroupsTests(TestCase):
         self.assertIn("Groups reset", out.getvalue())
         self.assertFalse(Group.objects.exists())
         self.assertFalse(GroupMembership.objects.exists())
+        self.assertFalse(DutyDelegation.objects.exists())
         self.assertFalse(WorkflowReferral.objects.exists())
         # Workflow types survive; only their owning group is unpointed.
         self.assertIsNone(WorkflowType.objects.get(pk=self.workflow_type.pk).group_id)
@@ -101,6 +113,7 @@ class ResetGroupsTests(TestCase):
 
         self.assertIn("groups and their references untouched", out.getvalue())
         self.assertFalse(GroupMembership.objects.exists())
+        self.assertFalse(DutyDelegation.objects.exists())
         self.assertTrue(Group.objects.filter(pk=self.group.pk).exists())
         self.assertTrue(WorkflowReferral.objects.exists())
         self.assertEqual(

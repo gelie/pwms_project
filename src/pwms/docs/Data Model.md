@@ -15,6 +15,11 @@ erDiagram
     Group ||--o{ GroupMembership : members
     Role ||--o{ GroupMembership : "role held"
     User ||--o{ Role : "has via memberships"
+    User ||--o{ DutyDelegation : "delegates duties"
+    User ||--o{ DutyDelegation : "stands in"
+    Group ||--o{ DutyDelegation : "duties delegated in"
+    GroupMembership ||--o{ auditlog.LogEntry : registered
+    DutyDelegation ||--o{ auditlog.LogEntry : registered
 
     WorkflowType ||--o{ State : states
     WorkflowType ||--o{ Transition : transitions
@@ -122,7 +127,13 @@ Hierarchical organisational unit:
 | `parent` (Tree FK) | MPTT hierarchy |
 | `description`, `is_active`, `contact_email`, `contact_phone`, `location`, `start_date`, `end_date` | metadata |
 
-Helpers: `get_full_path()`, `get_active_members()`.
+Helpers: `get_full_path()`, `get_active_members()`, `can_be_managed_by(user)`.
+The last is the committee self-administration rule: only a `committee` group is
+self-administered, and only by someone holding the `Committee Secretary` role in
+that committee (or a member standing in for them under a `DutyDelegation`).
+
+Registered with `auditlog`, so a committee secretary's edits to the group's own
+details leave CREATE/UPDATE entries with actor and field diffs.
 
 Migration `0023_seed_executive_groups_and_roles` seeds the executive branch:
 `Government of RSA` (type `executive`) with one child per Cabinet ministry (type
@@ -155,6 +166,55 @@ Users hold roles **within** groups, over a period:
 | `updated_by` (FK `User`) | who last edited |
 
 Unique on `(user, group, role, start_date)`; `clean()` validates dates.
+Registered with `auditlog`: every create/update/delete keeps an entry with the
+actor and a before/after diff, so role, dates and the active flag are all
+traceable. (`updated_by` alone records only the last editor.)
+
+**Soft-delete-only.** `delete()` and `QuerySet.delete()` set `is_active=False`;
+the row is never removed by application code. The `user` and `group` FKs are
+`PROTECT`, so deleting a user or group cannot cascade a membership away, and the
+admin disables delete. Use **End** (or `is_active=False`) to remove someone from
+a group; `reset_groups` is the explicit maintenance command that hard-deletes.
+
+Auditlog captures model saves and deletes, not bulk queryset updates; the Oracle
+sync therefore ends memberships row by row so each lost appointment is recorded.
+
+A current delegation is exposed as ``current_delegation`` and shown beside the
+member on the group page. It never changes ``is_active``: a member who delegates
+duties is still a member, and the row continues to say so.
+
+### `DutyDelegation(BaseModel)`
+
+A member's duties in one group, lent to another active user until a stated date:
+
+| Field | Notes |
+| --- | --- |
+| `group` (FK `Group`, related `duty_delegations`) | scope of the delegation |
+| `delegator` (FK `User`, related `duties_delegated`) | the member whose duties travel |
+| `delegate` (FK `User`, related `duties_received`) | the person standing in; must not currently belong to the group or already be a delegate there, and must match the delegator's kind (MP to MP, staff to staff) |
+| `start_date`, `end_date`, `is_active`, `notes` | period and record |
+| `created_by` (FK `User`) | who recorded it (normally the committee secretary) |
+
+`DutyDelegation.objects.current()` returns the rows covering today. While a
+row is current, `User.delegated_memberships()` yields the delegator's active
+memberships in that group, so role checks (`has_role_in_group`,
+`can_manage_permissions`, workflow `can`) treat the delegate as holding the
+delegator's roles there — even when the delegate belongs to another group.
+Members need not sign in: the committee secretary records the delegation on
+their behalf. The delegate must sit outside the group and must not already be an
+active delegate there. The membership itself stays active: delegation is
+additive, and the delegate holds the duties alongside the delegator. Kind is
+matched, reading both the flags and the ERP's `employee_type` (the Oracle sync
+sets `employee_type='staff'` without setting `is_staff_member`). Delegation is
+deliberately narrow: one group, one member's duties, and always time-bounded.
+`clean()` rejects self-delegation and requires the delegator to be an active
+member of the group while the row is live.
+Registered with `auditlog`, so recording a delegation and ending one early both
+leave a CREATE/UPDATE entry (actor included).
+
+**Soft-delete-only** like `GroupMembership`: `delete()`/`QuerySet.delete()` set
+`is_active=False`, the `group`/`delegator`/`delegate` FKs are `PROTECT`, and the
+admin disables delete. Only `reset_groups` hard-deletes rows.
 
 ---
 

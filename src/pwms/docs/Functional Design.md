@@ -36,7 +36,30 @@ directory holds credentials only — authorisation stays with
 - **Roles** (`Role`) carry coarse workflow capability flags.
 - **GroupMembership** ties user + group + role over a time window (start/end
   dates, active flag) so historical memberships are preserved.
+- **Committee self-administration.** A `committee` group is administered by its
+  own **Committee Secretary**: an active holder of that role in the committee may
+  edit the group's details and add, change or end its memberships from the group
+  page. The same rule is enforced in the views through the shared permission
+  resolver (`Group.can_be_managed_by`), so a secretary in one committee cannot
+  administer another or reshape the tree, and the role does not make its holder a
+  global administrator.
+- **Duty delegation.** The committee secretary records a member's delegation
+  on their behalf (members need not sign in): an active member's duties in the
+  group are lent to another active PWMS user until a chosen date
+  (`DutyDelegation`). The stand-in must sit **outside** the group and must not
+  already be acting as a delegate there. Kind is matched too: Members of
+  Parliament delegate only to other Members of Parliament, and staff only to
+  staff. While the delegation is current the delegate carries the delegator's
+  roles in the group — including the committee secretary's management powers if
+  those are what was delegated — and it stops counting at the end date or when
+  the member or a committee secretary ends it early. The membership itself stays
+  active: delegation is additive, and the group page shows who is standing in
+  alongside the member rather than pretending the member has left.
 - Lifecycle: members leave/join; memberships are deactivated rather than deleted.
+  Memberships and delegations are **soft-delete-only**: `delete()` deactivates
+  the row, their user/group FKs are `PROTECT` so a cascade cannot remove them,
+  and the admin disables hard delete. `reset_groups` is the explicit exception
+  for a development/UAT wipe.
 
 **Functional rules**
 

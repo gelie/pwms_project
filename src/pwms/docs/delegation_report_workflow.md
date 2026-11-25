@@ -11,9 +11,9 @@ flowchart TD
     classDef terminal fill:#14532d,stroke:#0d3a20,color:#FFFFFF,stroke-width:1px
     s0(["Awaiting PGIR approval"]):::initial
     s1["Submitted for tabling"]:::regular
-    s2["Tabled and referred to Committee"]:::regular
-    s3[["Closed – House approved"]]:::terminal
+    s2["Tabled and referred to<br/>Committee"]:::regular
+    s3[["Closed – House<br/>approved"]]:::terminal
     s0 -->|"Submit for tabling"| s1
-    s1 -->|"Table and refer to Committee"| s2
+    s1 -->|"Table and refer to<br/>Committee"| s2
     s2 -->|"Close – House approved"| s3
 ```

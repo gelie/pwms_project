@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}
+  {% if membership %}Edit membership{% else %}Add member{% endif %} – {{ group.name }}
+{% endblock title %}
+{% block extra_head %}{{ form.media }}{% endblock extra_head %}
+{% block content %}
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:all_groups" %}">All Groups</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:group_detail" group.pk %}">{{ group.name }}</a>
+      </li>
+      <li class="breadcrumb-item active" aria-current="page">
+        {% if membership %}Edit membership{% else %}Add member{% endif %}
+      </li>
+    </ol>
+  </nav>
+  <h1 class="mb-3">
+    {% if membership %}Edit membership{% else %}Add member{% endif %}
+  </h1>
+  <p class="text-muted">{{ group.name }}</p>
+  <form method="post" class="input-form" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger" role="alert">
+        {% for error in form.non_field_errors %}<p class="mb-0">{{ error }}</p>{% endfor %}
+      </div>
+    {% endif %}
+    <div class="row g-3 mb-4">
+      {% include "pwms/_picker_field.html" with field=form.user search_url="pwms:user_search" placeholder="Type to search people..." selected_name=form.picker_labels.user wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_form_field.html" with field=form.role wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_form_field.html" with field=form.start_date wrapper_class="col-12 col-md-3" %}
+      {% include "pwms/_form_field.html" with field=form.end_date wrapper_class="col-12 col-md-3" %}
+      {% include "pwms/_form_field.html" with field=form.is_active wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_form_field.html" with field=form.notes wrapper_class="col-12" %}
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <button class="btn btn-primary" type="submit">
+        {% if membership %}Save changes{% else %}Add member{% endif %}
+      </button>
+      <a class="btn btn-secondary"
+         href="{% url "pwms:group_detail" group.pk %}">Cancel</a>
+    </div>
+  </form>
+{% endblock content %}

@@ -2901,3 +2901,9 @@ body.diagram-lightbox-open {
     background: #f1f3f5;
     color: #adb5bd;
 }
+
+#group-details>tbody>tr>th,
+#group-details>tbody>tr>td {
+    /*color: #fefefe;*/
+    background-color: var(--theme-lightest-green);
+}

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Delegate duties – {{ group.name }}{% endblock title %}
+{% block extra_head %}{{ form.media }}{% endblock extra_head %}
+{% block content %}
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:all_groups" %}">All Groups</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:group_detail" group.pk %}">{{ group.name }}</a>
+      </li>
+      <li class="breadcrumb-item active" aria-current="page">Delegate duties</li>
+    </ol>
+  </nav>
+  <h1 class="mb-3">Delegate duties</h1>
+  <p class="text-muted">{{ group.name }}</p>
+  <div class="alert alert-info" role="alert">
+    Record a member's delegation here on their behalf. For the period you choose,
+    the stand-in carries that member's roles in this group and sees the work that
+    would reach them. The stand-in must sit outside this group and be a peer of
+    the member: Members of Parliament delegate only to Members of Parliament, and
+    staff only to staff. Current group members and people already acting as
+    delegates here are not offered. The delegation lapses at the end of the day
+    you pick, and the member or a committee secretary can end it sooner.
+  </div>
+  <form method="post" class="input-form" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger" role="alert">
+        {% for error in form.non_field_errors %}<p class="mb-0">{{ error }}</p>{% endfor %}
+      </div>
+    {% endif %}
+    {% url "pwms:group_member_search" group.pk as group_member_search_url %}
+    {% url "pwms:duty_delegate_search" group.pk as duty_delegate_search_url %}
+    <div class="row g-3 mb-4">
+      {% include "pwms/_picker_field.html" with field=form.delegator search_url_value=group_member_search_url placeholder="Type to search this group's members..." selected_name=form.picker_labels.delegator clears="#id_delegate_picker" wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_picker_field.html" with field=form.delegate search_url_value=duty_delegate_search_url depends_on="id_delegator" depends_param="delegator" placeholder="Choose the member first, then type their peers..." selected_name=form.picker_labels.delegate wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_form_field.html" with field=form.end_date wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_form_field.html" with field=form.notes wrapper_class="col-12" %}
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <button class="btn btn-primary" type="submit">Record delegation</button>
+      <a class="btn btn-secondary"
+         href="{% url "pwms:group_detail" group.pk %}">Cancel</a>
+    </div>
+  </form>
+{% endblock content %}

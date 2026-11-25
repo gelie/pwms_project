@@ -5,7 +5,7 @@ from .geography import City, Country
 from .groups import Group
 from .meetings import Meeting, MeetingAttendance
 from .notifications import Notification, NotificationPreference, NotificationRule
-from .permissions import GroupMembership, Role
+from .permissions import DutyDelegation, GroupMembership, Role
 from .reports import ReportShare
 from .sharepoint import (
     SharepointDrive,
@@ -55,6 +55,7 @@ __all__ = [
     "DelegationParticipant",
     "DelegationReport",
     "DelegationReportUpdate",
+    "DutyDelegation",
     "EventType",
     "Group",
     "GroupMembership",

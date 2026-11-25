@@ -10,14 +10,14 @@ flowchart TD
     classDef regular fill:#3c7f52,stroke:#2d5f3e,color:#FFFFFF,stroke-width:1px
     classDef terminal fill:#14532d,stroke:#0d3a20,color:#FFFFFF,stroke-width:1px
     s0(["Submitted for tabling"]):::initial
-    s1["Agreement Tabled – referred to Committee"]:::regular
-    s2["Committee considering and processing"]:::regular
-    s3["Committee submitted report for tabling"]:::regular
-    s4["House adopted – referred to Department"]:::regular
-    s5[["Closed – House approved"]]:::terminal
-    s0 -->|"Table and refer to Committee"| s1
-    s1 -->|"Start committee consideration"| s2
-    s2 -->|"Committee submitted report for tabling"| s3
-    s3 -->|"House adopted – referred to Department"| s4
+    s1["Agreement Tabled –<br/>referred to Committee"]:::regular
+    s2["Committee considering<br/>and processing"]:::regular
+    s3["Committee submitted<br/>report for tabling"]:::regular
+    s4["House adopted –<br/>referred to Department"]:::regular
+    s5[["Closed – House<br/>approved"]]:::terminal
+    s0 -->|"Table and refer to<br/>Committee"| s1
+    s1 -->|"Start committee<br/>consideration"| s2
+    s2 -->|"Committee submitted report<br/>for tabling"| s3
+    s3 -->|"House adopted – referred<br/>to Department"| s4
     s4 -->|"Close – House approved"| s5
 ```

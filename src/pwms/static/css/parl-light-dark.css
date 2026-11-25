@@ -43,6 +43,11 @@
   --bs-btn-primary-bg: var(--theme-green);
   --bs-btn-outline-primary: var(--theme-green);
 
+  .text-bg-info {
+    color: #fefefe !important;
+    background-color: #0055ff !important;
+  }
+
   /* Bootstrap only switches these DERIVED colors under [data-bs-theme=dark], which
      this project does not use (base.html keeps data-bs-theme="light" while the theme
      follows the OS through color-scheme). Left at Bootstrap's light defaults, they

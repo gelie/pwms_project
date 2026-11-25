@@ -444,6 +444,47 @@ urlpatterns = [
     path("groups/mine/", views.my_groups, name="my_groups"),
     path("groups/all/", views.all_groups, name="all_groups"),
     path("groups/<int:pk>/", views.group_detail, name="group_detail"),
+    # A committee secretary maintains their own committee: its details and its
+    # membership. Members may also delegate their duties to another member for a
+    # bounded period; see ``DutyDelegation``.
+    path("groups/<int:pk>/edit/", views.group_edit, name="group_edit"),
+    path(
+        "groups/<int:pk>/memberships/add/",
+        views.group_membership_create,
+        name="group_membership_create",
+    ),
+    path(
+        "groups/<int:pk>/memberships/<int:membership_pk>/edit/",
+        views.group_membership_edit,
+        name="group_membership_edit",
+    ),
+    path(
+        "groups/<int:pk>/memberships/<int:membership_pk>/end/",
+        views.group_membership_end,
+        name="group_membership_end",
+    ),
+    path(
+        "groups/<int:pk>/delegations/add/",
+        views.duty_delegation_create,
+        name="duty_delegation_create",
+    ),
+    path(
+        "groups/<int:pk>/delegations/<int:delegation_pk>/end/",
+        views.duty_delegation_end,
+        name="duty_delegation_end",
+    ),
+    # Scope the delegation's member picker to the group's active members, so the
+    # type-ahead does not suggest someone the form will reject on submit.
+    path(
+        "groups/<int:pk>/member-search/",
+        views.group_member_search,
+        name="group_member_search",
+    ),
+    path(
+        "groups/<int:pk>/delegate-search/",
+        views.duty_delegate_search,
+        name="duty_delegate_search",
+    ),
     # People: the browsable directory, and one person's profile (linked from
     # search and group pages).
     path("people/", views.people, name="people"),

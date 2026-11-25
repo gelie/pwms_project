@@ -1,4 +1,4 @@
-"""Empty the ``Group`` and ``GroupMembership`` tables, keeping every other table.
+"""Empty the ``Group``, ``GroupMembership`` and ``DutyDelegation`` tables.
 
 This is a *reset*, not a data migration: it is meant for development and UAT
 databases where the group tree has drifted and is about to be rebuilt with
@@ -13,12 +13,17 @@ the two relations that would otherwise block it and reports the rest:
   its ``group`` is set to ``NULL``. Re-point the types after re-seeding — until
   then ``WorkflowType.can_create`` closes creation to everyone but superusers.
 
+Memberships and delegations are **soft-delete-only** in application code, and
+both point at their group/user with ``PROTECT``. This command is the deliberate
+exception: it uses ``hard_delete()`` to wipe those rows before the groups, because
+a reset must leave a clean slate for a re-seed. Their ``auditlog`` DELETE entries
+still record what was removed.
+
 The cascade then removes ``WorkflowGroupAccess`` rows (and their
 ``WorkflowRolePermission`` / ``WorkflowStatePermission`` overrides) and blanks the
 remaining columns that point at a group: ``User.department``,
 ``Meeting.host_group``, ``Bill.responsible_committee`` and
-``InternationalResolution.responsible_group``. None of these models are
-registered with ``auditlog``, so no audit rows are produced by the wipe.
+``InternationalResolution.responsible_group``.
 
 The whole reset runs in one transaction, so a ``ProtectedError`` raised by a
 future ``PROTECT`` field leaves the database untouched. ``--dry-run`` performs
@@ -37,6 +42,7 @@ from django.db.models import ProtectedError
 
 from pwms.models import (
     Bill,
+    DutyDelegation,
     Group,
     GroupMembership,
     InternationalAgreement,
@@ -55,7 +61,10 @@ def _m2m_link_count(model, field_name):
 
 
 class Command(BaseCommand):
-    help = "Delete every Group and GroupMembership row without touching other data."
+    help = (
+        "Delete every Group, GroupMembership and DutyDelegation row without "
+        "touching other data."
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -77,8 +86,9 @@ class Command(BaseCommand):
             "--memberships-only",
             action="store_true",
             help=(
-                "Only empty GroupMembership. Groups, workflow types, referrals "
-                "and every other table are left untouched."
+                "Only empty GroupMembership and DutyDelegation. Groups, "
+                "workflow types, referrals and every other table are left "
+                "untouched."
             ),
         )
 
@@ -86,7 +96,11 @@ class Command(BaseCommand):
         dry_run = options["dry_run"]
         memberships_only = options["memberships_only"]
 
-        if Group.objects.count() == 0 and GroupMembership.objects.count() == 0:
+        if (
+            Group.objects.count() == 0
+            and GroupMembership.objects.count() == 0
+            and DutyDelegation.objects.count() == 0
+        ):
             self.stdout.write(self.style.SUCCESS("Nothing to reset."))
             return
 
@@ -114,10 +128,11 @@ class Command(BaseCommand):
     def _confirm(self, memberships_only):
         self.stdout.write(
             self.style.WARNING(
-                "This permanently deletes every Group and GroupMembership row.\n"
+                "This permanently deletes every Group, GroupMembership and "
+                "DutyDelegation row.\n"
                 + (
-                    "Only memberships are removed; groups and their foreign keys "
-                    "are untouched."
+                    "Only memberships and delegations are removed; groups and "
+                    "their foreign keys are untouched."
                     if memberships_only
                     else (
                         "Group deletion also removes WorkflowGroupAccess grants "
@@ -132,7 +147,7 @@ class Command(BaseCommand):
             raise CommandError("reset_groups cancelled.")
 
     def _reset(self, *, memberships_only):
-        """Resolve the PROTECT references, then delete groups and memberships."""
+        """Resolve the PROTECT references, then delete delegations and memberships."""
         nulled = {} if memberships_only else self._null_targets()
 
         referrals_deleted = 0
@@ -140,7 +155,8 @@ class Command(BaseCommand):
         if not memberships_only:
             referrals_deleted, types_unlinked = self._resolve_protected_references()
 
-        _, membership_detail = GroupMembership.objects.all().delete()
+        _, delegation_detail = DutyDelegation.objects.all().hard_delete()
+        _, membership_detail = GroupMembership.objects.all().hard_delete()
 
         group_detail = {}
         if not memberships_only:
@@ -151,6 +167,7 @@ class Command(BaseCommand):
             "pwms.WorkflowRolePermission", 0
         ) + group_detail.get("pwms.WorkflowStatePermission", 0)
         return {
+            "delegations_deleted": delegation_detail.get("pwms.DutyDelegation", 0),
             "memberships_deleted": membership_detail.get("pwms.GroupMembership", 0),
             "groups_deleted": group_detail.get("pwms.Group", 0),
             "referrals_deleted": referrals_deleted,
@@ -203,14 +220,16 @@ class Command(BaseCommand):
 
         if memberships_only:
             self.stdout.write(
-                f"  GroupMembership: {result['memberships_deleted']} deleted; "
+                f"  GroupMembership: {result['memberships_deleted']} deleted, "
+                f"{result['delegations_deleted']} DutyDelegation row(s); "
                 "groups and their references untouched"
             )
             return
 
         self.stdout.write(
             f"  Group: {result['groups_deleted']} deleted, "
-            f"{result['memberships_deleted']} GroupMembership row(s)"
+            f"{result['memberships_deleted']} GroupMembership and "
+            f"{result['delegations_deleted']} DutyDelegation row(s)"
         )
         self.stdout.write(
             f"  WorkflowReferral: {result['referrals_deleted']} deleted "

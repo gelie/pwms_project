@@ -20,6 +20,7 @@ from .models import (
     DelegationParticipant,
     DelegationReport,
     DelegationReportUpdate,
+    DutyDelegation,
     EventType,
     Group,
     GroupMembership,
@@ -142,6 +143,38 @@ class GroupMembershipAdmin(admin.ModelAdmin):
     )
     autocomplete_fields = ("group", "user", "role")
     ordering = ("group", "-start_date")
+
+    def has_delete_permission(self, request, obj=None):
+        """Memberships are soft-deleted only; use Edit to end one instead."""
+        return False
+
+
+@admin.register(DutyDelegation)
+class DutyDelegationAdmin(admin.ModelAdmin):
+    """Admin for ``pwms.DutyDelegation`` (a member's duties lent to another)."""
+
+    list_display = (
+        "group",
+        "delegator",
+        "delegate",
+        "start_date",
+        "end_date",
+        "is_active",
+    )
+    list_filter = ("group", "is_active")
+    search_fields = (
+        "group__name",
+        "delegator__username",
+        "delegator__last_name",
+        "delegate__username",
+        "delegate__last_name",
+    )
+    autocomplete_fields = ("group", "delegator", "delegate", "created_by")
+    ordering = ("group", "-start_date")
+
+    def has_delete_permission(self, request, obj=None):
+        """Delegations are soft-deleted only; use Edit to end one instead."""
+        return False
 
 
 class SharepointSiteMemberInline(admin.TabularInline):
