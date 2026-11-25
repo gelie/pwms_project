@@ -318,6 +318,7 @@ urlpatterns = [
     ),
     # User search
     path("user-search/", views.user_search, name="user_search"),
+    path("role-search/", views.role_search, name="role_search"),
     # Site-wide search: the header box's HTMX endpoint and its no-JS results page.
     path("search/", views.global_search, name="global_search"),
     # Referrals: raise one on a workflow instance, then answer or withdraw it.

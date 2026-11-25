@@ -1575,20 +1575,20 @@ class WorkflowAssignForm(forms.Form):
         self.fields["assigned_to"].queryset = User.objects.filter(is_active=True)
 
 
-class UserSearchPickerMixin:
-    """Render selected foreign keys as HTMX user-search pickers.
+class SearchPickerMixin:
+    """Render selected foreign keys as HTMX search pickers.
 
-    A user list is far too long for a ``<select>``, so these forms post the
-    chosen pk from the shared user lookup instead (see
-    ``pwms/_lookup_field.html``). ``user_picker_fields`` names the fields that
-    use it; their querysets still validate whatever pk is submitted.
+    A long option list is unusable as a ``<select>``, so these forms post the
+    chosen pk from a lookup view instead (see ``pwms/_lookup_field.html``).
+    ``picker_fields`` names the fields that use it; their querysets still
+    validate whatever pk is submitted.
     """
 
-    user_picker_fields = ()
+    picker_fields = ()
 
-    def enable_user_pickers(self):
+    def enable_pickers(self):
         self.search_pickers = set()
-        for name in self.user_picker_fields:
+        for name in self.picker_fields:
             field = self.fields.get(name)
             if field is None or getattr(field, "queryset", None) is None:
                 continue
@@ -1599,7 +1599,7 @@ class UserSearchPickerMixin:
     def picker_labels(self):
         """Label of the selected option for each picker, keyed by field name."""
         labels = {}
-        for name in self.user_picker_fields:
+        for name in self.picker_fields:
             field = self.fields.get(name)
             if field is None:
                 continue
@@ -1649,14 +1649,15 @@ class GroupForm(forms.ModelForm):
         }
 
 
-class GroupMembershipForm(UserSearchPickerMixin, forms.ModelForm):
+class GroupMembershipForm(SearchPickerMixin, forms.ModelForm):
     """Add or edit one person's membership of a group.
 
     The group and the ``updated_by`` trail are supplied by the view, not chosen
-    here: the page the form is rendered on already is that group.
+    here: the page the form is rendered on already is that group. The person and
+    the role are picked through type-ahead lookups rather than long selects.
     """
 
-    user_picker_fields = ("user",)
+    picker_fields = ("user", "role")
 
     class Meta:
         model = GroupMembership
@@ -1689,10 +1690,10 @@ class GroupMembershipForm(UserSearchPickerMixin, forms.ModelForm):
                 Q(pk__in=roles.values("pk")) | Q(pk=self.instance.role_id)
             ).distinct()
         self.fields["role"].queryset = roles.order_by("name")
-        self.enable_user_pickers()
+        self.enable_pickers()
 
 
-class DutyDelegationForm(UserSearchPickerMixin, forms.ModelForm):
+class DutyDelegationForm(SearchPickerMixin, forms.ModelForm):
     """Record one member's delegation of their duties in this group.
 
     The committee secretary records the delegation on the member's behalf, so
@@ -1704,7 +1705,7 @@ class DutyDelegationForm(UserSearchPickerMixin, forms.ModelForm):
     account.
     """
 
-    user_picker_fields = ("delegator", "delegate")
+    picker_fields = ("delegator", "delegate")
 
     class Meta:
         model = DutyDelegation
@@ -1750,7 +1751,7 @@ class DutyDelegationForm(UserSearchPickerMixin, forms.ModelForm):
             "Only peers of the selected member (MP to MP, staff to staff), "
             "excluding this group's members and current delegates."
         )
-        self.enable_user_pickers()
+        self.enable_pickers()
 
     def clean_end_date(self):
         end_date = self.cleaned_data["end_date"]

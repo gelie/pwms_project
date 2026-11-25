@@ -30,7 +30,7 @@
     {% endif %}
     <div class="row g-3 mb-4">
       {% include "pwms/_picker_field.html" with field=form.user search_url="pwms:user_search" placeholder="Type to search people..." selected_name=form.picker_labels.user wrapper_class="col-12 col-md-6" %}
-      {% include "pwms/_form_field.html" with field=form.role wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_picker_field.html" with field=form.role search_url="pwms:role_search" placeholder="Type to search roles..." selected_name=form.picker_labels.role wrapper_class="col-12 col-md-6" %}
       {% include "pwms/_form_field.html" with field=form.start_date wrapper_class="col-12 col-md-3" %}
       {% include "pwms/_form_field.html" with field=form.end_date wrapper_class="col-12 col-md-3" %}
       {% include "pwms/_form_field.html" with field=form.is_active wrapper_class="col-12 col-md-6" %}

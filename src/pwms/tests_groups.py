@@ -263,7 +263,7 @@ class CommitteeAccessTests(TestCase):
         self.assertTrue(entries.filter(action=LogEntry.Action.UPDATE).exists())
         self.assertIn("is_active", entries.order_by("-timestamp").first().changes)
 
-    def test_membership_person_field_is_a_type_ahead_picker(self):
+    def test_membership_person_and_role_fields_are_type_ahead_pickers(self):
         self.client.force_login(self.secretary)
         response = self.client.get(
             reverse(
@@ -274,6 +274,18 @@ class CommitteeAccessTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "data-lookup")
         self.assertContains(response, reverse("pwms:user_search"))
+        self.assertContains(response, reverse("pwms:role_search"))
+
+    def test_role_search_finds_assignable_roles_only(self):
+        global_manager = Role.objects.create(
+            name="Global Manager", can_manage_permissions=True
+        )
+        self.client.force_login(self.secretary)
+
+        response = self.client.get(reverse("pwms:role_search"), {"search": "Committee"})
+        self.assertContains(response, self.member_role.name)
+        self.assertContains(response, self.secretary_role.name)
+        self.assertNotContains(response, global_manager.name)
 
     # -- soft deletion -------------------------------------------------------
     def test_membership_delete_is_soft(self):
