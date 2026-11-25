@@ -964,9 +964,13 @@ class AbstractLegislativeWorkflow(BaseModel):
             raise ValueError(f"Unknown action: {action!r}")
         raised_by_referral = f"referral_raised_{action}"
 
-        memberships = user.memberships.filter(is_active=True).select_related(
-            "group", "role"
+        memberships = list(
+            user.memberships.filter(is_active=True).select_related("group", "role")
         )
+        # A member may delegate their duties to another member for a period; while
+        # that delegation is current the delegate carries the delegator's roles
+        # here too (see ``User.delegated_memberships``).
+        memberships += list(user.delegated_memberships())
         accesses = list(
             self.group_accesses().prefetch_related(
                 "role_permissions", "state_permissions"

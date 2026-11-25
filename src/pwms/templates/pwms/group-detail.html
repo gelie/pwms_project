@@ -23,6 +23,20 @@
       {% endif %}
     </div>
   </div>
+  {% if can_edit_group or can_manage_group %}
+    <div class="d-flex flex-wrap gap-2 mb-4">
+      {% if can_edit_group %}
+        <a class="btn btn-sm btn-primary"
+           href="{% url "pwms:group_edit" group.pk %}">Edit group</a>
+      {% endif %}
+      {% if can_manage_group %}
+        <a class="btn btn-sm btn-outline-primary"
+           href="{% url "pwms:group_membership_create" group.pk %}">Add member</a>
+        <a class="btn btn-sm btn-outline-secondary"
+           href="{% url "pwms:duty_delegation_create" group.pk %}">Delegate duties</a>
+      {% endif %}
+    </div>
+  {% endif %}
   <div class="row g-3 mb-4">
     <div class="col-12 col-sm-6 col-lg-4">
       <div class="card h-100">
@@ -42,55 +56,140 @@
         </div>
       </div>
     </div>
+    <div class="col-12 col-sm-6 col-lg-4">
+      <div class="card h-100">
+        <div class="card-body">
+          <div class="small text-uppercase text-muted">Details</div>
+          <div class="fs-2 fw-semibold">{{ group.get_group_type_display }}</div>
+          <details class="mt-2" style="position: absolute;">
+            <summary>More...</summary>
+            <div class="px-3 mt-2 rounded">
+              <table id="group-details" class="table table-sm align-middle mb-0">
+                <caption class="visually-hidden">Group details</caption>
+                <tbody>
+                  {% if group.short_name %}
+                    <tr>
+                      <th scope="row">Short name</th>
+                      <td>{{ group.short_name }}</td>
+                    </tr>
+                  {% endif %}
+                  {% if group.prefix %}
+                    <tr>
+                      <th scope="row">Prefix</th>
+                      <td>{{ group.prefix }}</td>
+                    </tr>
+                  {% endif %}
+                  <tr>
+                    <th scope="row">Type</th>
+                    <td>{{ group.get_group_type_display }}</td>
+                  </tr>
+                  {% if group.parent %}
+                    <tr>
+                      <th scope="row">Parent</th>
+                      <td>
+                        <a href="{% url "pwms:group_detail" group.parent.pk %}">{{ group.parent.name }}</a>
+                      </td>
+                    </tr>
+                  {% endif %}
+                  {% if group.term %}
+                    <tr>
+                      <th scope="row">Term</th>
+                      <td>{{ group.term }}</td>
+                    </tr>
+                  {% endif %}
+                  {% if group.start_date or group.end_date %}
+                    <tr>
+                      <th scope="row">Dates</th>
+                      <td>
+                        {% if group.start_date %}{{ group.start_date|date:"Y-m-d" }}{% endif %}
+                        {% if group.start_date and group.end_date %}to{% endif %}
+                        {% if group.end_date %}{{ group.end_date|date:"Y-m-d" }}{% endif %}
+                      </td>
+                    </tr>
+                  {% endif %}
+                  {% if group.location %}
+                    <tr>
+                      <th scope="row">Location</th>
+                      <td>{{ group.location }}</td>
+                    </tr>
+                  {% endif %}
+                  {% if group.contact_email or group.contact_phone %}
+                    <tr>
+                      <th scope="row">Contact</th>
+                      <td>
+                        {% if group.contact_email %}
+                          <a href="mailto:{{ group.contact_email }}">{{ group.contact_email }}</a>
+                        {% endif %}
+                        {% if group.contact_phone %}<span class="d-block">{{ group.contact_phone }}</span>{% endif %}
+                      </td>
+                    </tr>
+                  {% endif %}
+                  {% if group.description %}
+                    <tr>
+                      <th scope="row">Description</th>
+                      <td>{{ group.description|linebreaks }}</td>
+                    </tr>
+                  {% endif %}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+      </div>
+    </div>
   </div>
-  <h2 class="h4">Details</h2>
+  <h2 class="h4">Members ({{ member_count }})</h2>
   <div class="table-responsive mb-4">
-    <table class="table align-middle">
-      <caption class="visually-hidden">Group details</caption>
+    <table class="table table-striped table-hover align-middle">
+      <caption class="visually-hidden">Users with an active membership in this group</caption>
+      <thead>
+        <tr>
+          <th scope="col">Name</th>
+          <th scope="col">Role</th>
+          <th scope="col">Delegation</th>
+          <th scope="col">Member since</th>
+          <th scope="col">Ends</th>
+          {% if can_manage_group %}<th scope="col">Actions</th>{% endif %}
+        </tr>
+      </thead>
       <tbody>
-        <tr>
-          <th scope="row">Short name</th>
-          <td>{{ group.short_name|default:"—" }}</td>
-        </tr>
-        <tr>
-          <th scope="row">Type</th>
-          <td>{{ group.get_group_type_display }}</td>
-        </tr>
-        <tr>
-          <th scope="row">Parent</th>
-          <td>
-            {% if group.parent %}
-              <a href="{% url "pwms:group_detail" group.parent.pk %}">{{ group.parent.name }}</a>
-            {% else %}
-              —
+        {% for membership in memberships %}
+          <tr>
+            <td>
+              <a href="{% url "pwms:user_detail" membership.user.pk %}">{{ membership.user.get_full_name|default:membership.user.get_username }}</a>
+            </td>
+            <td><span class="badge text-bg-secondary">{{ membership.role.name }}</span></td>
+            <td>
+              {% with delegation=membership.active_delegation %}
+                {% if delegation %}
+                  <span class="badge text-bg-info">Delegated to {{ delegation.delegate.display_name }}</span>
+                  <span class="d-block small text-muted">until {{ delegation.end_date|date:"Y-m-d" }}</span>
+                {% else %}
+                  —
+                {% endif %}
+              {% endwith %}
+            </td>
+            <td>{{ membership.start_date|date:"Y-m-d" }}</td>
+            <td>{{ membership.end_date|date:"Y-m-d"|default:"—" }}</td>
+            {% if can_manage_group %}
+              <td class="text-nowrap">
+                <a class="btn btn-sm btn-outline-secondary"
+                   href="{% url "pwms:group_membership_edit" group.pk membership.pk %}">Edit</a>
+                <form class="d-inline"
+                      method="post"
+                      action="{% url "pwms:group_membership_end" group.pk membership.pk %}">
+                  {% csrf_token %}
+                  <button class="btn btn-sm btn-outline-danger" type="submit">End</button>
+                </form>
+              </td>
             {% endif %}
-          </td>
-        </tr>
-        <tr>
-          <th scope="row">Dates</th>
-          <td>
-            {{ group.start_date|date:"Y-m-d"|default:"—" }}
-            {% if group.end_date %}to {{ group.end_date|date:"Y-m-d" }}{% endif %}
-          </td>
-        </tr>
-        <tr>
-          <th scope="row">Location</th>
-          <td>{{ group.location|default:"—" }}</td>
-        </tr>
-        <tr>
-          <th scope="row">Contact</th>
-          <td>
-            {% if group.contact_email %}
-              <a href="mailto:{{ group.contact_email }}">{{ group.contact_email }}</a>
-            {% endif %}
-            {% if group.contact_phone %}<span class="d-block">{{ group.contact_phone }}</span>{% endif %}
-            {% if not group.contact_email and not group.contact_phone %}—{% endif %}
-          </td>
-        </tr>
-        <tr>
-          <th scope="row">Description</th>
-          <td>{{ group.description|linebreaks|default:"—" }}</td>
-        </tr>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="{% if can_manage_group %}6{% else %}5{% endif %}"
+                class="text-center text-muted py-4">This group has no active members.</td>
+          </tr>
+        {% endfor %}
       </tbody>
     </table>
   </div>
@@ -105,32 +204,47 @@
       {% endfor %}
     </ul>
   {% endif %}
-  <h2 class="h4">Members ({{ member_count }})</h2>
-  <div class="table-responsive">
-    <table class="table table-striped table-hover align-middle">
-      <caption class="visually-hidden">Users with an active membership in this group</caption>
-      <thead>
-        <tr>
-          <th scope="col">Name</th>
-          <th scope="col">Role</th>
-          <th scope="col">Member since</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for membership in memberships %}
+  {% if delegations %}
+    <h2 class="h4 mt-4">Duty delegations</h2>
+    <p class="text-muted">
+      Members whose duties in this group are currently carried by another member.
+    </p>
+    <div class="table-responsive">
+      <table class="table table-striped align-middle">
+        <caption class="visually-hidden">Current duty delegations in this group</caption>
+        <thead>
           <tr>
-            <td>
-              <a href="{% url "pwms:user_detail" membership.user.pk %}">{{ membership.user.get_full_name|default:membership.user.get_username }}</a>
-            </td>
-            <td><span class="badge text-bg-secondary">{{ membership.role.name }}</span></td>
-            <td>{{ membership.start_date|date:"Y-m-d" }}</td>
+            <th scope="col">Member</th>
+            <th scope="col">Duties delegated to</th>
+            <th scope="col">Until</th>
+            <th scope="col">Actions</th>
           </tr>
-        {% empty %}
-          <tr>
-            <td colspan="3" class="text-center text-muted py-4">This group has no active members.</td>
-          </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+        </thead>
+        <tbody>
+          {% for delegation in delegations %}
+            <tr>
+              <td>
+                <a href="{% url "pwms:user_detail" delegation.delegator.pk %}">{{ delegation.delegator.display_name }}</a>
+              </td>
+              <td>
+                <a href="{% url "pwms:user_detail" delegation.delegate.pk %}">{{ delegation.delegate.display_name }}</a>
+              </td>
+              <td>{{ delegation.end_date|date:"Y-m-d" }}</td>
+              <td>
+                {% if can_manage_group or delegation.delegator_id == request.user.pk %}
+                  <form method="post"
+                        action="{% url "pwms:duty_delegation_end" group.pk delegation.pk %}">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-outline-danger" type="submit">End</button>
+                  </form>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
 {% endblock content %}

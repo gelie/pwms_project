@@ -7,8 +7,11 @@ class PwmsConfig(AppConfig):
 
     def ready(self):
         """
-        Wire up automatic CRUD auditing (django-auditlog) for the concrete
-        workflow models.
+        Wire up automatic CRUD auditing (django-auditlog).
+
+        This covers the concrete workflow models, their child rows, and the
+        identity/authority records administrators and committee secretaries
+        edit: ``Group``, ``GroupMembership`` and ``DutyDelegation``.
 
         auditlog cannot register abstract models, so each concrete subclass of
         ``AbstractLegislativeWorkflow`` must be registered here explicitly.
@@ -18,7 +21,9 @@ class PwmsConfig(AppConfig):
 
         Every create/update/delete then produces an ``auditlog.LogEntry`` row
         (with actor + before/after field diffs), complementing the domain
-        ``TransitionLog`` events written by ``perform_transition()``.
+        ``TransitionLog`` events written by ``perform_transition()``. Bulk
+        queryset ``update()`` calls bypass these signals; commands that must be
+        audited save row by row.
         """
         from django.apps import apps
 
@@ -31,6 +36,9 @@ class PwmsConfig(AppConfig):
             Bill,
             DelegationParticipant,
             DelegationReport,
+            DutyDelegation,
+            Group,
+            GroupMembership,
             InternationalAgreement,
             InternationalResolution,
             Meeting,
@@ -78,6 +86,25 @@ class PwmsConfig(AppConfig):
         )
         auditlog.register(
             WorkflowNote,
+            exclude_fields=["updated_at"],
+        )
+        # A duty delegation hands a member's authority to someone else for a
+        # period, so who granted it and when it lapsed must be attributable.
+        auditlog.register(
+            DutyDelegation,
+            exclude_fields=["updated_at"],
+        )
+        # Membership is the authority grant itself (role in group over a period).
+        # The row's ``updated_by`` records only the last editor; auditlog keeps
+        # every before/after change, including role, dates and active state.
+        auditlog.register(
+            GroupMembership,
+            exclude_fields=["updated_at"],
+        )
+        # The committee secretary now edits a group's own details, so those
+        # changes need the same attributable trail as its membership.
+        auditlog.register(
+            Group,
             exclude_fields=["updated_at"],
         )
 

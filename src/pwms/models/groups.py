@@ -49,6 +49,11 @@ class Group(MPTTModel, BaseModel):
     #: looks for appointments here.
     EXECUTIVE_GROUP_TYPES = ("executive", "presidency", "ministry")
 
+    #: The role that administers a committee's own page and membership. Only
+    #: committees are self-administered; every other group type remains a task
+    #: for the administrators (see :meth:`can_be_managed_by`).
+    COMMITTEE_SECRETARY_ROLE = "Committee Secretary"
+
     #: Group types that belong to a Parliament term. The legislative tree is
     #: created once per term; the administration tree is permanent (term=None).
     #: ``PARTY`` is here because the parties under a House's Parties container
@@ -133,3 +138,20 @@ class Group(MPTTModel, BaseModel):
         return User.objects.filter(
             memberships__group=self, memberships__is_active=True
         ).distinct()
+
+    def can_be_managed_by(self, user):
+        """True when ``user`` may administer this group's details and members.
+
+        A committee is administered by its own secretary: someone holding an
+        active ``Committee Secretary`` membership *in this committee* (or a
+        delegate standing in for one — see ``DutyDelegation``). Other group
+        types stay administrative, so a secretary in one committee cannot edit
+        a neighbouring committee or the wider parliamentary tree.
+        """
+        if user is None or not getattr(user, "is_authenticated", False):
+            return False
+        if user.is_superuser:
+            return True
+        if self.group_type != self.Type.COMMITTEE:
+            return False
+        return user.has_role_in_group(self.COMMITTEE_SECRETARY_ROLE, self)

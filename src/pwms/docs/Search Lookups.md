@@ -133,11 +133,23 @@ Form templates include **`_picker_field.html`** for every searchable field:
 | Include argument | Required | Meaning |
 | --- | --- | --- |
 | `field` | yes | the bound field; its id drives every id in the partial |
-| `search_url` | yes | URL **name** of the lookup view (`{% url search_url %}`) |
+| `search_url` | yes* | URL **name** of the lookup view (`{% url search_url %}`) |
+| `search_url_value` | yes* | an already-resolved URL, for a lookup route that needs arguments; use instead of `search_url` |
 | `placeholder` | no | defaults to “Type to search…” |
 | `selected_name` | no | prefills the box; pass `form.picker_labels.<field>` |
 | `wrapper_class` | no | grid classes, defaults to `col-12` |
 | `depends_on`, `depends_param`, `clears` | no | see [cascades](#5-cascades) |
+
+\* Supply one of `search_url` or `search_url_value`.
+
+Use `search_url_value` when the results depend on the page's object. The duty
+delegation form, for example, points its **Delegator** picker at that group's
+member search so the suggestions match what the form accepts:
+
+```django
+{% url "pwms:group_member_search" group.pk as group_member_search_url %}
+{% include "pwms/_picker_field.html" with field=form.delegator search_url_value=group_member_search_url selected_name=form.picker_labels.delegator %}
+```
 
 ## 4. Client script
 

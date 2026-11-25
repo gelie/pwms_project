@@ -21,6 +21,7 @@ import json
 from datetime import date
 from io import StringIO
 
+from auditlog.models import LogEntry
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -451,6 +452,10 @@ class ResponsiblePartyForeignKeyTests(TestCase):
             responsible_minister_name="Hon. Former Minister",
         )
 
+        # Membership rows are soft-delete-only and PROTECT their user, so a hard
+        # user delete must clear them explicitly first. This test is about the
+        # agreement's SET_NULL, not about membership retention.
+        GroupMembership.objects.filter(user=minister).hard_delete()
         minister.delete()
 
         agreement.refresh_from_db()
@@ -690,6 +695,13 @@ class OracleSyncIdentityGuardTests(TestCase):
         self.assertEqual(self.command.stats["deactivated_memberships"], 1)
         self.assertEqual(self.command.stats["preserved_executive_memberships"], 1)
         self.assertEqual(self.command.stats["warnings"], 1)
+        # The bulk ending is audited row by row, so the lost appointment has a
+        # trail even though it came from a sync rather than a person.
+        self.assertTrue(
+            LogEntry.objects.get_for_object(committee_membership)
+            .filter(action=LogEntry.Action.UPDATE)
+            .exists()
+        )
 
     def test_deactivation_dry_run_changes_nothing(self):
         user = self._user(username="erp.leaver", source="erp", idno="6001015800085")

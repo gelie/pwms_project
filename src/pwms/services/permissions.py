@@ -38,7 +38,13 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied
 from django.db.models import Model
 
-from ..models import AbstractLegislativeWorkflow, Meeting, MeetingAttendance
+from ..models import (
+    AbstractLegislativeWorkflow,
+    Group,
+    GroupMembership,
+    Meeting,
+    MeetingAttendance,
+)
 
 User = get_user_model()
 
@@ -76,9 +82,14 @@ def has_global_manage_role(user) -> bool:
     """True when ``user`` holds the manage-permissions capability in any group."""
     if user is None or not getattr(user, "is_authenticated", False):
         return False
-    return user.memberships.filter(
-        is_active=True, role__can_manage_permissions=True
-    ).exists()
+    return (
+        user.memberships.filter(
+            is_active=True, role__can_manage_permissions=True
+        ).exists()
+        or user.delegated_memberships()
+        .filter(role__can_manage_permissions=True)
+        .exists()
+    )
 
 
 def resolve(
@@ -183,6 +194,28 @@ def _resolve_workflow_instance(
             ):
                 return True
     return False
+
+
+@register_resolver(Group)
+def _resolve_group(user, group, action: str) -> bool:
+    """Resolve a group through its own administration rule.
+
+    Any signed-in user may view a group (they may already browse the directory),
+    but only a committee's own secretary may edit it or manage its membership.
+    The global ``can_manage_permissions`` grant has already been applied by
+    :func:`resolve` before this resolver runs, so it is not repeated here.
+    """
+    if action in (VIEW, COMMENT):
+        return True
+    if action in (EDIT, MANAGE):
+        return group.can_be_managed_by(user)
+    return False
+
+
+@register_resolver(GroupMembership)
+def _resolve_group_membership(user, membership, action: str) -> bool:
+    """A membership row is administered together with its group."""
+    return resolve(user, membership.group, action)
 
 
 @register_resolver(MeetingAttendance)

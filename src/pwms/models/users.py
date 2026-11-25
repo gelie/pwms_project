@@ -8,7 +8,7 @@ from django.conf import settings
 from django.contrib.auth.models import AbstractUser
 from django.core.exceptions import ValidationError
 from django.db import models
-from django.db.models import OuterRef, Subquery
+from django.db.models import OuterRef, Q, Subquery
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 
@@ -312,24 +312,109 @@ class User(AbstractUser, BaseModel):
 
         return GroupMembership.objects.filter(user=self).select_related("group", "role")
 
-    def has_role_in_group(self, role_name, group):
+    @classmethod
+    def delegation_peers(cls, delegator):
+        """Active users who may stand in for ``delegator``.
+
+        Members of Parliament delegate only to other Members of Parliament and
+        staff only to staff. The kind is read from the flags *and* the ERP's
+        ``employee_type`` (the sync sets ``employee_type='staff'`` but does not
+        set ``is_staff_member``), matching the alert audience's classification.
+        Someone holding both kinds may delegate to either; a delegator with
+        neither is unrestricted. The delegator is never offered to themselves.
+        """
+        peers = cls.objects.filter(is_active=True)
+        is_mp = delegator.is_mp or delegator.employee_type == "member"
+        is_staff = delegator.is_staff_member or delegator.employee_type in (
+            "staff",
+            "graduate",
+        )
+        allowed = Q()
+        if is_mp:
+            allowed |= Q(is_mp=True) | Q(employee_type="member")
+        if is_staff:
+            allowed |= Q(is_staff_member=True) | Q(
+                employee_type__in=("staff", "graduate")
+            )
+        if allowed:
+            peers = peers.filter(allowed)
+        return peers.exclude(pk=delegator.pk)
+
+    def active_delegations_given(self):
+        """Duty delegations this user has made that are current today."""
+        from .permissions import DutyDelegation
+
+        return (
+            DutyDelegation.objects.current()
+            .filter(delegator=self)
+            .select_related("group", "delegate")
+        )
+
+    def active_delegations_received(self):
+        """Duty delegations to this user that are current today."""
+        from .permissions import DutyDelegation
+
+        return (
+            DutyDelegation.objects.current()
+            .filter(delegate=self)
+            .select_related("group", "delegator")
+        )
+
+    def delegated_memberships(self):
+        """The delegators' active memberships this user stands in for.
+
+        Returns the *delegators'* ``GroupMembership`` rows, scoped to the groups
+        and people named by current delegations. Callers combine these with the
+        user's own memberships for role checks and display; they are never
+        written back, and they stop counting the day the delegation lapses.
+        """
         from .permissions import GroupMembership
 
-        return GroupMembership.objects.filter(
+        delegations = list(self.active_delegations_received())
+        if not delegations:
+            return GroupMembership.objects.none()
+        covered = Q()
+        for delegation in delegations:
+            covered |= Q(group_id=delegation.group_id, user_id=delegation.delegator_id)
+        return GroupMembership.objects.filter(covered, is_active=True).select_related(
+            "group", "role"
+        )
+
+    def has_role_in_group(self, role_name, group):
+        """Whether this user holds ``role_name`` in ``group``, own or delegated."""
+        if self.memberships.filter(
             user=self, group=group, role__name=role_name, is_active=True
-        ).exists()
+        ).exists():
+            return True
+        return (
+            self.delegated_memberships()
+            .filter(group=group, role__name=role_name)
+            .exists()
+        )
 
     def can_manage_permissions(self):
-        from .permissions import GroupMembership
-
-        return GroupMembership.objects.filter(
+        """Whether this user holds the manage capability, own or delegated."""
+        if self.memberships.filter(
             user=self, role__can_manage_permissions=True, is_active=True
-        ).exists()
+        ).exists():
+            return True
+        return (
+            self.delegated_memberships()
+            .filter(role__can_manage_permissions=True)
+            .exists()
+        )
 
     def can_transition_workflow(self, workflow_instance, transition):
-        user_roles = (
+        own_roles = (
             self.get_groups_with_roles()
             .filter(group=workflow_instance.group)
-            .values_list("role", flat=True)
+            .values_list("role_id", flat=True)
         )
-        return transition.allowed_roles.filter(id__in=user_roles).exists()
+        delegated_roles = (
+            self.delegated_memberships()
+            .filter(group=workflow_instance.group)
+            .values_list("role_id", flat=True)
+        )
+        return transition.allowed_roles.filter(
+            Q(id__in=own_roles) | Q(id__in=delegated_roles)
+        ).exists()

@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Edit {{ group.name }}{% endblock title %}
+{% block extra_head %}{{ form.media }}{% endblock extra_head %}
+{% block content %}
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:all_groups" %}">All Groups</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:group_detail" group.pk %}">{{ group.name }}</a>
+      </li>
+      <li class="breadcrumb-item active" aria-current="page">Edit</li>
+    </ol>
+  </nav>
+  <h1 class="mb-3">Edit group</h1>
+  <p class="text-muted">
+    Change this committee's details. Its place in the group tree and its group
+    type are maintained by the administrators.
+  </p>
+  <form method="post" class="input-form" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+      <div class="alert alert-danger" role="alert">
+        {% for error in form.non_field_errors %}<p class="mb-0">{{ error }}</p>{% endfor %}
+      </div>
+    {% endif %}
+    <div class="row g-3 mb-4">
+      {% include "pwms/_form_field.html" with field=form.name wrapper_class="col-12 col-md-8" %}
+      {% include "pwms/_form_field.html" with field=form.short_name wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_form_field.html" with field=form.prefix wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_form_field.html" with field=form.contact_email wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_form_field.html" with field=form.contact_phone wrapper_class="col-12 col-md-4" %}
+      {% include "pwms/_form_field.html" with field=form.location wrapper_class="col-12 col-md-6" %}
+      {% include "pwms/_form_field.html" with field=form.start_date wrapper_class="col-12 col-md-3" %}
+      {% include "pwms/_form_field.html" with field=form.end_date wrapper_class="col-12 col-md-3" %}
+      {% include "pwms/_form_field.html" with field=form.description wrapper_class="col-12" %}
+      {% include "pwms/_form_field.html" with field=form.is_active wrapper_class="col-12" %}
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <button class="btn btn-primary" type="submit">Save changes</button>
+      <a class="btn btn-secondary"
+         href="{% url "pwms:group_detail" group.pk %}">Cancel</a>
+    </div>
+  </form>
+{% endblock content %}

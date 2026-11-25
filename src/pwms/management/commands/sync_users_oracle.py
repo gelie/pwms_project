@@ -349,8 +349,7 @@ class Command(OracleSyncBase):
             )
 
         self.logger.info(
-            "Resolving departments and staff memberships against the seeded "
-            "group tree."
+            "Resolving departments and staff memberships against the seeded group tree."
         )
 
         missing = []
@@ -418,10 +417,7 @@ class Command(OracleSyncBase):
             return resolution.group
 
         self.stats["departments_unresolved"] += 1
-        pair = (
-            f"{(child_org_name or '').strip()} / "
-            f"{(parent_org_name or '').strip()}"
-        )
+        pair = f"{(child_org_name or '').strip()} / {(parent_org_name or '').strip()}"
         self._unresolved_orgs[pair] += 1
         return None
 
@@ -747,11 +743,17 @@ class Command(OracleSyncBase):
                     user.save(update_fields=["is_active"])
 
                     if active_count:
-                        deactivatable_qs.update(is_active=False, end_date=today)
+                        # Save row by row rather than a bulk ``update`` so the
+                        # membership audit trail records each ended appointment
+                        # (a queryset update bypasses the model signals).
+                        for membership in deactivatable_qs:
+                            membership.is_active = False
+                            membership.end_date = today
+                            membership.save(
+                                update_fields=["is_active", "end_date", "updated_at"]
+                            )
                 except Exception:
-                    self.logger.exception(
-                        f"Error deactivating user {user.username}"
-                    )
+                    self.logger.exception(f"Error deactivating user {user.username}")
                     self.stats["errors"] += 1
                     continue
 

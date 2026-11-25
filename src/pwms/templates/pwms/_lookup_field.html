@@ -13,8 +13,10 @@ field whose option list is longer than the form's search-picker threshold:
 
 ``search_url`` is the URL *name* of the view returning the results fragment (the
 fragment must call one of the ``window.select*`` helpers in static/js/htmx-lookup.js).
-``placeholder`` and ``selected_name`` are optional; ``selected_name`` prefills the
-text input with what is already stored, so an edit form shows the current choice.
+``search_url_value`` is an alternative, already-resolved URL (for a route that
+needs arguments, e.g. one group's member list). ``placeholder`` and
+``selected_name`` are optional; ``selected_name`` prefills the text input with
+what is already stored, so an edit form shows the current choice.
 Pass ``hide_label=True`` where the surrounding row carries its own labelling (the
 "add a delegate" row on the delegation report form, which has no room for one).
 
@@ -51,7 +53,7 @@ Example (from the delegation report form):
            aria-autocomplete="list"
            aria-expanded="false"
            aria-controls="{{ field.auto_id }}_results"
-           hx-get="{% url search_url %}"
+           hx-get="{% if search_url_value %}{{ search_url_value }}{% else %}{% url search_url %}{% endif %}"
            hx-trigger="keyup changed delay:300ms"
            hx-target="#{{ field.auto_id }}_results"
            hx-swap="innerHTML"
