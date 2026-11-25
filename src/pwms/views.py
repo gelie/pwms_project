@@ -80,6 +80,7 @@ from .models import (
     Meeting,
     MeetingAttendance,
     Notification,
+    Role,
     SharepointDrive,
     State,
     TransitionLog,
@@ -3425,6 +3426,26 @@ class LogoutView(BaseLogoutView):
 
 
 # @htmx_
+def role_search(request):
+    """Search roles for the membership form's type-ahead.
+
+    Only roles the form may assign are offered: a committee secretary cannot
+    mint a global manager by picking a role that carries
+    ``can_manage_permissions``.
+    """
+    search_query = request.GET.get("search", "").strip()
+    roles = Role.objects.filter(can_manage_permissions=False)
+    if search_query:
+        roles = roles.filter(
+            Q(name__icontains=search_query) | Q(description__icontains=search_query)
+        )
+    return render(
+        request=request,
+        template_name="pwms/partials/role_search_results.html",
+        context={"roles": roles.order_by("name")[:20]},
+    )
+
+
 def user_search(request):
     """Search active users and return HTML results for HTMX."""
     search_query = request.GET.get("search", "")
