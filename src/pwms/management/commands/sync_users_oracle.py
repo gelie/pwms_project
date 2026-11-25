@@ -719,11 +719,12 @@ class Command(OracleSyncBase):
                 continue
 
             active_qs = GroupMembership.objects.filter(user=user, is_active=True)
-            # Political office outlives an employment record: end the
-            # memberships the ERP vouches for, preserve the executive ones.
+            # Political office and the committee's administering role outlive a
+            # lost employment record: end only the memberships the ERP vouches
+            # for, and preserve the protected ones.
             deactivatable_qs = active_qs.exclude(
                 group__group_type__in=Group.EXECUTIVE_GROUP_TYPES
-            )
+            ).exclude(role__name=Group.COMMITTEE_SECRETARY_ROLE)
             active_count = deactivatable_qs.count()
             preserved_count = active_qs.count() - active_count
 
@@ -732,7 +733,7 @@ class Command(OracleSyncBase):
                 self.stats["warnings"] += 1
                 self.logger.warning(
                     f"⚠️  {user.username} is missing from Oracle but still holds "
-                    f"{preserved_count} executive membership(s); preserving them. "
+                    f"{preserved_count} protected membership(s); preserving them. "
                     f"Set identity_source='local' to keep this office holder's "
                     f"account active."
                 )

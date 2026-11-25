@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}End membership – {{ group.name }}{% endblock title %}
+{% block content %}
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:all_groups" %}">All Groups</a>
+      </li>
+      <li class="breadcrumb-item">
+        <a href="{% url "pwms:group_detail" group.pk %}">{{ group.name }}</a>
+      </li>
+      <li class="breadcrumb-item active" aria-current="page">End membership</li>
+    </ol>
+  </nav>
+  <h1 class="mb-3">End membership</h1>
+  <p class="text-muted">{{ group.name }}</p>
+  <div class="alert alert-warning" role="alert">
+    Ending this membership removes the person from the group and ends any duties
+    delegated from it. The row is kept as history, and the change is audited.
+  </div>
+  <p>
+    Are you sure you want to end
+    <strong>{{ membership.user.display_name }}</strong>'s membership as
+    <strong>{{ membership.role.name }}</strong>?
+  </p>
+  <form method="post">
+    {% csrf_token %}
+    <div class="d-flex flex-wrap gap-2">
+      <button class="btn btn-danger" type="submit">Yes, end this membership</button>
+      <a class="btn btn-secondary"
+         href="{% url "pwms:group_detail" group.pk %}">Cancel</a>
+    </div>
+  </form>
+{% endblock content %}

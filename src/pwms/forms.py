@@ -1690,6 +1690,13 @@ class GroupMembershipForm(SearchPickerMixin, forms.ModelForm):
                 Q(pk__in=roles.values("pk")) | Q(pk=self.instance.role_id)
             ).distinct()
         self.fields["role"].queryset = roles.order_by("name")
+        if self.instance.pk and self.instance.is_committee_secretary:
+            # Ending the secretary is blocked (model and view enforce it); make
+            # the form show why rather than offering a control that will fail.
+            self.fields["is_active"].disabled = True
+            self.fields[
+                "is_active"
+            ].help_text = Group.COMMITTEE_SECRETARY_PROTECTED_MESSAGE
         self.enable_pickers()
 
 

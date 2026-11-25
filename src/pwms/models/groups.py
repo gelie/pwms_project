@@ -54,6 +54,12 @@ class Group(MPTTModel, BaseModel):
     #: for the administrators (see :meth:`can_be_managed_by`).
     COMMITTEE_SECRETARY_ROLE = "Committee Secretary"
 
+    #: Why a Committee Secretary membership cannot simply be ended.
+    COMMITTEE_SECRETARY_PROTECTED_MESSAGE = (
+        "A Committee Secretary membership cannot be ended. Change the role "
+        "first if this person should stop administering the committee."
+    )
+
     #: Group types that belong to a Parliament term. The legislative tree is
     #: created once per term; the administration tree is permanent (term=None).
     #: ``PARTY`` is here because the parties under a House's Parties container

@@ -175,12 +175,13 @@
               <td class="text-nowrap">
                 <a class="btn btn-sm btn-outline-secondary"
                    href="{% url "pwms:group_membership_edit" group.pk membership.pk %}">Edit</a>
-                <form class="d-inline"
-                      method="post"
-                      action="{% url "pwms:group_membership_end" group.pk membership.pk %}">
-                  {% csrf_token %}
-                  <button class="btn btn-sm btn-outline-danger" type="submit">End</button>
-                </form>
+                {% if membership.is_committee_secretary %}
+                  <span class="badge text-bg-secondary"
+                        title="A Committee Secretary membership cannot be ended">Protected</span>
+                {% else %}
+                  <a class="btn btn-sm btn-outline-danger"
+                     href="{% url "pwms:group_membership_end" group.pk membership.pk %}">End</a>
+                {% endif %}
               </td>
             {% endif %}
           </tr>

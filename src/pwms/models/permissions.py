@@ -78,9 +78,23 @@ class GroupMembership(SoftDeleteModelMixin, BaseModel):
     def __str__(self):
         return f"{self.user} - {self.role} in {self.group}"
 
+    @property
+    def is_committee_secretary(self):
+        """Whether this membership carries the committee's administering role."""
+        return bool(self.role_id) and self.role.name == Group.COMMITTEE_SECRETARY_ROLE
+
     def clean(self):
         if self.end_date and self.start_date and self.end_date < self.start_date:
             raise ValidationError("End date cannot be before start date.")
+        if (
+            self.pk
+            and not self.is_active
+            and self.is_committee_secretary
+            and GroupMembership.objects.filter(pk=self.pk, is_active=True).exists()
+        ):
+            raise ValidationError(
+                {"is_active": Group.COMMITTEE_SECRETARY_PROTECTED_MESSAGE}
+            )
 
     @property
     def current_delegation(self):
@@ -100,6 +114,8 @@ class GroupMembership(SoftDeleteModelMixin, BaseModel):
 
     def delete(self, using=None, keep_parents=False):
         """Soft-delete the membership and stop delegations that relied on it."""
+        if self.is_active and self.is_committee_secretary:
+            raise ValidationError(Group.COMMITTEE_SECRETARY_PROTECTED_MESSAGE)
         result = super().delete(using=using, keep_parents=keep_parents)
         # Only the delegator's membership backs a delegation: the delegate may
         # be outside the group, so removing *their* membership changes nothing.

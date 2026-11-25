@@ -703,6 +703,28 @@ class OracleSyncIdentityGuardTests(TestCase):
             .exists()
         )
 
+    def test_erp_user_keeps_committee_secretary_membership_when_deactivated(self):
+        user = self._user(username="erp.secretary", source="erp", idno="5001015800085")
+        committee = Group.objects.create(
+            name="Protected Secretary Committee", group_type="committee"
+        )
+        secretary_role, _ = Role.objects.get_or_create(
+            name=Group.COMMITTEE_SECRETARY_ROLE
+        )
+        GroupMembership.objects.create(user=user, group=committee, role=secretary_role)
+
+        self.command.deactivate_missing_users({}, self.by_id, dry_run=False)
+
+        user.refresh_from_db()
+        self.assertFalse(user.is_active)
+        # The committee's administering role is protected from an ERP-driven end.
+        self.assertTrue(
+            GroupMembership.objects.get(user=user, group=committee).is_active
+        )
+        self.assertEqual(self.command.stats["disabled_users"], 1)
+        self.assertEqual(self.command.stats["deactivated_memberships"], 0)
+        self.assertEqual(self.command.stats["preserved_executive_memberships"], 1)
+
     def test_deactivation_dry_run_changes_nothing(self):
         user = self._user(username="erp.leaver", source="erp", idno="6001015800085")
 

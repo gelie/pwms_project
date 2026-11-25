@@ -42,7 +42,9 @@ directory holds credentials only — authorisation stays with
   page. The same rule is enforced in the views through the shared permission
   resolver (`Group.can_be_managed_by`), so a secretary in one committee cannot
   administer another or reshape the tree, and the role does not make its holder a
-  global administrator.
+  global administrator. A Committee Secretary membership itself is protected
+  from being ended (change the role first), and ending any other membership
+  opens a confirmation page.
 - **Duty delegation.** The committee secretary records a member's delegation
   on their behalf (members need not sign in): an active member's duties in the
   group are lent to another active PWMS user until a chosen date
