@@ -183,6 +183,12 @@ A current delegation is exposed as ``current_delegation`` and shown beside the
 member on the group page. It never changes ``is_active``: a member who delegates
 duties is still a member, and the row continues to say so.
 
+A **Committee Secretary** membership cannot be ended: ``clean()`` and the soft
+``delete()`` reject it, the edit form locks ``is_active``, and the group page
+shows a **Protected** marker instead of **End**. To retire the person, change
+their role first. Ending any other membership goes through a confirmation page,
+and the ERP deactivation sync preserves secretary memberships too.
+
 ### `DutyDelegation(BaseModel)`
 
 A member's duties in one group, lent to another active user until a stated date:

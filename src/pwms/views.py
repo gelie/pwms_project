@@ -771,13 +771,26 @@ def group_membership_edit(request, pk, membership_pk):
     )
 
 
-@require_POST
 def group_membership_end(request, pk, membership_pk):
-    """End an active membership (the row is kept as history)."""
+    """Confirm (GET) then end (POST) an active membership.
+
+    The row is kept as history. A Committee Secretary membership cannot be
+    ended: the role administers the committee, so it must be changed first if
+    the person should stop administering it.
+    """
     group = get_object_or_404(Group.objects.select_related("parent"), pk=pk)
     membership = get_object_or_404(GroupMembership, pk=membership_pk, group=group)
     require(request.user, group, MANAGE)
-    if membership.is_active:
+
+    if membership.is_active and membership.is_committee_secretary:
+        messages.error(request, Group.COMMITTEE_SECRETARY_PROTECTED_MESSAGE)
+        return redirect("pwms:group_detail", pk=group.pk)
+
+    if not membership.is_active:
+        messages.info(request, "That membership has already ended.")
+        return redirect("pwms:group_detail", pk=group.pk)
+
+    if request.method == "POST":
         membership.is_active = False
         membership.updated_by = request.user
         membership.save(update_fields=["is_active", "updated_by", "updated_at"])
@@ -785,7 +798,13 @@ def group_membership_end(request, pk, membership_pk):
         messages.success(
             request, f'{membership.user.display_name} removed from "{group.name}".'
         )
-    return redirect("pwms:group_detail", pk=group.pk)
+        return redirect("pwms:group_detail", pk=group.pk)
+
+    return render(
+        request,
+        "pwms/group-membership-confirm-end.html",
+        {"group": group, "membership": membership},
+    )
 
 
 def duty_delegation_create(request, pk):

@@ -16,11 +16,13 @@ from datetime import timedelta
 from auditlog.models import LogEntry
 from django.contrib import admin
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.db.models import ProtectedError
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
+from .forms import GroupMembershipForm
 from .models import DutyDelegation, Group, GroupMembership, Role
 from .services.permissions import EDIT, MANAGE, VIEW, resolve
 
@@ -286,6 +288,77 @@ class CommitteeAccessTests(TestCase):
         self.assertContains(response, self.member_role.name)
         self.assertContains(response, self.secretary_role.name)
         self.assertNotContains(response, global_manager.name)
+
+    # -- ending a membership -----------------------------------------------
+    def test_committee_secretary_membership_cannot_be_ended(self):
+        self.client.force_login(self.secretary)
+        url = reverse(
+            "pwms:group_membership_end",
+            kwargs={
+                "pk": self.committee.pk,
+                "membership_pk": self.secretary_membership.pk,
+            },
+        )
+
+        # Neither the confirmation page nor a direct POST may end it.
+        self.assertEqual(self.client.get(url).status_code, 302)
+        self.assertEqual(self.client.post(url).status_code, 302)
+        self.secretary_membership.refresh_from_db()
+        self.assertTrue(self.secretary_membership.is_active)
+
+    def test_committee_secretary_membership_rejects_model_deactivation(self):
+        membership = GroupMembership.objects.get(pk=self.secretary_membership.pk)
+        membership.is_active = False
+        with self.assertRaises(ValidationError):
+            membership.full_clean()
+        with self.assertRaises(ValidationError):
+            self.secretary_membership.delete()
+        self.assertTrue(
+            GroupMembership.objects.filter(
+                pk=self.secretary_membership.pk, is_active=True
+            ).exists()
+        )
+
+    def test_committee_secretary_edit_form_locks_is_active(self):
+        form = GroupMembershipForm(
+            instance=self.secretary_membership, group=self.committee
+        )
+        self.assertTrue(form.fields["is_active"].disabled)
+
+    def test_membership_end_requires_confirmation(self):
+        self.client.force_login(self.secretary)
+        url = reverse(
+            "pwms:group_membership_end",
+            kwargs={
+                "pk": self.committee.pk,
+                "membership_pk": self.member_membership.pk,
+            },
+        )
+
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Are you sure")
+        self.member_membership.refresh_from_db()
+        self.assertTrue(self.member_membership.is_active)
+
+        self.assertEqual(self.client.post(url).status_code, 302)
+        self.member_membership.refresh_from_db()
+        self.assertFalse(self.member_membership.is_active)
+
+    def test_group_page_protects_secretary_membership_end(self):
+        self.client.force_login(self.secretary)
+        response = self.client.get(
+            reverse("pwms:group_detail", kwargs={"pk": self.committee.pk})
+        )
+        end_url = reverse(
+            "pwms:group_membership_end",
+            kwargs={
+                "pk": self.committee.pk,
+                "membership_pk": self.secretary_membership.pk,
+            },
+        )
+        self.assertNotContains(response, end_url)
+        self.assertContains(response, "Protected")
 
     # -- soft deletion -------------------------------------------------------
     def test_membership_delete_is_soft(self):
