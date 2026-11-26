@@ -610,12 +610,14 @@ def _progress_timeline_table(instance, now):
         end_time = timeline[i + 1][1] if i < len(timeline) - 1 else now
         duration = end_time - start_time
 
-        rows.append([
-            _cell(state.name),
-            _cell(_day(start_time) + " " + _time(start_time)),
-            _cell(_day(end_time) + " " + _time(end_time)),
-            _cell(format_duration(duration)),
-        ])
+        rows.append(
+            [
+                _cell(state.name),
+                _cell(_day(start_time) + " " + _time(start_time)),
+                _cell(_day(end_time) + " " + _time(end_time)),
+                _cell(format_duration(duration)),
+            ]
+        )
 
     return {
         "title": "Detailed Progress Timeline",
@@ -633,7 +635,7 @@ def _progress_timeline_graph(instance):
     logs = instance.audit_logs().order_by("timestamp")
     initial_state = instance.workflow_type.get_initial_state()
     now = timezone.now()
-    
+
     # Sequence of (state, timestamp)
     timeline = [(initial_state, instance.created_at)]
     for log in logs:
@@ -644,15 +646,17 @@ def _progress_timeline_graph(instance):
         s, ts = timeline[i]
         end_time = timeline[i + 1][1] if i < len(timeline) - 1 else now
         duration = end_time - ts
-        
+
         is_last = i == len(timeline) - 1
         label = f"{s.name}" if not is_last else f"{s.name} (Current)"
-        
-        steps.append({
-            "label": label,
-            "timestamp": _friendly_date(ts) + " " + _time(ts),
-            "duration": format_duration(duration),
-        })
+
+        steps.append(
+            {
+                "label": label,
+                "timestamp": _friendly_date(ts) + " " + _time(ts),
+                "duration": format_duration(duration),
+            }
+        )
 
     return {
         "type": "progress_bar",
