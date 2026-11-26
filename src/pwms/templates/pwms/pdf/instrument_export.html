@@ -45,6 +45,25 @@
       <p class="note">{{ note.text }}</p>
     </div>
   {% endfor %}
+  {% for visual in document.visuals %}
+    <div class="section">
+      <h2>{{ visual.title }}</h2>
+      {% if visual.type == "progress_bar" %}
+        <div class="progress-container">
+          {% for step in visual.steps %}
+            <div class="progress-step">
+              <span class="pill">{{ step.label }}</span>
+              <span class="progress-timestamp">{{ step.timestamp }}</span>
+              <span class="progress-duration">{{ step.duration }}</span>
+            </div>
+            {% if not loop.last %}
+              <div class="progress-arrow">→</div>
+            {% endif %}
+          {% endfor %}
+        </div>
+      {% endif %}
+    </div>
+  {% endfor %}
   {% for table in document.tables %}
     <div class="section">
       <h2>{{ table.title }}</h2>
