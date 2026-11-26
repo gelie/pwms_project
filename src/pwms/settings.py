@@ -14,6 +14,8 @@ import ldap
 from decouple import config
 from django_auth_ldap.config import LDAPSearch
 
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
+
 # Repo root (manage.py, .env, logs/, docs/ live here; templates/ and static/
 # live inside the app package at src/pwms/).
 # src/pwms/settings.py -> parents[0]=src/pwms, [1]=src, [2]=repo root.
