@@ -224,7 +224,7 @@ admin disables delete. Only `reset_groups` hard-deletes rows.
 
 ---
 
-## 3. Workflow engine & instances — `pwms/models/workflows.py`
+## 3. Workflow engine & instances — `pwms/models/workflows/`
 
 ### `WorkflowType`
 

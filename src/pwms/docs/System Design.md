@@ -73,9 +73,9 @@ pwms_project/                     # repo root (git) — run manage.py from here
     ├── tasks.py                  # django-background-tasks entry points
     ├── templates/                # server-rendered UI (Bootstrap 5 + HTMX)
     ├── static/                   # CSS / JS / images
-    ├── admin.py                  # admin registrations
+    ├── admin/                    # admin registrations (split by area)
     ├── apps.py                   # PwmsConfig; ready() registers auditlog
-    ├── urls.py / views.py        # app pages under /pwms/ (dashboard, auth, groups,
+    ├── urls.py / views/          # app pages under /pwms/ (dashboard, auth, groups,
     │                             #   workflow CRUD, attachments, alerts, reports)
     ├── backends.py               # GracefulLDAPBackend + local fallback
     ├── middleware.py             # login-required-by-default middleware
@@ -90,16 +90,28 @@ pwms_project/                     # repo root (git) — run manage.py from here
     │   ├── attachments.py        # Attachment, AttachmentVersion
     │   ├── notifications.py      # Notification (bell + outbound-email log), NotificationRule, NotificationPreference
     │   ├── reports.py            # ReportShare
-    │   ├── workflows.py          # engine + instances + RBAC + events
+    │   ├── workflows/            # engine + instances + RBAC + events
+    │   │   ├── types.py          # WorkflowType, PublicStatus
+    │   │   ├── machine.py        # State, Transition, guards
+    │   │   ├── base.py           # AbstractLegislativeWorkflow
+    │   │   ├── access.py         # WorkflowGroupAccess, role/state permissions
+    │   │   ├── events.py         # TransitionLog, EventType, WorkflowEvent
+    │   │   ├── referrals.py      # WorkflowReferral, WorkflowNote
+    │   │   ├── relationships.py  # parent/child links
+    │   │   └── instruments.py    # DelegationReport, Bill, agreements, …
     │   ├── meetings.py          # Meeting + MeetingAttendance (the Events workflow)
     │   └── venues.py            # Building + Venue (on-premises venue catalogue)
     ├── api/
-    │   ├── api.py                # NinjaAPI, routers and the read-only endpoints
+    │   ├── app.py                # NinjaAPI instance + router objects
+    │   ├── api.py                # facade: wires routers onto the API
+    │   ├── endpoints/            # one module per resource (auth, users, bills, …)
+    │   ├── pagination.py         # shared offset/limit helpers
+    │   ├── querysets.py          # API querysets and page shaping
     │   ├── models.py             # ApiClient, ApiRefreshToken, ApiUsageLog
     │   ├── auth.py / tokens.py   # bearer auth, signed access + rotating refresh tokens
     │   ├── scopes.py             # users:read / memberships:read / bills:read
     │   └── throttling.py         # per-key rate limit + IP-scoped token throttle
-    ├── notifications/            # audience building, preferences, dispatch, share logging, bell context
+    ├── notifications/            # audience, delivery, event entry points, preferences
     ├── reporting/                # builder, exports, instruments, sharing
     ├── membership/
     │   ├── resolver.py          # GroupResolver: Oracle pair -> seeded Group (+ group_aliases.csv)
@@ -246,7 +258,7 @@ Helpers on the base provide lifecycle navigation:
 
 Who hears about an event is **declared**, not an accident of RBAC. Everything
 lives in `pwms/notifications/` (`dispatch.py`, `preferences.py`) and three models
-in `models/notifications.py` / `models/workflows.py`.
+in `models/notifications.py` / `models/workflows/`.
 
 ```mermaid
 flowchart TD

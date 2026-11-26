@@ -17,6 +17,7 @@ from time import perf_counter
 
 from django.core.management.base import CommandError
 from django.db import IntegrityError
+
 from pwms.management.commands.sync_base import OracleSyncBase
 from pwms.models import Role
 
@@ -265,7 +266,7 @@ class Command(OracleSyncBase):
                 )
 
         except Exception as e:
-            self.logger.error(f"Role sync failed: {e!s}", exc_info=True)
+            self.logger.exception("Role sync failed")
             self.stats["errors"] += 1
             raise CommandError(f"❌ Role sync failed: {e!s}")
 

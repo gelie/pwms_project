@@ -148,13 +148,9 @@ class Command(BaseCommand):
                     "name": transition.name,
                     "from_state_slug": transition.from_state.slug,
                     "to_state_slug": transition.to_state.slug,
-                    "allowed_roles_slugs": self._roles_slugs(
-                        transition.allowed_roles
-                    ),
+                    "allowed_roles_slugs": self._roles_slugs(transition.allowed_roles),
                     "required_event_type_slugs": sorted(
-                        transition.required_event_types.values_list(
-                            "slug", flat=True
-                        )
+                        transition.required_event_types.values_list("slug", flat=True)
                     ),
                     "requires_comment": transition.requires_comment,
                     "order": transition.order,

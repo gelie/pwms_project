@@ -5,7 +5,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("pwms", "0010_remove_delegationreport_atc_document_url_and_more"),
     ]

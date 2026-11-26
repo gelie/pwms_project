@@ -132,8 +132,7 @@ class Command(BaseCommand):
 
             if existing:
                 if any(
-                    getattr(existing, field) != value
-                    for field, value in fields.items()
+                    getattr(existing, field) != value for field, value in fields.items()
                 ):
                     for field, value in fields.items():
                         setattr(existing, field, value)
@@ -169,17 +168,13 @@ class Command(BaseCommand):
 
         if dry_run:
             self.stdout.write(
-                self.style.WARNING(
-                    "\n💡 Run without --dry-run to apply these changes."
-                )
+                self.style.WARNING("\n💡 Run without --dry-run to apply these changes.")
             )
 
     @staticmethod
     def _resolve_workflow_type(ref: str) -> WorkflowType:
         try:
-            return WorkflowType.objects.get(
-                Q(name__iexact=ref) | Q(slug__iexact=ref)
-            )
+            return WorkflowType.objects.get(Q(name__iexact=ref) | Q(slug__iexact=ref))
         except WorkflowType.DoesNotExist:
             raise CommandError(
                 f"WorkflowType '{ref}' not found. Create it first in the admin or shell."

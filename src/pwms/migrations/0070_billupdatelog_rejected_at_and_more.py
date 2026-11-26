@@ -4,30 +4,37 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('pwms', '0069_billupdatelog_reviewed_at_billupdatelog_reviewed_by_and_more'),
+        ("pwms", "0069_billupdatelog_reviewed_at_billupdatelog_reviewed_by_and_more"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='billupdatelog',
-            name='rejected_at',
+            model_name="billupdatelog",
+            name="rejected_at",
             field=models.DateTimeField(blank=True, null=True),
         ),
         migrations.AddField(
-            model_name='billupdatelog',
-            name='rejected_by_name',
+            model_name="billupdatelog",
+            name="rejected_by_name",
             field=models.CharField(blank=True, max_length=255),
         ),
         migrations.AddField(
-            model_name='billupdatelog',
-            name='rejection_reason',
+            model_name="billupdatelog",
+            name="rejection_reason",
             field=models.TextField(blank=True),
         ),
         migrations.AlterField(
-            model_name='billupdatelog',
-            name='event',
-            field=models.CharField(choices=[('NEW', 'New bill'), ('EDITS', 'Bill edited'), ('STATUS_CHANGE', 'Status changed'), ('REJECTION', 'Rejected')], max_length=20),
+            model_name="billupdatelog",
+            name="event",
+            field=models.CharField(
+                choices=[
+                    ("NEW", "New bill"),
+                    ("EDITS", "Bill edited"),
+                    ("STATUS_CHANGE", "Status changed"),
+                    ("REJECTION", "Rejected"),
+                ],
+                max_length=20,
+            ),
         ),
     ]

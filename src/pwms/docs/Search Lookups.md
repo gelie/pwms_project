@@ -36,9 +36,10 @@ sequenceDiagram
 | `location_country` | `pwms:country_search` — `/pwms/country-search/` | `search` | `name` (`icontains`) or ISO code (`iexact`) | names starting with the query first, then name | `pwms/partials/country_search_results.html` |
 | `location_city` | `pwms:city_search` — `/pwms/city-search/` | `search`, `country` | `name` or `ascii_name` (`istartswith`), limited to `country` when it is a number | population desc, then name | `pwms/partials/city_search_results.html` |
 
-Every view caps its result set at 20 rows and lives in `pwms/views.py` next to
-the workflow views. `owner` is deliberately **not** a picker: it is disabled and
-taken from the acting user on create (`WorkflowInstanceFormMixin.__init__`).
+Every view caps its result set at 20 rows and lives in `pwms/views/search.py`
+next to the workflow views. `owner` is deliberately **not** a picker: it is
+disabled and taken from the acting user on create
+(`WorkflowInstanceFormMixin.__init__` in `pwms/forms/base.py`).
 `report_search` filters through `resolve(user, report, EDIT)` rather than taking
 the whole register, because nesting a resolution under a report edits that
 report's hierarchy too. `sponsor_name` is a text field rather than a foreign
@@ -85,7 +86,7 @@ deliberate:
 
 ## 3. Form side
 
-`WorkflowInstanceFormMixin` (`pwms/forms.py`) owns the decision, so templates
+`WorkflowInstanceFormMixin` (`pwms/forms/base.py`) owns the decision, so templates
 never choose between a select and a picker:
 
 | Attribute | Meaning |
@@ -219,15 +220,15 @@ declared in the template, not in the script:
    cascade.
 7. Test it: the endpoint's fragment and filters, the threshold behaviour, and a
    POST round trip — the location pickers are covered in `PlaceDataTests` and
-   `WorkflowCrudViewTests` in `pwms/tests.py`.
+   `WorkflowFormViewTests` in `pwms/tests/views_forms.py`.
 
 ## 7. Testing and verification
 
 | What | Where |
 | --- | --- |
-| Loader, fragment contents, city scoping, country ranking, loader idempotency | `PlaceDataTests` in `pwms/tests.py` |
-| Picker vs select threshold, linked country/city attributes, POST round trip | `WorkflowCrudViewTests` in `pwms/tests.py` |
-| Report (`parent_report`) picker RBAC filtering and POST round trip | `WorkflowCrudViewTests` in `pwms/tests.py` |
+| Loader, fragment contents, city scoping, country ranking, loader idempotency | `PlaceDataTests` in `pwms/tests/places.py` |
+| Picker vs select threshold, linked country/city attributes, POST round trip | `WorkflowFormViewTests` in `pwms/tests/views_forms.py` |
+| Report (`parent_report`) picker RBAC filtering and POST round trip | `WorkflowFormViewTests` in `pwms/tests/views_forms.py` |
 | End-to-end typing, swapping, cascading | served the real page over HTTP and stubbed the endpoints (Playwright `page.route`), which is how the requests, the swap and the cascade reset were confirmed |
 
 ## 8. Limits worth knowing

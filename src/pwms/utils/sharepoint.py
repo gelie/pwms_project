@@ -9,6 +9,11 @@ from pwms.models import SharepointToken
 
 logger = logging.getLogger(__name__)
 
+
+class SharePointError(RuntimeError):
+    """A failed SharePoint/Graph request or missing Graph configuration."""
+
+
 _TOKEN_BUFFER_SECONDS = 300  # Refresh 5 minutes before the real expiry.
 
 
@@ -28,7 +33,7 @@ def get_application_token():
     # Get new token from Microsoft
     url = settings.SHAREPOINT_TOKEN_URL
     if not url:
-        raise Exception("SHAREPOINT_TOKEN_URL not configured")
+        raise SharePointError("SHAREPOINT_TOKEN_URL not configured")
 
     payload = {
         "client_id": settings.SHAREPOINT_CLIENT_ID,
@@ -39,9 +44,9 @@ def get_application_token():
 
     # Check that required settings are configured
     if not payload["client_id"]:
-        raise Exception("SHAREPOINT_CLIENT_ID not configured")
+        raise SharePointError("SHAREPOINT_CLIENT_ID not configured")
     if not payload["client_secret"]:
-        raise Exception("SHAREPOINT_CLIENT_SECRET not configured")
+        raise SharePointError("SHAREPOINT_CLIENT_SECRET not configured")
 
     headers = {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -74,11 +79,11 @@ def get_application_token():
             return token_data
 
         except httpx.HTTPStatusError as e:
-            raise Exception(
+            raise SharePointError(
                 f"Token request failed with HTTP error: {e!s}, response: {e.response.text}"
             )
         except httpx.HTTPError as e:
-            raise Exception(f"Token request failed with HTTP error: {e!s}")
+            raise SharePointError(f"Token request failed with HTTP error: {e!s}")
 
 
 def get_token():
@@ -98,7 +103,7 @@ async def get_all_sites(token_data: dict):
     """
     access_token = token_data.get("access_token")
     if not access_token:
-        raise Exception("No access_token found in token data")
+        raise SharePointError("No access_token found in token data")
 
     headers = {"Authorization": f"Bearer {access_token}"}
     base_url = (
@@ -123,7 +128,7 @@ async def get_drive(token_data: dict, drive_id: str):
     """Get one drive's metadata (name, driveType and parent site reference)."""
     access_token = token_data.get("access_token")
     if not access_token:
-        raise Exception("No access_token found in token data")
+        raise SharePointError("No access_token found in token data")
 
     url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}"
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -135,7 +140,7 @@ async def get_drive(token_data: dict, drive_id: str):
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as e:
-            raise Exception(
+            raise SharePointError(
                 f"Drive request failed: {e!s}, response: {getattr(response, 'text', 'no response') if response else 'no response'}"
             )
 
@@ -144,7 +149,7 @@ async def get_site(token_data: dict, site_id: str):
     """Get one SharePoint site's core metadata (id, name and web URL)."""
     access_token = token_data.get("access_token")
     if not access_token:
-        raise Exception("No access_token found in token data")
+        raise SharePointError("No access_token found in token data")
 
     url = f"https://graph.microsoft.com/v1.0/sites/{site_id}?$select=id,name,webUrl"
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -156,7 +161,7 @@ async def get_site(token_data: dict, site_id: str):
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as e:
-            raise Exception(
+            raise SharePointError(
                 f"Site request failed: {e!s}, response: {getattr(response, 'text', 'no response') if response else 'no response'}"
             )
 
@@ -168,7 +173,7 @@ async def get_site_details(token_data: dict, site_id: str):
     # Extract access token from the token data
     access_token = token_data.get("access_token")
     if not access_token:
-        raise Exception("No access_token found in token data")
+        raise SharePointError("No access_token found in token data")
 
     headers = {"Authorization": f"Bearer {access_token}"}
 
@@ -179,18 +184,18 @@ async def get_site_details(token_data: dict, site_id: str):
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as e:
-            raise Exception(
+            raise SharePointError(
                 f"Site details request failed: {e!s}, response: {getattr(response, 'text', 'no response') if response else 'no response'}"
             )
-        except Exception as e:
-            raise Exception(f"Unexpected error in site details request: {e!s}")
+        except Exception as e:  # noqa: BLE001 - wrap unexpected Graph client failures
+            raise SharePointError(f"Unexpected error in site details request: {e!s}")
 
 
 async def get_site_drives(token_data: dict, site_id: str):
     """Get all drives for a specific site, following ``@odata.nextLink``."""
     access_token = token_data.get("access_token")
     if not access_token:
-        raise Exception("No access_token found in token data")
+        raise SharePointError("No access_token found in token data")
 
     headers = {"Authorization": f"Bearer {access_token}"}
     url = f"https://graph.microsoft.com/v1.0/sites/{site_id}/drives?$select=id,name"
@@ -214,7 +219,7 @@ async def get_drive_items(token_data: dict, drive_id: str):
     # Extract access token from the token data
     access_token = token_data.get("access_token")
     if not access_token:
-        raise Exception("No access_token found in token data")
+        raise SharePointError("No access_token found in token data")
 
     headers = {"Authorization": f"Bearer {access_token}"}
 
@@ -224,11 +229,11 @@ async def get_drive_items(token_data: dict, drive_id: str):
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as e:
-            raise Exception(
+            raise SharePointError(
                 f"Drive items request failed: {e!s}, response: {getattr(response, 'text', 'no response')}"
             )
-        except Exception as e:
-            raise Exception(f"Unexpected error in drive items request: {e!s}")
+        except Exception as e:  # noqa: BLE001 - wrap unexpected Graph client failures
+            raise SharePointError(f"Unexpected error in drive items request: {e!s}")
 
 
 async def get_folder_items(token_data: dict, drive_id: str, folder_id: str):
@@ -240,7 +245,7 @@ async def get_folder_items(token_data: dict, drive_id: str, folder_id: str):
     # Extract access token from the token data
     access_token = token_data.get("access_token")
     if not access_token:
-        raise Exception("No access_token found in token data")
+        raise SharePointError("No access_token found in token data")
 
     headers = {"Authorization": f"Bearer {access_token}"}
 
@@ -250,18 +255,18 @@ async def get_folder_items(token_data: dict, drive_id: str, folder_id: str):
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as e:
-            raise Exception(
+            raise SharePointError(
                 f"Folder items request failed: {e!s}, response: {getattr(response, 'text', 'no response')}"
             )
-        except Exception as e:
-            raise Exception(f"Unexpected error in folder items request: {e!s}")
+        except Exception as e:  # noqa: BLE001 - wrap unexpected Graph client failures
+            raise SharePointError(f"Unexpected error in folder items request: {e!s}")
 
 
 async def get_item(token_data: dict, drive_id: str, item_id: str):
     """Get the metadata for a single drive item (file or folder)."""
     access_token = token_data.get("access_token")
     if not access_token:
-        raise Exception("No access_token found in token data")
+        raise SharePointError("No access_token found in token data")
 
     url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}"
     headers = {"Authorization": f"Bearer {access_token}"}
@@ -273,11 +278,11 @@ async def get_item(token_data: dict, drive_id: str, item_id: str):
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as e:
-            raise Exception(
+            raise SharePointError(
                 f"Item metadata request failed: {e!s}, response: {getattr(response, 'text', 'no response') if response else 'no response'}"
             )
-        except Exception as e:
-            raise Exception(f"Unexpected error in item metadata request: {e!s}")
+        except Exception as e:  # noqa: BLE001 - wrap unexpected Graph client failures
+            raise SharePointError(f"Unexpected error in item metadata request: {e!s}")
 
 
 async def get_item_versions(token_data: dict, drive_id: str, item_id: str):
@@ -289,7 +294,7 @@ async def get_item_versions(token_data: dict, drive_id: str, item_id: str):
     """
     access_token = token_data.get("access_token")
     if not access_token:
-        raise Exception("No access_token found in token data")
+        raise SharePointError("No access_token found in token data")
 
     headers = {"Authorization": f"Bearer {access_token}"}
     url = f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}/versions"
@@ -318,7 +323,7 @@ async def get_version_download_url(
     """
     access_token = token_data.get("access_token")
     if not access_token:
-        raise Exception("No access_token found in token data")
+        raise SharePointError("No access_token found in token data")
 
     url = (
         f"https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item_id}"
@@ -344,7 +349,7 @@ async def upload_file(
     """
     access_token = token_data.get("access_token")
     if not access_token:
-        raise Exception("No access_token found in token data")
+        raise SharePointError("No access_token found in token data")
 
     headers = {"Authorization": f"Bearer {access_token}"}
 
@@ -364,7 +369,7 @@ async def upload_file(
                 response.raise_for_status()
                 return response.json()
             except httpx.HTTPError as e:
-                raise Exception(
+                raise SharePointError(
                     f"File upload failed: {e!s}, response: {getattr(response, 'text', 'no response')}"
                 )
     else:
@@ -414,7 +419,7 @@ async def upload_file(
                             response.raise_for_status()
 
             except httpx.HTTPError as e:
-                raise Exception(
+                raise SharePointError(
                     f"Large file upload failed: {e!s}, response: {getattr(response, 'text', 'no response')}"
                 )
 
@@ -427,7 +432,7 @@ async def create_folder(
     """
     access_token = token_data.get("access_token")
     if not access_token:
-        raise Exception("No access_token found in token data")
+        raise SharePointError("No access_token found in token data")
 
     # Handle root folder case
     if parent_folder_id == "root":
@@ -451,7 +456,7 @@ async def create_folder(
             response.raise_for_status()
             return response.json()
         except httpx.HTTPError as e:
-            raise Exception(
+            raise SharePointError(
                 f"Folder creation failed: {e!s}, response: {getattr(response, 'text', 'no response')}"
             )
 
@@ -473,7 +478,7 @@ async def create_child_folder(
     """
     access_token = token_data.get("access_token")
     if not access_token:
-        raise Exception("No access_token found in token data")
+        raise SharePointError("No access_token found in token data")
 
     url = (
         f"https://graph.microsoft.com/v1.0/drives/{drive_id}"
@@ -499,7 +504,7 @@ async def create_child_folder(
                         token_data, drive_id, parent_item_id, folder_name
                     )
                     if existing is None or "folder" not in existing:
-                        raise Exception(
+                        raise SharePointError(
                             f"A non-folder item named {folder_name!r} already "
                             f"exists under the parent folder: {response.text}"
                         )
@@ -507,7 +512,7 @@ async def create_child_folder(
             response.raise_for_status()
             return response.json(), True
         except httpx.HTTPError as e:
-            raise Exception(
+            raise SharePointError(
                 f"Folder creation failed: {e!s}, response: {getattr(response, 'text', 'no response')}"
             )
 
@@ -518,7 +523,7 @@ async def _child_by_name(
     """Find a direct child of a folder by its exact name (paged)."""
     access_token = token_data.get("access_token")
     if not access_token:
-        raise Exception("No access_token found in token data")
+        raise SharePointError("No access_token found in token data")
 
     url = (
         f"https://graph.microsoft.com/v1.0/drives/{drive_id}"
@@ -533,7 +538,7 @@ async def _child_by_name(
                 response = await client.get(url, headers=headers)
                 response.raise_for_status()
             except httpx.HTTPError as e:
-                raise Exception(
+                raise SharePointError(
                     f"Folder lookup failed: {e!s}, response: {getattr(response, 'text', 'no response')}"
                 )
             payload = response.json()

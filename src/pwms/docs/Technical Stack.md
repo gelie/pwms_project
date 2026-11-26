@@ -90,7 +90,7 @@
   key across every resource. `EXTERNAL_API_MAX_PAGE_SIZE` caps list pages
   (default 100).
 - OpenAPI title/version for the Ninja API live in
-  `pwms/api/api.py`; docs are at `/api/v1/docs` and the schema at
+  `pwms/api/app.py` and `pwms/api/endpoints/`; docs are at `/api/v1/docs` and the schema at
   `/api/v1/openapi.json`.
 - `auditlog.middleware.AuditlogMiddleware` runs after auth so changes are attributed to the logged-in user.
 - Logging: console/file handler writing to the configured `LOG_DIR` (`pwms.log`).
@@ -141,7 +141,7 @@
 
 ## Testing
 
-- Test modules: `pwms/tests.py` (auditing, workflow CRUD, lookups),
+- Test modules: `pwms/tests/` (auditing, workflow CRUD, lookups),
   `pwms/tests_api.py` (app keys, tokens, scopes, throttling, usage logs),
   `pwms/tests_notifications.py` (alert audience, delivery, envelope snapshots and
   the append-only log), `pwms/tests_attachments.py` (SharePoint attachments &

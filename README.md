@@ -228,15 +228,11 @@ pull request, in order of cost:
 1. **Lint** — `ruff check` and `ruff format --check`.
 2. **Migrations** — `makemigrations --check --dry-run` (models must not have
    drifted from the migrations) then `migrate` against the service database.
-3. **Tests** — the 14-module suite above against a PostgreSQL service, under
+3. **Tests** — the full suite above against a PostgreSQL service, under
    `coverage` (configuration in `pyproject.toml`).
 
-> **Two gates currently report without failing the build**, because both flag
-> *pre-existing* conditions that would otherwise make CI red on day one:
-> `ruff check` (~104 outstanding findings) and `makemigrations --check`
-> (26 `AlterField` operations regenerated under Django 6.1). Each step carries a
-> `continue-on-error: true` and a comment saying so. Clear the underlying
-> condition, then flip that flag to `false` to turn it into a hard gate.
+All three are hard gates: `ruff check`, `ruff format --check` and
+`makemigrations --check` are clean, so any regression fails the build.
 
 `python-ldap` (via `django-auth-ldap`) ships no wheels, so every CI job installs
 `libldap2-dev libsasl2-dev python3-dev build-essential` before `uv sync`. The

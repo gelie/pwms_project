@@ -6,35 +6,54 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('pwms', '0071_dutydelegation'),
+        ("pwms", "0071_dutydelegation"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='dutydelegation',
-            name='delegate',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='duties_received', to=settings.AUTH_USER_MODEL),
+            model_name="dutydelegation",
+            name="delegate",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="duties_received",
+                to=settings.AUTH_USER_MODEL,
+            ),
         ),
         migrations.AlterField(
-            model_name='dutydelegation',
-            name='delegator',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='duties_delegated', to=settings.AUTH_USER_MODEL),
+            model_name="dutydelegation",
+            name="delegator",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="duties_delegated",
+                to=settings.AUTH_USER_MODEL,
+            ),
         ),
         migrations.AlterField(
-            model_name='dutydelegation',
-            name='group',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='duty_delegations', to='pwms.group'),
+            model_name="dutydelegation",
+            name="group",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="duty_delegations",
+                to="pwms.group",
+            ),
         ),
         migrations.AlterField(
-            model_name='groupmembership',
-            name='group',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='members', to='pwms.group'),
+            model_name="groupmembership",
+            name="group",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="members",
+                to="pwms.group",
+            ),
         ),
         migrations.AlterField(
-            model_name='groupmembership',
-            name='user',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='memberships', to=settings.AUTH_USER_MODEL),
+            model_name="groupmembership",
+            name="user",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="memberships",
+                to=settings.AUTH_USER_MODEL,
+            ),
         ),
     ]

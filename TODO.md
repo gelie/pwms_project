@@ -3,9 +3,11 @@
 Current-state backlog for PWMS. This reconciles an earlier assessment against the
 repository as it actually stands (2026-11-17) and folds in the PWMS API work.
 
-Verified facts used below: 66 migrations, 19 test modules, 1002 tests, `ruff check`
-reports 97 findings (26 auto-fixable), `views.py` 4 819 lines,
-`models/workflows.py` 3 029, `forms.py` 1 566.
+Verified facts used below: 72 migrations, 42 test modules (the `tests/` package
+plus the `tests_*.py` modules), 1 210 tests, `ruff check` reports 0 findings.
+The former god modules are now packages: `views/` (21
+modules, largest 775 lines), `models/workflows/` (8, largest 949), `forms/` (9),
+`admin/` (8), `api/endpoints/` (9), `tests/` (20, largest 699).
 
 ---
 
@@ -72,21 +74,22 @@ reports 97 findings (26 auto-fixable), `views.py` 4 819 lines,
 
 ## 1. Engineering infrastructure
 
-- [ ] **Turn the reporting gates into hard gates.** `ruff check` and
-      `makemigrations --check` currently run with `continue-on-error: true`
-      because both flag *pre-existing* conditions. A gate that reports without
-      failing trains people to ignore it — clear the underlying condition, then
-      flip the flag to `false`.
+- [x] **Turn the reporting gates into hard gates.** `ruff check`,
+      `ruff format --check` and `makemigrations --check` are clean and now run
+      without `continue-on-error`, so a regression fails CI.
 - [ ] **Enforce coverage.** Add `fail_under` to `[tool.coverage.report]` once the
       number is trusted, so the RBAC and transition guards (the security-critical
       paths) cannot silently regress.
 - [ ] **Dependency audit + lock verification.** `pip-audit` for known CVEs and a
       `uv lock --check` / `uv sync --frozen` gate. `uv.lock` exists but nothing in
       CI verifies it is in sync.
-- [ ] **Clear the lint debt.** 97 findings: 31 blind `except`, 29 bare/vanilla
-      `raise`, 23 unsorted imports. The blind `except Exception` blocks can swallow
-      RBAC failures and are the ones worth fixing first; 26 findings are
-      auto-fixable.
+- [x] **Clear the lint debt.** `ruff check src/pwms` is clean. The bespoke
+      `raise Exception(...)` in the SharePoint client is now a `SharePointError`;
+      deliberate broad catches (Oracle driver probes, Selenium scraping, cleanup
+      and fail-soft ID encryption) carry a narrow `# noqa: BLE001` and a reason;
+      the rest were real fixes (narrowed exceptions, `logger.exception`,
+      `timezone.localdate`, `TypeError` for bad types, sorted imports). Both ruff
+      steps are now hard CI gates.
 
 ## 2. Production / security hardening
 
@@ -148,10 +151,25 @@ reports 97 findings (26 auto-fixable), `views.py` 4 819 lines,
 
 ## 5. Code health / maintainability
 
-- [ ] **God modules** — `views.py` 4 819 lines, `models/workflows.py` 3 029,
-      `forms.py` 1 566. The workflow base class in particular could split
-      (transitions / RBAC / events / progress).
-- [ ] **Migration safety** — 66 migrations with data backfills (e.g. `0044` and
+- [x] **God modules split.** `views.py` (5 677 lines) → `views/` by feature
+      (dashboard, workflow register/detail, groups, people, instruments, bills,
+      reporting, search, attachments, referrals, notes, events, calendar,
+      meetings); `models/workflows.py` (3 075) → `models/workflows/`
+      (types, machine, base, access, events, referrals, relationships,
+      instruments); `forms.py` (1 767) → `forms/`; `admin.py` (1 546) → `admin/`;
+      `api/api.py` (1 174) → `api/app.py` + `api/endpoints/`; and
+      `notifications/dispatch.py` (1 183) → `audience`, `delivery`, `events`.
+      `tests.py` (5 413) → `tests/` (base, documents, workflow models, events,
+      access, membership, migrations, places, permissions, dashboard, commands,
+      pages, directory, search). The 1 600-line workflow view test class is
+      further split into `WorkflowCrudViewTests`, `WorkflowFormViewTests`,
+      `WorkflowListViewTests` and `WorkflowPermissionViewTests` over a shared
+      `WorkflowCrudViewTestBase`. Each package's `__init__` (or the original
+      module) re-exports the old names, so existing imports and the `pwms.tests`
+      test label keep working. The legacy, unimported `src/old/` tree was
+      deleted. The abstract workflow base still mixes transitions / RBAC /
+      events / hierarchy in one file and could split further.
+- [ ] **Migration safety** — 72 migrations with data backfills (e.g. `0044` and
       the `0066` email-envelope backfill). No migration tests or reversibility
       checks; the roadmap notes the schema "can be dropped and recreated safely
       in development", which suggests rollback is never exercised.
@@ -185,7 +203,7 @@ reports 97 findings (26 auto-fixable), `views.py` 4 819 lines,
    shipped features are dead in production.
 4. SharePoint version pinning/restore — the one domain feature with real
    legislative-accuracy value.
-5. Split `views.py` / `models/workflows.py` and fix the 97 lint findings.
+
 
 The standout observation holds: the documentation and domain modelling are well
 ahead of the operational engineering. The API is now broad, which raises the value

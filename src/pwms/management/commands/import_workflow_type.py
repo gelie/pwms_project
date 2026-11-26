@@ -132,7 +132,9 @@ class Command(BaseCommand):
             payload = json.load(f)
 
         if not isinstance(payload, dict):
-            raise CommandError("Invalid backup file: top-level value must be an object.")
+            raise CommandError(
+                "Invalid backup file: top-level value must be an object."
+            )
 
         version = payload.get("format_version")
         if version not in SUPPORTED_FORMAT_VERSIONS:
@@ -152,9 +154,7 @@ class Command(BaseCommand):
         try:
             return Group.objects.get(slug=slug)
         except Group.DoesNotExist:
-            raise CommandError(
-                f"Group with slug '{slug}' not found. Create it first."
-            )
+            raise CommandError(f"Group with slug '{slug}' not found. Create it first.")
 
     def _resolve_roles(self, slugs) -> list[Role]:
         return [self._resolve_role(slug) for slug in slugs or []]
@@ -195,9 +195,7 @@ class Command(BaseCommand):
                 Q(slug__iexact=ref) | Q(name__iexact=ref)
             ).first()
             if status is None:
-                raise CommandError(
-                    f"PublicStatus '{ref}' not found. Create it first."
-                )
+                raise CommandError(f"PublicStatus '{ref}' not found. Create it first.")
             return status
         if existing is not None and existing.public_status_id:
             return existing.public_status
@@ -261,11 +259,13 @@ class Command(BaseCommand):
 
         if existing:
             scalar_changed = self._fields_changed(existing, fields)
-            m2m_changed = (sync_create_roles and self._m2m_changed(
-                existing.create_roles, create_roles
-            )) or (sync_viewer_groups and self._m2m_changed(
-                existing.viewer_groups, viewer_groups
-            ))
+            m2m_changed = (
+                sync_create_roles
+                and self._m2m_changed(existing.create_roles, create_roles)
+            ) or (
+                sync_viewer_groups
+                and self._m2m_changed(existing.viewer_groups, viewer_groups)
+            )
 
             if scalar_changed or m2m_changed:
                 self._apply_fields(existing, fields)
@@ -352,7 +352,9 @@ class Command(BaseCommand):
         to_name = data.get("to_state_name")
 
         from_state = (
-            states_by_slug.get(from_slug) if from_slug else states_by_name.get(from_name)
+            states_by_slug.get(from_slug)
+            if from_slug
+            else states_by_name.get(from_name)
         )
         to_state = (
             states_by_slug.get(to_slug) if to_slug else states_by_name.get(to_name)
@@ -407,11 +409,15 @@ class Command(BaseCommand):
 
         if existing:
             scalar_changed = self._fields_changed(existing, fields)
-            m2m_changed = (sync_allowed_roles and self._m2m_changed(
-                existing.allowed_roles, allowed_roles
-            )) or (sync_event_guards and self._m2m_changed(
-                existing.required_event_types, required_event_types
-            ))
+            m2m_changed = (
+                sync_allowed_roles
+                and self._m2m_changed(existing.allowed_roles, allowed_roles)
+            ) or (
+                sync_event_guards
+                and self._m2m_changed(
+                    existing.required_event_types, required_event_types
+                )
+            )
 
             if scalar_changed or m2m_changed:
                 self._apply_fields(existing, fields)
@@ -489,7 +495,5 @@ class Command(BaseCommand):
 
         if dry_run:
             self.stdout.write(
-                self.style.WARNING(
-                    "\n💡 Run without --dry-run to apply these changes."
-                )
+                self.style.WARNING("\n💡 Run without --dry-run to apply these changes.")
             )

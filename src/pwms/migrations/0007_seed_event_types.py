@@ -27,8 +27,10 @@ STANDARD_EVENT_TYPES = [
     (
         "ATC update published",
         "atc-update-published",
-        "Report update published in the Announcements, Tablings and Committee "
-        "Reports, with reference, date and page (BR03.5.3).",
+        (
+            "Report update published in the Announcements, Tablings and Committee "
+            "Reports, with reference, date and page (BR03.5.3)."
+        ),
     ),
     (
         "Implementation reported",

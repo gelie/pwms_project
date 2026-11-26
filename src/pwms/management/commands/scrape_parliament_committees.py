@@ -8,12 +8,13 @@ from django.conf import settings
 from django.core.management.base import BaseCommand
 from django.db import transaction
 from django.utils import timezone
-from pwms.models import Group, GroupMembership, Role, User
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
+
+from pwms.models import Group, GroupMembership, Role, User
 
 # Set up logging
 logger = logging.getLogger("committee_scraper")
@@ -104,7 +105,7 @@ class Command(BaseCommand):
         try:
             call_command("import_committees", verbosity=1)
             self.stdout.write(self.style.SUCCESS("Committees imported successfully"))
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - import errors are reported, not fatal
             self.stdout.write(self.style.ERROR(f"Error importing committees: {e}"))
             logger.error(f"Error importing committees: {e}")
 
@@ -133,7 +134,7 @@ class Command(BaseCommand):
         created_roles = []
         for role_name, description in committee_roles:
             if not self.dry_run:
-                role, created = Role.objects.get_or_create(
+                _, created = Role.objects.get_or_create(
                     name=role_name, defaults={"description": description}
                 )
                 if created:
@@ -163,7 +164,7 @@ class Command(BaseCommand):
                 self.process_committee_from_url(committee_info)
                 self.stats["committees_processed"] += 1
                 time.sleep(1)  # Be respectful to the server
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - one bad committee must not stop the batch
                 self.stats["errors"] += 1
                 logger.error(
                     f"Error processing committee {committee_info.get('name', 'unknown')}: {e}"
@@ -324,7 +325,7 @@ class Command(BaseCommand):
                                 )
 
                     return committees
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - fall back to element-by-element extraction
                 logger.warning(
                     f"JavaScript extraction failed: {e}, falling back to Selenium element extraction"
                 )
@@ -394,7 +395,7 @@ class Command(BaseCommand):
                                             )
                                             if match:
                                                 committee_url = f"https://www.parliament.gov.za/committee-details/{match.group(1)}"
-                        except Exception:
+                        except Exception:  # noqa: BLE001 - fall back to the plain cell text
                             committee_name = name_cell.text.strip()
 
                         parent_group = house_cell.text.strip()
@@ -416,13 +417,13 @@ class Command(BaseCommand):
                                 self.stdout.write(
                                     f"Found: {committee_name} (Parent: {parent_group}, URL: {committee_url})"
                                 )
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001 - skip a malformed row
                     logger.debug(f"Skipping row: {e}")
                     continue
 
             return committees
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - report the error and return what was collected
             self.stdout.write(self.style.ERROR(f"Error fetching committees: {e}"))
             logger.error(f"Error fetching committees: {e}")
             return []
@@ -754,7 +755,7 @@ class Command(BaseCommand):
 
             return group
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - record the failure and continue
             logger.error(f"Error creating committee {committee_name}: {e}")
             self.stats["missing_groups"].append(committee_name)
             return None
@@ -874,7 +875,7 @@ class Command(BaseCommand):
 
             return group
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - record the failure and continue
             logger.error(f"Error creating committee {committee_name}: {e}")
             self.stats["missing_groups"].append(committee_name)
             return None
@@ -1446,7 +1447,7 @@ class Command(BaseCommand):
         except httpx.HTTPError as e:
             logger.error(f"Error fetching profile {profile_url}: {e}")
             return None, None
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - a bad profile must not stop the scrape
             logger.error(f"Error parsing profile {profile_url}: {e}")
             return None, None
 
@@ -1755,7 +1756,7 @@ class Command(BaseCommand):
 
             return user
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - record the failure and continue
             logger.error(f"Error creating placeholder user for {full_name}: {e}")
             return None
 

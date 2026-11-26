@@ -4,7 +4,6 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("pwms", "0009_backfill_referrals_and_atc_updates"),
     ]
