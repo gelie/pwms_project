@@ -130,9 +130,7 @@ class WorkflowTypeDefinitionCommandTests(TestCase):
         states = {state.name: state for state in imported.states.all()}
         self.assertEqual(states["Start"].public_status.slug, self.new_status.slug)
         self.assertTrue(states["Start"].is_initial)
-        self.assertEqual(
-            states["End"].public_status.slug, self.in_progress_status.slug
-        )
+        self.assertEqual(states["End"].public_status.slug, self.in_progress_status.slug)
         self.assertTrue(states["End"].is_terminal)
 
         transition = imported.transitions.get(name="Finish")
@@ -389,9 +387,7 @@ class ValidateMembershipsCommandTests(TestCase):
 
 class FixMissingGroupAccessShimTests(TestCase):
     def test_the_deprecated_command_delegates(self):
-        group = Group.objects.create(
-            name="Shim Owner", group_type=Group.Type.SECTION
-        )
+        group = Group.objects.create(name="Shim Owner", group_type=Group.Type.SECTION)
         workflow_type = WorkflowType.objects.create(name="Shim Type", group=group)
         workflow_type.states.create(
             name="Start",

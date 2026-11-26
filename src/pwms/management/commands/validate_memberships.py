@@ -65,16 +65,12 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         today = timezone.localdate()
-        fixed = (
-            self._fix_duplicates(today) if options["fix_duplicates"] else 0
-        )
+        fixed = self._fix_duplicates(today) if options["fix_duplicates"] else 0
 
         errors = []
         warnings = []
 
-        memberships = GroupMembership.objects.select_related(
-            "user", "group", "role"
-        )
+        memberships = GroupMembership.objects.select_related("user", "group", "role")
 
         expired_active = memberships.filter(is_active=True, end_date__lt=today)
         self._collect(

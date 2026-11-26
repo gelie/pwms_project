@@ -1,5 +1,4 @@
 import base64
-import datetime
 import hashlib
 import hmac
 import logging
@@ -10,6 +9,7 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import OuterRef, Q, Subquery
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
 from .base import BaseModel
@@ -132,11 +132,11 @@ class User(AbstractUser, BaseModel):
 
             try:
                 fernet = Fernet(key)
-            except Exception as error:
+            except (TypeError, ValueError) as error:
                 logger.error(error)
                 fernet = Fernet(base64.urlsafe_b64encode(key.encode("utf-8")))
             return fernet.encrypt(plain_id.encode("utf-8")).decode("utf-8")
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001 - never break a user save over ID encryption
             logger.error(error)
             return None
 
@@ -150,10 +150,10 @@ class User(AbstractUser, BaseModel):
 
             try:
                 fernet = Fernet(key)
-            except Exception:
+            except TypeError, ValueError:
                 fernet = Fernet(base64.urlsafe_b64encode(key.encode("utf-8")))
             return fernet.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
-        except Exception:
+        except Exception:  # noqa: BLE001 - a bad ciphertext must not break the record
             return None
 
     def set_idno(self, plain_id: str | None) -> None:
@@ -191,7 +191,7 @@ class User(AbstractUser, BaseModel):
         return reverse("pwms:user_detail", kwargs={"pk": self.pk})
 
     def clean(self):
-        if self.date_of_birth and self.date_of_birth > datetime.date.today():
+        if self.date_of_birth and self.date_of_birth > timezone.localdate():
             raise ValidationError(
                 {"date_of_birth": "Date of birth cannot be in the future."}
             )

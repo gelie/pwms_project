@@ -48,7 +48,6 @@ def apply_standard_colors(apps, schema_editor):
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("pwms", "0058_alter_bill_atc_reference_and_more"),
     ]

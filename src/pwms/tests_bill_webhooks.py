@@ -284,7 +284,7 @@ class BillUpdateViewHookTests(TestCase):
         self.client.force_login(self.user)
         # SharePoint filing is not what these tests are about, and the test
         # environment may have a real drive configured.
-        patcher = mock.patch("pwms.views._file_bill_folder")
+        patcher = mock.patch("pwms.views.bill_views._file_bill_folder")
         patcher.start()
         self.addCleanup(patcher.stop)
 

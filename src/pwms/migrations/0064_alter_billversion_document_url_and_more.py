@@ -6,30 +6,54 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('pwms', '0063_remove_user_party_affiliation'),
+        ("pwms", "0063_remove_user_party_affiliation"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='billversion',
-            name='document_url',
-            field=models.URLField(blank=True, help_text="SharePoint link to this version's document.", max_length=2048),
+            model_name="billversion",
+            name="document_url",
+            field=models.URLField(
+                blank=True,
+                help_text="SharePoint link to this version's document.",
+                max_length=2048,
+            ),
         ),
         migrations.AlterField(
-            model_name='billversion',
-            name='recorded_by',
-            field=models.ForeignKey(blank=True, help_text='Who recorded this version.', null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='bill_versions', to=settings.AUTH_USER_MODEL),
+            model_name="billversion",
+            name="recorded_by",
+            field=models.ForeignKey(
+                blank=True,
+                help_text="Who recorded this version.",
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="bill_versions",
+                to=settings.AUTH_USER_MODEL,
+            ),
         ),
         migrations.AlterField(
-            model_name='billversion',
-            name='version_type',
-            field=models.CharField(choices=[('introduced', 'Introduced version'), ('amended', 'Amended bill'), ('amendment_schedule', 'Amendment schedule')], default='introduced', help_text='Introduced bill, amended bill or amendment schedule.', max_length=20),
+            model_name="billversion",
+            name="version_type",
+            field=models.CharField(
+                choices=[
+                    ("introduced", "Introduced version"),
+                    ("amended", "Amended bill"),
+                    ("amendment_schedule", "Amendment schedule"),
+                ],
+                default="introduced",
+                help_text="Introduced bill, amended bill or amendment schedule.",
+                max_length=20,
+            ),
         ),
         migrations.AlterField(
-            model_name='state',
-            name='public_status',
-            field=models.ForeignKey(help_text='Simplified citizen-facing status this state publishes.', on_delete=django.db.models.deletion.PROTECT, related_name='states', to='pwms.publicstatus'),
+            model_name="state",
+            name="public_status",
+            field=models.ForeignKey(
+                help_text="Simplified citizen-facing status this state publishes.",
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="states",
+                to="pwms.publicstatus",
+            ),
         ),
     ]

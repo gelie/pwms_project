@@ -57,7 +57,7 @@ Status legend: ✅ shipped · 🧩 groundwork ready · 🔜 planned
   `AbstractLegislativeWorkflow.perform_transition()` (`notify_transition`) and
   `.refer()` (`notify_referral_created`); `WorkflowReferral.respond()` /
   `recall()` / `mark_expired()` (`notify_referral_closed`); and the four create
-  views in `pwms/views.py` (`notify_workflow_created`). Fixtures, imports and
+  views in `pwms/views/bill_views.py` (`notify_workflow_created`). Fixtures, imports and
   admin writes notify nobody.
 - Each dispatch writes, per recipient and only on the channels their audience
   reason grants, an `in_app` row (sent immediately) and — when the recipient is
@@ -265,7 +265,7 @@ Per new model, the checklist is:
 ## Web UI expansion
 
 ✅ **Workflow instance CRUD shipped (2026-09-11)** — list/detail/create/update/delete
-for `DelegationReport` and `InternationalResolution` (`pwms/views.py` + `pwms/forms.py`,
+for `DelegationReport` and `InternationalResolution` (`pwms/views/` + `pwms/forms/`,
 templates in `src/pwms/templates/pwms/`), reached from the navbar *Workflows*
 dropdown. List pages have a free-text filter.
 

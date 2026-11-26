@@ -73,17 +73,12 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      # The codebase currently carries pre-existing lint findings (see the note
-      # in the README/roadmap). Until those are cleared, this job reports them
-      # without failing the build, so CI is useful on day one instead of red.
-      # Flip `continue-on-error` to `false` once `uv run ruff check` is clean to
-      # make lint a hard gate.
+      # Lint and formatting are hard gates: the codebase is clean here, so a
+      # regression should fail the build immediately.
       - name: ruff check
-        continue-on-error: true
         run: uv run ruff check src/pwms
 
       - name: ruff format --check
-        continue-on-error: true
         run: uv run ruff format --check src/pwms
 
   migrations:
@@ -123,18 +118,9 @@ jobs:
         run: uv sync --frozen
 
       # A model changed without a matching migration is a real bug: the schema
-      # and the code disagree, and production would silently diverge. This gate
-      # is the point of CI.
-      #
-      # NOTE: as of writing, `makemigrations --check` reports pre-existing drift
-      # (26 AlterField operations on the workflow models, regenerated under
-      # Django 6.1). That is a real outstanding task, not noise — but failing
-      # every build for a condition that already exists just trains people to
-      # ignore CI. So the drift is reported here and the job is allowed to
-      # continue; commit the generated migration, then set
-      # `continue-on-error: false` to make this a hard gate.
+      # and the code disagree, and production would silently diverge. The
+      # baseline drift is gone, so this is now a hard gate.
       - name: makemigrations --check --dry-run
-        continue-on-error: true
         run: |
           uv run python manage.py makemigrations --check --dry-run --verbosity 2
 

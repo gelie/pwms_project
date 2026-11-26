@@ -71,7 +71,9 @@ class StateColorRuleTests(SimpleTestCase):
 
     def test_a_red_name_wins_even_without_the_terminal_flag(self):
         self.assertEqual(
-            state_colors.state_color(is_initial=False, is_terminal=False, name="Lapsed"),
+            state_colors.state_color(
+                is_initial=False, is_terminal=False, name="Lapsed"
+            ),
             state_colors.UNSUCCESSFUL,
         )
 
@@ -138,7 +140,9 @@ class SeededStateColorTests(TestCase):
         self.assertEqual(
             self._colour("Bill", "Committee Deliberation"), state_colors.IN_PROGRESS
         )
-        self.assertEqual(self._colour("Meeting", "In Progress"), state_colors.IN_PROGRESS)
+        self.assertEqual(
+            self._colour("Meeting", "In Progress"), state_colors.IN_PROGRESS
+        )
         self.assertEqual(
             self._colour("International Resolution", "In Progress"),
             state_colors.IN_PROGRESS,
@@ -156,7 +160,9 @@ class SeededStateColorTests(TestCase):
 
     def test_unsuccessful_endings_are_red(self):
         self.assertEqual(self._colour("Bill", "Withdrawn"), state_colors.UNSUCCESSFUL)
-        self.assertEqual(self._colour("Meeting", "Cancelled"), state_colors.UNSUCCESSFUL)
+        self.assertEqual(
+            self._colour("Meeting", "Cancelled"), state_colors.UNSUCCESSFUL
+        )
 
     def test_a_new_state_defaults_to_the_in_progress_colour(self):
         self.assertEqual(
@@ -176,7 +182,7 @@ class StateColorPageTests(DetailPageTestCase):
         response = self.client.get(reverse("pwms:workflows"))
 
         self.assertContains(response, self._badge(report.current_state))
-        self.assertNotContains(response, "text-bg-secondary\">Awaiting")
+        self.assertNotContains(response, 'text-bg-secondary">Awaiting')
 
     def test_each_instrument_list_colours_the_state(self):
         report = self.make_report()

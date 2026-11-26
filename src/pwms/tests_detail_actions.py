@@ -827,9 +827,7 @@ class EventDocumentPickerTests(TestCase):
         self.assertContains(response, "Documents")
 
     def test_the_tree_lists_a_drives_subfolders(self):
-        response = {
-            "value": [_graph_folder("f1", "Reports"), _graph_file()]
-        }
+        response = {"value": [_graph_folder("f1", "Reports"), _graph_file()]}
         with (
             patch.object(
                 attachments_service.graph, "get_application_token", return_value=TOKEN

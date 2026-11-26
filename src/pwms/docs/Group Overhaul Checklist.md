@@ -135,25 +135,44 @@ if "party_affiliation" in field_names:
 # 2. Executive appointments — reset_groups deletes these too.
 write_csv(
     "executive-memberships.csv",
-    ["username", "identity_source", "employee_id", "group", "group_type",
-     "role", "start_date", "end_date", "is_active"],
+    [
+        "username",
+        "identity_source",
+        "employee_id",
+        "group",
+        "group_type",
+        "role",
+        "start_date",
+        "end_date",
+        "is_active",
+    ],
     GroupMembership.objects.filter(
         group__group_type__in=["executive", "presidency", "ministry"]
     ).values_list(
-        "user__username", "user__identity_source", "user__employee_id",
-        "group__name", "group__group_type", "role__name",
-        "start_date", "end_date", "is_active",
+        "user__username",
+        "user__identity_source",
+        "user__employee_id",
+        "group__name",
+        "group__group_type",
+        "role__name",
+        "start_date",
+        "end_date",
+        "is_active",
     ),
 )
 
 # 3. Every membership, for reconciliation after the sync.
 write_csv(
     "memberships.csv",
-    ["username", "group", "group_type", "role", "start_date", "end_date",
-     "is_active"],
+    ["username", "group", "group_type", "role", "start_date", "end_date", "is_active"],
     GroupMembership.objects.select_related("user", "group", "role").values_list(
-        "user__username", "group__name", "group__group_type", "role__name",
-        "start_date", "end_date", "is_active",
+        "user__username",
+        "group__name",
+        "group__group_type",
+        "role__name",
+        "start_date",
+        "end_date",
+        "is_active",
     ),
 )
 
@@ -183,11 +202,23 @@ write_csv(
 # 6. Referrals — reset_groups deletes every WorkflowReferral row.
 write_csv(
     "referrals.csv",
-    ["content_type", "object_id", "referred_to", "referred_by", "due_date",
-     "status", "notes"],
+    [
+        "content_type",
+        "object_id",
+        "referred_to",
+        "referred_by",
+        "due_date",
+        "status",
+        "notes",
+    ],
     WorkflowReferral.objects.select_related("content_type", "referred_to").values_list(
-        "content_type__model", "object_id", "referred_to__name",
-        "referred_by__username", "due_date", "status", "notes",
+        "content_type__model",
+        "object_id",
+        "referred_to__name",
+        "referred_by__username",
+        "due_date",
+        "status",
+        "notes",
     ),
 )
 

@@ -105,7 +105,7 @@ class Command(BaseCommand):
         # Microsoft Graph usually returns the collection under the ``value`` key.
         sites = sites_response.get("value", [])
         if not isinstance(sites, list):
-            raise ValueError("Unexpected response format: 'value' is not a list")
+            raise TypeError("Unexpected response format: 'value' is not a list")
 
         # ------------------------------------------------------------------
         # 1️⃣ Build a dict of incoming data keyed by the SharePoint ``id``.

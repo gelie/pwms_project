@@ -309,11 +309,15 @@ class Command(BaseCommand):
             lines = []
             for username in sorted(missing):
                 stem = username.split("-")[0]
-                near = difflib.get_close_matches(username, all_usernames, n=5, cutoff=0.6)
+                near = difflib.get_close_matches(
+                    username, all_usernames, n=5, cutoff=0.6
+                )
                 near += [
                     u for u in all_usernames if stem[1:] in u.lower() and u not in near
                 ][:5]
-                hint = f" (similar existing usernames: {', '.join(near)})" if near else ""
+                hint = (
+                    f" (similar existing usernames: {', '.join(near)})" if near else ""
+                )
                 lines.append(f"{username}{hint}")
             raise CommandError(
                 "Missing the accounts the seed data is attributed to: "

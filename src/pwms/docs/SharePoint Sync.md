@@ -97,7 +97,7 @@ member of, and **Use this document** fills the URL field; a local file can be
 WORKFLOW_TYPE_SHAREPOINT_LOCATIONS = {
     "Delegation Report": {
         "drive_id": "…",
-        "folder_id": "…",       # blank / "root" = the drive root
+        "folder_id": "…",  # blank / "root" = the drive root
         "name": "Delegation reports",  # optional UI label
     },
 }
@@ -260,7 +260,7 @@ The `content_type` (`"app.model"`) + `object_id` parameters name the target
 record, so the routes are shared by every workflow subclass. Deleting an
 attachment removes only the local row; it never deletes the file.
 
-Code: the `attachment_*` views in `pwms/views.py`, the service in
+Code: the `attachment_*` views in `pwms/views/attachments.py`, the service in
 `pwms/services/attachments.py`, the models in `pwms/models/attachments.py`, and
 the fragments in `pwms/templates/pwms/partials/attachment_*.html`.
 

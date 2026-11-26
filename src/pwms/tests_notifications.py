@@ -443,7 +443,7 @@ class EmailDeliveryTests(AlertFixture):
 
     def test_a_failed_send_is_retried_and_the_reason_kept(self):
         with mock.patch(
-            "pwms.notifications.dispatch.send_mail",
+            "pwms.notifications.delivery.send_mail",
             side_effect=OSError("smtp is down"),
         ):
             # Dispatching never raises, whatever the mail server does...
@@ -463,7 +463,7 @@ class EmailDeliveryTests(AlertFixture):
 
     def test_the_row_is_failed_once_the_attempts_run_out(self):
         with mock.patch(
-            "pwms.notifications.dispatch.send_mail",
+            "pwms.notifications.delivery.send_mail",
             side_effect=OSError("smtp is down"),
         ):
             notify_workflow_created(self.report, actor=self.author)
@@ -742,8 +742,8 @@ class CreatedNotificationFromViewTests(AlertFixture):
         )
 
         with (
-            mock.patch("pwms.views.BillForm") as form_class,
-            mock.patch("pwms.views.notify_workflow_created") as notify,
+            mock.patch("pwms.views.bill_views.BillForm") as form_class,
+            mock.patch("pwms.views.bill_views.notify_workflow_created") as notify,
         ):
             form_class.return_value.is_valid.return_value = True
             form_class.return_value.save.return_value = bill

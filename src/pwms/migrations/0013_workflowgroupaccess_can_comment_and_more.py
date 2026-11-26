@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("pwms", "0012_assign_workflow_type_rbac_group"),
     ]

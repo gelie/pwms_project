@@ -200,7 +200,7 @@ class Command(BaseCommand):
                     )
 
                 generated_count += 1
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - one bad diagram must not stop the batch
                 self.stdout.write(self.style.ERROR(f"  Failed to render diagram: {e}"))
                 skipped_count += 1
 

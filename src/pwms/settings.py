@@ -41,14 +41,14 @@ ALLOWED_HOSTS = [
 
 SERVER = config("SERVER", default="LOCAL")
 
-if SERVER=='DEV':
-    SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https")
-    CSRF_TRUSTED_ORIGINS=["https://workflows-dev.parliament.gov.za"]
-elif SERVER=='PROD':
-    SECURE_PROXY_SSL_HEADER=("HTTP_X_FORWARDED_PROTO", "https")
-    CSRF_TRUSTED_ORIGINS=["https://workflows.parliament.gov.za"]
+if SERVER == "DEV":
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    CSRF_TRUSTED_ORIGINS = ["https://workflows-dev.parliament.gov.za"]
+elif SERVER == "PROD":
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    CSRF_TRUSTED_ORIGINS = ["https://workflows.parliament.gov.za"]
 else:
-    CSRF_TRUSTED_ORIGINS=[]
+    CSRF_TRUSTED_ORIGINS = []
 
 
 # Application definition
@@ -314,12 +314,12 @@ DJANGO_FLATPICKR = {
 #         "DEFAULT_FROM_EMAIL", default="noreply@parliament.gov.za"
 #     )
 
-if SERVER=="DEV" or SERVER=="LOCAL":
+if SERVER == "DEV" or SERVER == "LOCAL":
     EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
     EMAIL_HOST = "localhost"
     EMAIL_PORT = 1025
     EMAIL_USE_TLS = False
-elif SERVER=="PROD":
+elif SERVER == "PROD":
     EMAIL_BACKEND = config(
         "EMAIL_BACKEND",
         default="django.core.mail.backends.smtp.EmailBackend",

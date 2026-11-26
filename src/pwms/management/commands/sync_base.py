@@ -174,7 +174,7 @@ class OracleSyncBase(BaseCommand):
                                 f"✅ Initialized Oracle thick mode (method {i})"
                             )
                             break
-                        except Exception as init_error:
+                        except Exception as init_error:  # noqa: BLE001 - try the next client
                             last_error = init_error
                             self.logger.debug(
                                 f"Thick mode init attempt {i} failed: {init_error}"
@@ -200,7 +200,7 @@ class OracleSyncBase(BaseCommand):
 
                 except CommandError:
                     raise
-                except Exception as thick_error:
+                except Exception as thick_error:  # noqa: BLE001 - wrap in CommandError
                     error_msg = f"❌ Thick mode initialization failed: {thick_error}"
                     self.logger.error(error_msg)
                     raise CommandError(error_msg)
@@ -236,7 +236,7 @@ class OracleSyncBase(BaseCommand):
                             f"✅ Connected using modern oracledb (method {i})"
                         )
                         break
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001 - try the next DSN
                         last_error = e
                         self.logger.warning(f"Connection attempt {i} failed: {e}")
                         continue
@@ -260,7 +260,7 @@ class OracleSyncBase(BaseCommand):
             self.logger.info("✅ Successfully connected to Oracle database")
             self.stdout.write(self.style.SUCCESS("Connected to Oracle database"))
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - normalise every driver error
             self.logger.error(f"❌ Oracle connection failed: {e}")
             raise CommandError(f"❌ Oracle connection failed: {e}")
 
@@ -277,11 +277,11 @@ class OracleSyncBase(BaseCommand):
                         oracledb.init_oracle_client(lib_dir=path)
                         self.logger.info(f"  Found Oracle client at: {path}")
                         return
-                    except Exception as e:
+                    except Exception as e:  # noqa: BLE001 - try the next client path
                         self.logger.debug(f"Failed to init with path {path}: {e}")
                         continue
 
-        raise Exception("No valid Oracle client library found in standard paths")
+        raise RuntimeError("No valid Oracle client library found in standard paths")
 
     def cleanup_connections(self):
         """Clean up database connections with error handling."""
@@ -289,15 +289,15 @@ class OracleSyncBase(BaseCommand):
             if self.oracle_cursor:
                 self.oracle_cursor.close()
                 self.logger.debug("Oracle cursor closed")
-        except Exception as e:
-            self.logger.warning(f"Error closing Oracle cursor: {str(e)}")
+        except Exception as e:  # noqa: BLE001 - cleanup must not mask the real error
+            self.logger.warning(f"Error closing Oracle cursor: {e!s}")
 
         try:
             if self.oracle_conn:
                 self.oracle_conn.close()
                 self.logger.debug("Oracle connection closed")
-        except Exception as e:
-            self.logger.warning(f"Error closing Oracle connection: {str(e)}")
+        except Exception as e:  # noqa: BLE001 - cleanup must not mask the real error
+            self.logger.warning(f"Error closing Oracle connection: {e!s}")
 
         self.logger.info("🔌 Database connections cleaned up")
 
@@ -401,8 +401,10 @@ class OracleSyncBase(BaseCommand):
                 end = pos.rindex(")")
                 if end > start:
                     pos = f"{pos[:start].strip()} {pos[end + 1 :].strip()}".strip()
-            except Exception:
-                pass
+            except ValueError:
+                self.logger.debug(
+                    "Could not strip the parenthesised qualifier from %r", pos
+                )
 
         pos = " ".join(pos.split())
         normalized = pos.title()
