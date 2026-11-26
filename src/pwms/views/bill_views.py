@@ -160,6 +160,7 @@ def bill_folder_preview(request):
         },
     )
 
+
 def bill_create(request):
     """Create a bill; the initial state is derived from its type."""
     if request.method == "POST":
