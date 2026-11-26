@@ -65,6 +65,15 @@ def _day(value):
     return "" if value is None else str(value)
 
 
+def _friendly_date(value):
+    """A date or datetime as 'DD MMM YYYY' (``""`` for nothing)."""
+    if isinstance(value, (dt.datetime, dt.date)):
+        if isinstance(value, dt.datetime):
+            value = timezone.localtime(value)
+        return value.strftime("%d %b %Y")
+    return ""
+
+
 def _cell(text, css=""):
     """One table cell: the text plus an optional CSS class."""
     return {"text": "" if text is None else str(text), "class": css}
@@ -564,6 +573,98 @@ def _time(value):
     return ""
 
 
+def format_duration(delta):
+    """Convert a timedelta into a human-readable duration string."""
+    days = delta.days
+    hours, remainder = divmod(delta.seconds, 3600)
+    minutes, _ = divmod(remainder, 60)
+
+    parts = []
+    if days > 0:
+        parts.append(f"{days}d")
+    if hours > 0:
+        parts.append(f"{hours}h")
+    if minutes > 0:
+        parts.append(f"{minutes}m")
+
+    return " ".join(parts) if parts else "< 1m"
+
+
+def _progress_timeline_table(instance, now):
+    """
+    A detailed breakdown of time spent in each state.
+    Calculates durations from creation through each transition to now.
+    """
+    logs = instance.audit_logs().order_by("timestamp")
+
+    # Build the sequence of (state, start_time)
+    initial_state = instance.workflow_type.get_initial_state()
+    timeline = [(initial_state, instance.created_at)]
+
+    for log in logs:
+        timeline.append((log.to_state, log.timestamp))
+
+    rows = []
+    for i in range(len(timeline)):
+        state, start_time = timeline[i]
+        end_time = timeline[i + 1][1] if i < len(timeline) - 1 else now
+        duration = end_time - start_time
+
+        rows.append(
+            [
+                _cell(state.name),
+                _cell(_day(start_time) + " " + _time(start_time)),
+                _cell(_day(end_time) + " " + _time(end_time)),
+                _cell(format_duration(duration)),
+            ]
+        )
+
+    return {
+        "title": "Detailed Progress Timeline",
+        "headers": ["State", "From", "To", "Duration"],
+        "rows": rows,
+        "empty": "No progress recorded.",
+    }
+
+
+def _progress_timeline_graph(instance):
+    """
+    A graphical representation of the workflow progression.
+    Returns a visual component instead of a table.
+    """
+    logs = instance.audit_logs().order_by("timestamp")
+    initial_state = instance.workflow_type.get_initial_state()
+    now = timezone.now()
+
+    # Sequence of (state, timestamp)
+    timeline = [(initial_state, instance.created_at)]
+    for log in logs:
+        timeline.append((log.to_state, log.timestamp))
+
+    steps = []
+    for i in range(len(timeline)):
+        s, ts = timeline[i]
+        end_time = timeline[i + 1][1] if i < len(timeline) - 1 else now
+        duration = end_time - ts
+
+        is_last = i == len(timeline) - 1
+        label = f"{s.name}" if not is_last else f"{s.name} (Current)"
+
+        steps.append(
+            {
+                "label": label,
+                "timestamp": _friendly_date(ts) + " " + _time(ts),
+                "duration": format_duration(duration),
+            }
+        )
+
+    return {
+        "type": "progress_bar",
+        "title": "Workflow Progress",
+        "steps": steps,
+    }
+
+
 # -- the document -----------------------------------------------------------
 @dataclass
 class InstrumentDocument:
@@ -580,6 +681,7 @@ class InstrumentDocument:
     generated_by_label: str = ""
     sections: list = field(default_factory=list)
     notes: list = field(default_factory=list)
+    visuals: list = field(default_factory=list)
     tables: list = field(default_factory=list)
 
 
@@ -599,7 +701,11 @@ def build_instrument_document(instance, user=None, *, now=None):
         if text:
             notes.append({"title": title, "text": text})
 
+    visuals = []
+    visuals.append(_progress_timeline_graph(instance))
+
     tables = []
+    tables.append(_progress_timeline_table(instance, now))
     tables.extend(_hierarchy_tables(parent, children))
     tables.extend(_TYPE_TABLES[type(instance)](instance))
     tables.append(_referrals_table(instance))
@@ -619,6 +725,7 @@ def build_instrument_document(instance, user=None, *, now=None):
         generated_by_label=getattr(user, "display_name", "") if user else "—",
         sections=sections,
         notes=notes,
+        visuals=visuals,
         tables=tables,
     )
 
